@@ -22,6 +22,8 @@ Lokate is a two-part, self-hosted alternative to commercial family-location apps
 **Android app** and a **FastAPI backend** you run yourself, on your own server. No third-party
 company sees your family's location history.
 
+<img width="1174" height="659" alt="collage" src="https://github.com/user-attachments/assets/d6df191e-0db0-4667-948e-a17bbea0c583" />
+
 ## ✨ Features
 
 **Live location & map**
