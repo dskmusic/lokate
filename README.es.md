@@ -22,6 +22,8 @@ Lokate es una alternativa autoalojada, en dos partes, a las apps comerciales de 
 familiar: una **app Android** nativa y un **backend FastAPI** que gestionas tú mismo, en tu propio
 servidor. Ninguna empresa externa ve el historial de ubicaciones de tu familia.
 
+<img width="1174" height="659" alt="collage" src="https://github.com/user-attachments/assets/6bb9ca0c-4784-4ed0-b021-83fc4420726f" />
+
 ## ✨ Funcionalidades
 
 **Ubicación en vivo y mapa**
