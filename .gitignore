@@ -1,6 +1,7 @@
 # ---- Project-local, not for sharing ----
 .backups/
 .claude/
+.screenshots/
 backend/tests/
 CREAR BACKUP.pyw
 ToDo.txt
