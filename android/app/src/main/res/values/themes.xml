@@ -1,0 +1,13 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources xmlns:tools="http://schemas.android.com/tools">
+    <!-- Solo se usa como splash/theme previo a que Compose tome el control.
+         Theme.AppCompat (no Theme.Material3, que exige la librería com.google.android.material
+         que este proyecto no usa: la UI real es 100% Compose Material3). -->
+    <style name="Theme.Lokate" parent="Theme.AppCompat.DayNight.NoActionBar">
+        <!-- Con targetSdk 35, Android 15 fuerza edge-to-edge aunque la app no lo pida:
+             sin esto el contenido se monta bajo la barra de estado/navegación.
+             ponytail: este flag se elimina en targetSdk 36 (Android 16) — si se sube el
+             targetSdk habrá que sustituirlo por padding manual de WindowInsets.systemBars. -->
+        <item name="android:windowOptOutEdgeToEdgeEnforcement" tools:targetApi="35">true</item>
+    </style>
+</resources>

@@ -1,0 +1,239 @@
+{# Copia literal de sqladmin/layout.html (v0.20.1, que no expone alias al original para
+   extenderlo) + cabecera reordenada, tema oscuro, selector de idioma, traducciones y pie. #}
+{% extends "sqladmin/base.html" %}
+{% from 'sqladmin/_macros.html' import display_menu %}
+{% block head %}
+{{ super() }}
+<link rel="manifest" href="/manifest.json">
+<meta name="theme-color" content="#2A3F9E">
+{% endblock %}
+{% block body %}
+<div class="wrapper">
+  <aside class="navbar navbar-expand-lg navbar-vertical navbar-expand-md navbar-dark">
+    <div class="container-fluid d-flex align-items-center flex-wrap">
+      <button id="lokate-nav-toggle" class="navbar-toggler order-1 me-2" type="button"
+        aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
+        <span class="navbar-toggler-icon"></span>
+      </button>
+      <h1 class="navbar-brand navbar-brand-autodark order-2 flex-grow-1 m-0">
+        <a href="{{ url_for('admin:index') }}">
+          {% if admin.logo_url %}
+          <img src="{{ admin.logo_url }}" width="40" height="40" alt="Admin" class="navbar-brand-image" />
+          {% else %}
+          <h3 class="m-0">{{ admin.title }}</h3>
+          {% endif %}
+        </a>
+      </h1>
+      <div class="order-3 d-flex align-items-center" style="gap:.5rem;">
+        <div class="dropdown">
+          <button class="btn btn-icon btn-secondary dropdown-toggle" type="button" data-bs-toggle="dropdown" title="{{ t('language') }}">
+            {{ '🇪🇸' if request.state.locale == 'es' else '🇬🇧' }}
+          </button>
+          <div class="dropdown-menu dropdown-menu-end">
+            <a class="dropdown-item" href="{{ url_for('admin:set-locale') }}?lang=es&next={{ request.url.path | urlencode }}">🇪🇸 Español</a>
+            <a class="dropdown-item" href="{{ url_for('admin:set-locale') }}?lang=en&next={{ request.url.path | urlencode }}">🇬🇧 English</a>
+          </div>
+        </div>
+        {% if admin.authentication_backend %}
+        <a href="{{ request.url_for('admin:logout') }}" class="btn btn-icon btn-secondary" title="Logout">
+          <i class="fa fa-sign-out"></i>
+        </a>
+        {% endif %}
+      </div>
+      <nav class="navbar navbar-expand-sm w-100 order-4" id="navbar-menu">
+        <div class="collapse navbar-collapse" id="navbarSupportedContent">
+          {{ display_menu(admin._menu, request) }}
+        </div>
+      </nav>
+    </div>
+  </aside>
+  <div class="page-wrapper">
+    <div class="container-fluid">
+      <div class="page-header d-print-none">
+        {% block content_header %}
+        <div class="row align-items-center">
+          <div class="col">
+            <h2 class="page-title">{{ title }}</h2>
+            <div class="page-pretitle">{{ subtitle }}</div>
+          </div>
+        </div>
+        {% endblock %}
+      </div>
+    </div>
+    <div class="page-body flex-grow-1">
+      <div class="container-fluid">
+        <div class="row row-deck row-cards">
+          {% block content %} {% endblock %}
+        </div>
+      </div>
+    </div>
+    <footer class="footer footer-transparent d-print-none">
+      <div class="container-fluid">
+        <div class="row text-center align-items-center flex-row-reverse">
+          <div class="col-12 col-lg-auto mt-3 mt-lg-0">
+            <ul class="list-inline list-inline-dots mb-0">
+              <li class="list-inline-item">
+                {{ t('made_with_love') }} <a href="https://www.dskmusic.com/dsk_dev_redirect.php" target="_blank" rel="noopener noreferrer">DSK</a>
+              </li>
+            </ul>
+          </div>
+        </div>
+      </div>
+    </footer>
+  </div>
+</div>
+{% endblock %}
+
+{% block tail %}
+{{ super() }}
+<style>
+/* Mejor experiencia táctil en pantallas pequeñas */
+@media (max-width: 768px) {
+  .card-sm .card-body { padding: 0.75rem; }
+  .h1 { font-size: 1.5rem; }
+  .btn, .form-select, .form-control { min-height: 40px; }
+  .navbar-brand h3 { font-size: 1.1rem; }
+}
+
+/* El menú lateral de sqladmin (navbar-expand-lg + navbar-expand-md a la vez, y un <nav>
+   anidado dentro del <aside>) no colapsa bien con el JS de Bootstrap del tema: el listado de
+   enlaces queda siempre visible, empujado en una columna estrecha junto al contenido. Se
+   controla el propio colapsado a mano (CSS + JS más abajo), sin depender de qué versión de
+   Bootstrap traiga cargada el tema. El corte es 991.98px (el breakpoint "lg" de Bootstrap,
+   el mismo que ya usa navbar-expand-lg para mostrar/ocultar el botón hamburguesa) en vez de
+   767.98px: por debajo de 992px es donde el propio Bootstrap decide mostrar el toggler, así
+   que ahí es donde también hace falta que el contenido del menú arranque colapsado — si no,
+   en anchos intermedios (tablet, ventana de escritorio estrecha, o el modo "Sitio de
+   escritorio" de Chrome en el móvil, que informa un viewport ancho) el botón aparece pero no
+   hace nada porque el menú ya estaba visible de por sí. */
+@media (max-width: 991.98px) {
+  .wrapper { flex-direction: column !important; }
+  aside.navbar-vertical { width: 100% !important; min-height: auto !important; }
+  .page-wrapper { margin-left: 0 !important; }
+  #navbarSupportedContent { display: none !important; }
+  #navbarSupportedContent.lokate-nav-open { display: block !important; }
+}
+
+/* Select2 (usado por sqladmin en selects de relación y de tamaño de página) no es consciente
+   del tema oscuro de Tabler por defecto — sin esto queda texto blanco sobre fondo blanco. */
+[data-bs-theme="dark"] .select2-container--default .select2-selection--single,
+[data-bs-theme="dark"] .select2-container--default .select2-selection--multiple,
+[data-bs-theme="dark"] .select2-dropdown {
+  background-color: var(--tblr-bg-surface, #1a2234) !important;
+  color: var(--tblr-body-color, #d1d5db) !important;
+  border-color: var(--tblr-border-color, #2d3548) !important;
+}
+[data-bs-theme="dark"] .select2-results__option,
+[data-bs-theme="dark"] .select2-selection__rendered {
+  color: var(--tblr-body-color, #d1d5db) !important;
+}
+[data-bs-theme="dark"] .select2-results__option--highlighted {
+  background-color: var(--tblr-primary, #4A6FE3) !important;
+  color: #fff !important;
+}
+[data-bs-theme="dark"] .select2-search__field {
+  background-color: transparent !important;
+  color: var(--tblr-body-color, #d1d5db) !important;
+}
+[data-bs-theme="dark"] input,
+[data-bs-theme="dark"] select,
+[data-bs-theme="dark"] textarea {
+  color-scheme: dark;
+}
+
+.activity-bar-track { background: var(--tblr-bg-surface-secondary, rgba(127,127,127,.15)); border-radius: 4px; }
+.activity-bar-fill { background: var(--tblr-primary, #4A6FE3); border-radius: 4px; min-width: 3px; }
+
+/* Algunas vistas (Historial, subir avatar) no rellenan title/subtitle porque ya traen su
+   propio título dentro de la tarjeta — sin esto, la cabecera de página se queda vacía pero
+   sigue reservando su alto fijo (padding del propio contenedor), dejando un hueco feo entre
+   el menú y el contenido. Dos casos: el bloque content_header vacío del todo (solo queda
+   espacio en blanco de la plantilla, :empty no lo detecta porque cuenta como contenido) y el
+   bloque por defecto con title/subtitle vacíos pero sus elementos sí presentes. */
+.page-header:not(:has(*)) { display: none; }
+.page-header:has(.page-title:empty):has(.page-pretitle:empty) { display: none; }
+
+/* Pie de las listas (Usuarios/Grupos/Zonas...): contador + paginación + selector de tamaño de
+   página en una sola fila que no cabe en móvil y se corta por el borde. Que pase a envolver en
+   vez de desbordar. */
+@media (max-width: 575.98px) {
+  .card-footer.d-flex {
+    flex-wrap: wrap;
+    justify-content: center !important;
+  }
+  .pagination {
+    flex-wrap: wrap;
+    justify-content: center;
+  }
+}
+</style>
+<script>
+(function () {
+  var KEY = 'lokate-admin-theme';
+  var saved = localStorage.getItem(KEY) || 'dark';
+  document.documentElement.setAttribute('data-bs-theme', saved);
+
+  var btn = document.createElement('button');
+  btn.textContent = saved === 'dark' ? '☀️' : '🌙';
+  btn.title = 'Cambiar tema';
+  btn.style.cssText = 'position:fixed;bottom:16px;right:16px;z-index:9999;border-radius:50%;' +
+    'width:44px;height:44px;border:none;box-shadow:0 2px 8px rgba(0,0,0,.3);cursor:pointer;font-size:18px;';
+  btn.onclick = function () {
+    var next = document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark';
+    document.documentElement.setAttribute('data-bs-theme', next);
+    localStorage.setItem(KEY, next);
+    btn.textContent = next === 'dark' ? '☀️' : '🌙';
+  };
+  document.body.appendChild(btn);
+
+  var navToggle = document.getElementById('lokate-nav-toggle');
+  var navContent = document.getElementById('navbarSupportedContent');
+  if (navToggle && navContent) {
+    navToggle.addEventListener('click', function () {
+      var open = navContent.classList.toggle('lokate-nav-open');
+      navToggle.setAttribute('aria-expanded', open ? 'true' : 'false');
+    });
+    // Al navegar a otra página del panel, que el menú no se quede abierto de la vez anterior.
+    navContent.classList.remove('lokate-nav-open');
+  }
+
+  // Traducción de la interfaz por defecto de sqladmin (esta versión no trae i18n incorporado)
+  // y de los nombres de modelo que yo mismo escribí en español — en ambas direcciones según
+  // el idioma activo, para no tener que tocar las plantillas propias de sqladmin.
+  var enToEs = {{ ui_dict_es | tojson }};
+  var esToEn = {};
+  Object.keys(enToEs).forEach(function (en) { esToEn[enToEs[en]] = en; });
+  var locale = "{{ request.state.locale }}";
+  var dict = locale === 'en' ? esToEn : enToEs;
+
+  // "Search: username, display_name" (placeholder del buscador de listas) no es un nodo de
+  // texto — es un atributo, y trae el nombre de las columnas pegado, así que una búsqueda
+  // exacta en el diccionario nunca lo encontraría. Solo se traduce el prefijo fijo.
+  var searchPrefix = locale === 'en' ? ['Buscar: ', 'Search: '] : ['Search: ', 'Buscar: '];
+
+  function translate(node) {
+    node.childNodes.forEach(function (n) {
+      if (n.nodeType === 3) {
+        var t = n.textContent.trim();
+        if (dict[t]) n.textContent = n.textContent.replace(t, dict[t]);
+      } else if (n.nodeType === 1) {
+        if (n.hasAttribute && n.hasAttribute('placeholder')) {
+          var ph = n.getAttribute('placeholder');
+          if (ph.indexOf(searchPrefix[0]) === 0) {
+            n.setAttribute('placeholder', searchPrefix[1] + ph.slice(searchPrefix[0].length));
+          } else if (dict[ph]) {
+            n.setAttribute('placeholder', dict[ph]);
+          }
+        }
+        translate(n);
+      }
+    });
+  }
+  translate(document.body);
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js', { scope: '/admin' }).catch(function () {});
+  }
+})();
+</script>
+{% endblock %}

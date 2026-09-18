@@ -1,0 +1,55 @@
+{# Rueda de mapa con marcador arrastrable para elegir lat/lng al crear/editar una zona,
+   igual que en la app (toca el mapa para colocar el centro). Incluido desde create.html/edit.html. #}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+document.addEventListener("DOMContentLoaded", function () {
+  var latInput = document.querySelector('[name="lat"]');
+  var lngInput = document.querySelector('[name="lng"]');
+  var radiusInput = document.querySelector('[name="radius_m"]');
+  if (!latInput || !lngInput) return;
+
+  var mapDiv = document.createElement("div");
+  mapDiv.id = "zone-picker-map";
+  mapDiv.style.height = "320px";
+  mapDiv.style.marginBottom = "16px";
+  mapDiv.style.borderRadius = "4px";
+  var fieldset = latInput.closest("fieldset");
+  fieldset.insertAdjacentElement("beforebegin", mapDiv);
+
+  var hasInitial = latInput.value && lngInput.value;
+  var initialLat = parseFloat(latInput.value) || 40.4168;
+  var initialLng = parseFloat(lngInput.value) || -3.7038;
+
+  var map = L.map("zone-picker-map").setView([initialLat, initialLng], hasInitial ? 15 : 5);
+  L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    attribution: "&copy; OpenStreetMap contributors",
+    maxZoom: 19,
+  }).addTo(map);
+
+  var marker = hasInitial ? L.marker([initialLat, initialLng]).addTo(map) : null;
+  var circle = null;
+
+  function updateCircle() {
+    var r = radiusInput ? parseFloat(radiusInput.value) : 0;
+    if (circle) { map.removeLayer(circle); circle = null; }
+    if (marker && r > 0) {
+      circle = L.circle(marker.getLatLng(), { radius: r, color: "#2E7D32", fillOpacity: 0.15 }).addTo(map);
+    }
+  }
+
+  function placeMarker(latlng) {
+    latInput.value = latlng.lat.toFixed(6);
+    lngInput.value = latlng.lng.toFixed(6);
+    if (marker) {
+      marker.setLatLng(latlng);
+    } else {
+      marker = L.marker(latlng).addTo(map);
+    }
+    updateCircle();
+  }
+
+  map.on("click", function (e) { placeMarker(e.latlng); });
+  if (radiusInput) radiusInput.addEventListener("input", updateCircle);
+  updateCircle();
+});
+</script>

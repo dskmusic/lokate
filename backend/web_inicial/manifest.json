@@ -1,0 +1,17 @@
+{
+  "name": "Lokate by DSK — Admin",
+  "short_name": "Lokate Admin",
+  "description": "Panel de administración de Lokate by DSK",
+  "start_url": "/admin/",
+  "scope": "/admin/",
+  "id": "/admin/",
+  "display": "standalone",
+  "background_color": "#0d1526",
+  "theme_color": "#2A3F9E",
+  "lang": "es",
+  "icons": [
+    { "src": "/icons/icon-192.png", "sizes": "192x192", "type": "image/png" },
+    { "src": "/icons/icon-512.png", "sizes": "512x512", "type": "image/png" },
+    { "src": "/icons/icon-512-maskable.png", "sizes": "512x512", "type": "image/png", "purpose": "maskable" }
+  ]
+}

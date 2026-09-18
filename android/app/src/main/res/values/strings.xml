@@ -1,0 +1,279 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Lokate</string>
+
+    <!-- Servicio en primer plano -->
+    <string name="location_service_notification_title">Lokate está compartiendo tu ubicación</string>
+    <string name="location_service_notification_text">Toca para abrir la app</string>
+    <string name="notification_channel_location_name">Ubicación activa</string>
+    <string name="notification_channel_location_desc">Notificación fija mientras se comparte tu ubicación</string>
+    <string name="notification_channel_zone_name">Alertas de zona</string>
+    <string name="notification_channel_zone_desc">Avisos de entrada y salida de zonas guardadas</string>
+    <string name="notification_channel_system_name">Mensajes del sistema</string>
+    <string name="notification_channel_system_desc">Avisos generales de la app</string>
+
+    <!-- Onboarding de permisos -->
+    <string name="onboarding_location_title">Ubicación</string>
+    <string name="onboarding_location_desc">Lokate necesita tu ubicación para mostrarte en el mapa a tu familia.</string>
+    <string name="onboarding_background_location_title">Ubicación en segundo plano</string>
+    <string name="onboarding_background_location_desc">Para seguir compartiendo tu ubicación aunque no tengas la app abierta, Android pedirá que elijas \"Permitir todo el tiempo\".</string>
+    <string name="onboarding_notifications_title">Notificaciones</string>
+    <string name="onboarding_notifications_desc">Te avisaremos cuando alguien de tu familia entre o salga de una zona guardada.</string>
+    <string name="onboarding_battery_title">Ignorar optimización de batería</string>
+    <string name="onboarding_battery_desc">Algunos sistemas cierran la app en segundo plano para ahorrar batería. Sin este permiso, Lokate podría dejar de compartir tu ubicación.</string>
+    <string name="onboarding_manufacturer_title">Ajuste extra de tu fabricante</string>
+    <string name="onboarding_manufacturer_desc">Tu dispositivo (%1$s) es especialmente agresivo cerrando apps en segundo plano. Abre el panel de autoarranque/restricciones y permite que Lokate se ejecute libremente.</string>
+    <string name="onboarding_continue">Continuar</string>
+    <string name="onboarding_open_settings">Abrir ajustes</string>
+    <string name="onboarding_skip_warning">Sin este permiso, Lokate no funcionará correctamente</string>
+    <string name="onboarding_skip_step">Continuar sin este permiso</string>
+    <string name="onboarding_finish">Empezar a usar Lokate</string>
+
+    <!-- Auth -->
+    <string name="login_title">Iniciar sesión</string>
+    <string name="register_title">Crear cuenta</string>
+    <string name="username_label">Nombre de usuario</string>
+    <string name="password_label">Contraseña</string>
+    <string name="display_name_label">Tu nombre</string>
+    <string name="profile_photo_label">Foto de perfil (obligatoria)</string>
+    <string name="login_button">Entrar</string>
+    <string name="register_button">Crear cuenta</string>
+    <string name="switch_to_register">¿No tienes cuenta? Regístrate</string>
+    <string name="switch_to_login">¿Ya tienes cuenta? Inicia sesión</string>
+
+    <!-- Grupo -->
+    <string name="group_title">Grupo familiar</string>
+    <string name="group_create">Crear grupo</string>
+    <string name="group_join">Unirme con código</string>
+    <string name="group_name_label">Nombre del grupo</string>
+    <string name="invite_code_label">Código de invitación</string>
+    <string name="group_invite_code_share">Código para invitar: %1$s</string>
+    <string name="group_leave">Salir del grupo</string>
+    <string name="group_leave_confirm_title">¿Salir del grupo?</string>
+    <string name="group_leave_confirm_body">Dejarás de ver y compartir ubicación con este grupo familiar.</string>
+    <string name="group_members_title">Miembros</string>
+    <string name="group_admin_only_create">Solo los administradores pueden crear un grupo nuevo. Pídele a un admin el código de invitación para unirte.</string>
+    <string name="map_no_group_prompt">Todavía no perteneces a ningún grupo familiar. Crea uno o únete con un código.</string>
+    <string name="map_go_to_group">Ir a grupo familiar</string>
+    <string name="group_invite_button">Invitar a alguien</string>
+    <string name="cancel">Cancelar</string>
+    <string name="retry">Reintentar</string>
+    <string name="connection_error_body">No se pudo conectar con el servidor. Comprueba tu conexión e inténtalo de nuevo.</string>
+    <string name="confirm">Confirmar</string>
+    <string name="exit_app_confirm_title">¿Salir de Lokate?</string>
+    <string name="exit_app_confirm_body">La app seguirá compartiendo tu ubicación en segundo plano aunque la cierres.</string>
+    <string name="exit_app_confirm_button">Salir</string>
+
+    <!-- Mapa -->
+    <string name="map_title">Mapa</string>
+    <string name="share_current_location">Compartir ubicación actual</string>
+
+    <!-- Gente -->
+    <string name="people_title">Gente</string>
+    <string name="people_empty">Todavía no hay miembros con ubicación</string>
+    <string name="open_in_google_maps">Ver en Google Maps</string>
+    <string name="locate_me">Dónde estoy</string>
+    <string name="map_style_button">Estilo de mapa</string>
+    <string name="map_style_standard">Estándar</string>
+    <string name="map_style_satellite">Satélite</string>
+    <string name="map_style_dark">Oscuro</string>
+    <string name="map_follow_me">Seguir a alguien en vivo</string>
+    <string name="map_follow_stop">Dejar de seguir</string>
+    <string name="map_follow_you">%1$s (tú)</string>
+    <string name="help_title">Ayuda</string>
+
+    <!-- Detalle de miembro -->
+    <string name="member_detail_title">Detalle</string>
+    <string name="battery_label">Batería</string>
+    <string name="battery_unknown">Batería desconocida</string>
+    <string name="charging_label">Cargando</string>
+    <string name="wifi_connected_label">Conectado a WiFi</string>
+    <string name="wifi_not_connected_label">Sin WiFi (datos móviles)</string>
+    <string name="wifi_unknown_label">Conexión desconocida</string>
+    <string name="last_seen_label">Última actualización:\n%1$s</string>
+    <string name="ring_device_button">Hacer sonar el dispositivo</string>
+    <string name="ring_confirm_title">¿Hacer sonar el dispositivo?</string>
+    <string name="ring_confirm_body">Se enviará una notificación sonora al móvil de %1$s para ayudar a localizarlo.</string>
+    <string name="ring_sent_confirmation">Notificación de sonido enviada</string>
+
+    <!-- Mensaje de emergencia -->
+    <string name="emergency_message_button">Enviar mensaje prioritario</string>
+    <string name="emergency_message_sent">Mensaje enviado</string>
+    <string name="emergency_compose_title">Mensaje prioritario</string>
+    <string name="emergency_compose_hint">Escribe tu mensaje…</string>
+    <string name="emergency_attach_photo">Foto</string>
+    <string name="emergency_attach_video">Vídeo</string>
+    <string name="emergency_attach_file">Archivo</string>
+    <string name="emergency_attachment_photo_selected">Foto adjunta</string>
+    <string name="emergency_attachment_video_selected">Vídeo adjunto</string>
+    <string name="emergency_attachment_file_selected">Archivo adjunto</string>
+    <string name="emergency_remove_attachment">Quitar</string>
+    <string name="emergency_send_button">Enviar</string>
+    <string name="emergency_confirm_title">¿Enviar mensaje de emergencia?</string>
+    <string name="emergency_confirm_body">Sonará y vibrará en el dispositivo de %1$s aunque tenga el silencio activado, sin tener en cuenta sus preferencias de notificaciones.</string>
+    <string name="emergency_attachment_generic">Archivo adjunto</string>
+    <string name="emergency_save_button">Guardar</string>
+    <string name="emergency_share_button">Compartir</string>
+    <string name="emergency_media_saved">Guardado en el dispositivo</string>
+    <string name="emergency_media_error">No se pudo guardar</string>
+    <string name="ring_stop_action">Detener</string>
+
+    <!-- Ajustes: sonido y vibración de notificaciones -->
+    <string name="settings_ring_section">Sonido y vibración de notificaciones</string>
+    <string name="settings_ring_section_desc">Se usa para las alertas de zona. \"Hacer sonar el dispositivo\" y los mensajes prioritarios siempre usan la alarma del sistema y vibración fuerte, sin importar estos ajustes ni el modo silencio.</string>
+    <string name="settings_ring_sound_alarm">Alarma</string>
+    <string name="settings_ring_sound_notification">Notificación</string>
+    <string name="settings_ring_sound_ringtone">Tono de llamada</string>
+    <string name="settings_ring_sound_custom">Elegir otro…</string>
+    <string name="settings_vibration_pattern">Patrón de vibración</string>
+    <string name="vibration_soft">Suave</string>
+    <string name="vibration_strong">Fuerte</string>
+    <string name="vibration_sos">SOS</string>
+    <string name="vibration_heartbeat">Latidos</string>
+    <string name="settings_ring_test">Probar</string>
+    <string name="notification_channel_ring_name">Localizar dispositivo</string>
+    <string name="notification_channel_ring_desc">Aviso de \"hacer sonar el dispositivo\" — puede saltarse el modo silencio</string>
+    <string name="no_location_yet">Todavía no hay ubicación de este miembro</string>
+    <string name="refresh_location">Actualizar ubicación</string>
+    <string name="location_request_in_progress">Un momento…</string>
+    <string name="location_request_success_title">Ubicación obtenida</string>
+    <string name="location_request_success_body">Se ha actualizado la ubicación de %1$s.</string>
+    <string name="location_request_view_on_map">Ver en mapa</string>
+    <string name="location_request_failure_title">No se ha podido obtener la ubicación</string>
+    <string name="location_request_failure_body">El dispositivo puede no tener cobertura o estar restringido en segundo plano. Puedes intentarlo de nuevo.</string>
+    <string name="location_request_retry">Reintentar</string>
+    <string name="time_just_now">un momento</string>
+    <string name="time_minutes">%1$d min</string>
+    <string name="time_hours">%1$d h</string>
+    <string name="time_days">%1$d d</string>
+
+    <!-- Zonas -->
+    <string name="zones_title">Zonas</string>
+    <string name="zone_add">Añadir zona</string>
+    <string name="zone_name_label">Nombre de la zona</string>
+    <string name="zone_radius_label">Radio (metros)</string>
+    <string name="zone_radius_manual_label">Metros exactos</string>
+    <string name="zone_search_address">Buscar dirección</string>
+    <string name="zone_save">Guardar zona</string>
+    <string name="zone_delete">Eliminar zona</string>
+    <string name="zone_delete_confirm_title">¿Eliminar esta zona?</string>
+    <string name="zone_delete_confirm_body">Se dejarán de recibir avisos de entrada y salida de \"%1$s\".</string>
+    <string name="zone_notify_enter">Avisar al entrar</string>
+    <string name="zone_notify_exit">Avisar al salir</string>
+
+    <!-- Historial -->
+    <string name="history_title">Historial</string>
+    <string name="history_yesterday">Ayer</string>
+    <string name="history_today">Hoy</string>
+    <string name="history_pick_date">Elegir fecha</string>
+    <string name="history_no_points">No hay ubicaciones registradas en este periodo</string>
+
+    <!-- Ajustes -->
+    <string name="settings_title">Ajustes</string>
+    <string name="settings_theme">Tema</string>
+    <string name="settings_theme_light">Claro</string>
+    <string name="settings_theme_dark">Oscuro</string>
+    <string name="settings_theme_amoled">AMOLED</string>
+    <string name="settings_theme_system">Automático</string>
+    <string name="settings_language">Idioma</string>
+    <string name="settings_language_auto">Automático</string>
+    <string name="settings_language_es">Español</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_accent_color">Color de acento</string>
+    <string name="settings_update_frequency">Frecuencia de actualización de ubicación</string>
+    <string name="settings_map_zoom">Zoom inicial del mapa</string>
+    <string name="settings_map_zoom_value">Nivel %1$d</string>
+    <string name="settings_map_cache_desc">Las teselas del mapa se guardan en el dispositivo para cargar más rápido, y se refrescan solas cada %1$d días. Puedes borrarlas ya mismo si ves el mapa desactualizado.</string>
+    <string name="settings_map_cache_clear">Borrar caché de mapas</string>
+    <string name="settings_map_cache_cleared">Caché borrada: %1$.1f MB liberados</string>
+    <string name="settings_permissions">Permisos</string>
+    <string name="settings_zones">Zonas guardadas</string>
+    <string name="settings_notifications">Notificaciones</string>
+    <string name="settings_notifications_zone">Alertas de zona</string>
+    <string name="settings_notifications_system">Mensajes del sistema</string>
+    <string name="settings_account">Cuenta</string>
+    <string name="settings_logout">Cerrar sesión</string>
+    <string name="settings_display_name">Nombre</string>
+    <string name="settings_clear_local_data">Borrar datos locales</string>
+    <string name="settings_clear_local_data_confirm">¿Borrar todos los datos guardados en este dispositivo (zonas y ajustes)? Esto no afecta a lo que hay en el servidor.</string>
+    <string name="settings_admin_section">Administración</string>
+    <string name="settings_update_section">Actualizaciones</string>
+    <string name="settings_update_button">Buscar e instalar la última versión</string>
+    <string name="update_available_title">Actualización disponible</string>
+    <string name="update_available_body">Hay una versión nueva de Lokate. ¿Quieres instalarla ahora?</string>
+    <string name="update_available_downloading">Descargando…</string>
+    <string name="update_available_now">Actualizar ahora</string>
+    <string name="update_available_later">Ahora no</string>
+    <string name="settings_update_flag_title">Avisar de actualización a todos</string>
+    <string name="settings_update_flag_desc">Actívalo cuando subas una versión nueva al servidor para que a todos les salga el aviso; desactívalo cuando ya no quieras que insista.</string>
+    <string name="settings_send_test_notification">Enviar notificación de prueba a todo el grupo</string>
+    <string name="settings_test_notification_sent">Notificación de prueba enviada</string>
+    <string name="settings_server_url">Dirección del servidor</string>
+    <string name="settings_server_url_hint">Ej: https://familia.dskmusic.com/</string>
+    <string name="settings_server_url_save">Guardar</string>
+    <string name="settings_server_url_reset">Restaurar por defecto</string>
+
+    <string name="frequency_high">Tiempo real (como Localizar mi dispositivo, más batería)</string>
+    <string name="frequency_balanced">Equilibrado (cada 2 min)</string>
+    <string name="frequency_battery_saver">Ahorro de batería (cada 10 min)</string>
+
+    <string name="error_generic">Algo ha ido mal. Inténtalo de nuevo.</string>
+    <string name="error_network">No se pudo conectar con el servidor.</string>
+
+    <string name="footer_made_with_love">Hecho con ❤️ por</string>
+
+    <!-- Historial: elegir persona -->
+    <string name="history_choose_person">Elegir persona</string>
+
+    <!-- Gente -->
+    <string name="people_open_detail">Ver detalle</string>
+    <string name="people_photo_view_title">Foto de perfil</string>
+    <string name="close">Cerrar</string>
+
+    <!-- Panel de administración nativo -->
+    <string name="admin_title">Administración</string>
+    <string name="admin_tab_dashboard">Resumen</string>
+    <string name="admin_stat_groups">Grupos</string>
+    <string name="admin_stat_users">Usuarios</string>
+    <string name="admin_stat_online">En línea ahora</string>
+    <string name="admin_stat_pings_24h">Ubicaciones (24h)</string>
+    <string name="admin_stat_active_24h">Activos (24h)</string>
+    <string name="admin_stat_push">Con notificaciones</string>
+    <string name="admin_dashboard_activity_7d">Actividad (últimos 7 días)</string>
+    <string name="admin_dashboard_recent_activity">Actividad reciente</string>
+    <string name="admin_dashboard_no_activity">Sin actividad reciente</string>
+    <string name="admin_confirm_delete">¿Seguro que quieres eliminarlo? Esta acción no se puede deshacer.</string>
+    <string name="admin_storage_title">Almacenamiento</string>
+    <string name="admin_storage_database">Base de datos</string>
+    <string name="admin_storage_avatars">Avatares</string>
+    <string name="admin_storage_attachments">Adjuntos</string>
+    <string name="admin_storage_apk">APK</string>
+    <string name="admin_storage_web_static">Web estática</string>
+    <string name="admin_storage_total">Total</string>
+    <string name="admin_storage_backups">Copias de seguridad</string>
+    <string name="admin_tab_groups">Grupos</string>
+    <string name="admin_tab_backups">Copias</string>
+    <string name="admin_add">Añadir</string>
+    <string name="admin_create_user_title">Nuevo usuario</string>
+    <string name="admin_create_group_title">Nuevo grupo</string>
+    <string name="admin_create_zone_title">Nueva zona</string>
+    <string name="admin_no_group">Sin grupo</string>
+    <string name="admin_zone_lat">Latitud</string>
+    <string name="admin_zone_lng">Longitud</string>
+
+    <!-- Copias de seguridad -->
+    <string name="backups_none">Todavía no hay copias de seguridad</string>
+    <string name="backups_no_description">Sin descripción</string>
+    <string name="backups_create">Nueva copia</string>
+    <string name="backups_create_button">Crear</string>
+    <string name="backups_description_placeholder">Descripción (opcional)</string>
+    <string name="backups_download">Descargar</string>
+    <string name="backups_download_success">Copia descargada</string>
+    <string name="backups_download_failure">No se ha podido descargar la copia</string>
+    <string name="backups_restore">Restaurar</string>
+    <string name="backups_restore_confirm">¿Restaurar esta copia? Se SOBRESCRIBIRÁN los datos actuales (usuarios, ubicaciones, avatares, adjuntos) con los de esta copia. Esta acción no se puede deshacer.</string>
+    <string name="backups_restore_success">Copia restaurada correctamente</string>
+    <string name="backups_restore_failure">No se ha podido restaurar la copia</string>
+    <string name="backups_delete">Eliminar</string>
+    <string name="backups_delete_confirm">¿Eliminar esta copia de seguridad? No se puede deshacer.</string>
+</resources>

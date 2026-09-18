@@ -1,0 +1,41 @@
+# ---- Project-local, not for sharing ----
+.backups/
+.claude/
+backend/tests/
+CREAR BACKUP.pyw
+ToDo.txt
+
+# ---- Secrets / credentials ----
+backend/.env
+backend/firebase-credentials.json
+android/app/google-services.json
+android/local.properties
+CONTROL_DOCKER_VPS.md
+
+# ---- Backend (Python) ----
+backend/__pycache__/
+backend/**/__pycache__/
+backend/*.pyc
+backend/.venv/
+backend/*.db
+backend/apk/
+backend/backups/
+
+# ---- Android / Gradle / IntelliJ ----
+android/*.iml
+android/**/*.iml
+android/.gradle/
+android/**/build/
+android/captures/
+android/.externalNativeBuild/
+android/.cxx/
+android/.idea/
+android/local.properties
+android/app/release/
+android/app/debug/
+*.apk
+*.aab
+
+# ---- OS cruft ----
+.DS_Store
+Thumbs.db

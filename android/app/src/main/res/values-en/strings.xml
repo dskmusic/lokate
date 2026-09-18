@@ -1,0 +1,277 @@
+<?xml version="1.0" encoding="utf-8"?>
+<resources>
+    <string name="app_name">Lokate by DSK</string>
+
+    <!-- Foreground service -->
+    <string name="location_service_notification_title">Lokate is sharing your location</string>
+    <string name="location_service_notification_text">Tap to open the app</string>
+    <string name="notification_channel_location_name">Active location</string>
+    <string name="notification_channel_location_desc">Persistent notification while your location is being shared</string>
+    <string name="notification_channel_zone_name">Zone alerts</string>
+    <string name="notification_channel_zone_desc">Entry and exit alerts for saved zones</string>
+    <string name="notification_channel_system_name">System messages</string>
+    <string name="notification_channel_system_desc">General app notices</string>
+
+    <!-- Permission onboarding -->
+    <string name="onboarding_location_title">Location</string>
+    <string name="onboarding_location_desc">Lokate needs your location to show you on the map to your family.</string>
+    <string name="onboarding_background_location_title">Background location</string>
+    <string name="onboarding_background_location_desc">To keep sharing your location even when the app isn\'t open, Android will ask you to choose \"Allow all the time\".</string>
+    <string name="onboarding_notifications_title">Notifications</string>
+    <string name="onboarding_notifications_desc">We\'ll notify you when someone in your family enters or leaves a saved zone.</string>
+    <string name="onboarding_battery_title">Ignore battery optimization</string>
+    <string name="onboarding_battery_desc">Some systems close background apps to save battery. Without this permission, Lokate might stop sharing your location.</string>
+    <string name="onboarding_manufacturer_title">Extra setting for your manufacturer</string>
+    <string name="onboarding_manufacturer_desc">Your device (%1$s) is especially aggressive at closing background apps. Open the autostart/restrictions panel and let Lokate run freely.</string>
+    <string name="onboarding_continue">Continue</string>
+    <string name="onboarding_open_settings">Open settings</string>
+    <string name="onboarding_skip_warning">Without this permission, Lokate won\'t work correctly</string>
+    <string name="onboarding_skip_step">Continue without this permission</string>
+    <string name="onboarding_finish">Start using Lokate</string>
+
+    <!-- Auth -->
+    <string name="login_title">Log in</string>
+    <string name="register_title">Create account</string>
+    <string name="username_label">Username</string>
+    <string name="password_label">Password</string>
+    <string name="display_name_label">Your name</string>
+    <string name="profile_photo_label">Profile photo (required)</string>
+    <string name="login_button">Log in</string>
+    <string name="register_button">Create account</string>
+    <string name="switch_to_register">Don\'t have an account? Sign up</string>
+    <string name="switch_to_login">Already have an account? Log in</string>
+
+    <!-- Group -->
+    <string name="group_title">Family group</string>
+    <string name="group_create">Create group</string>
+    <string name="group_join">Join with code</string>
+    <string name="group_name_label">Group name</string>
+    <string name="invite_code_label">Invite code</string>
+    <string name="group_invite_code_share">Invite code: %1$s</string>
+    <string name="group_leave">Leave group</string>
+    <string name="group_leave_confirm_title">Leave the group?</string>
+    <string name="group_leave_confirm_body">You\'ll stop seeing and sharing location with this family group.</string>
+    <string name="group_members_title">Members</string>
+    <string name="group_admin_only_create">Only admins can create a new group. Ask an admin for the invite code to join.</string>
+    <string name="map_no_group_prompt">You don\'t belong to a family group yet. Create one or join with a code.</string>
+    <string name="map_go_to_group">Go to family group</string>
+    <string name="group_invite_button">Invite someone</string>
+    <string name="cancel">Cancel</string>
+    <string name="retry">Retry</string>
+    <string name="connection_error_body">Couldn\'t connect to the server. Check your connection and try again.</string>
+    <string name="confirm">Confirm</string>
+    <string name="exit_app_confirm_title">Exit Lokate?</string>
+    <string name="exit_app_confirm_body">The app will keep sharing your location in the background even if you close it.</string>
+    <string name="exit_app_confirm_button">Exit</string>
+
+    <!-- Map -->
+    <string name="map_title">Map</string>
+    <string name="share_current_location">Share current location</string>
+
+    <!-- People -->
+    <string name="people_title">People</string>
+    <string name="people_empty">No members with a location yet</string>
+    <string name="open_in_google_maps">Open in Google Maps</string>
+    <string name="locate_me">Where am I</string>
+    <string name="map_style_button">Map style</string>
+    <string name="map_style_standard">Standard</string>
+    <string name="map_style_satellite">Satellite</string>
+    <string name="map_style_dark">Dark</string>
+    <string name="map_follow_me">Follow someone live</string>
+    <string name="map_follow_stop">Stop following</string>
+    <string name="map_follow_you">%1$s (you)</string>
+    <string name="help_title">Help</string>
+
+    <!-- Member detail -->
+    <string name="member_detail_title">Detail</string>
+    <string name="battery_label">Battery</string>
+    <string name="battery_unknown">Unknown battery</string>
+    <string name="charging_label">Charging</string>
+    <string name="wifi_connected_label">Connected to Wi-Fi</string>
+    <string name="wifi_not_connected_label">No Wi-Fi (mobile data)</string>
+    <string name="wifi_unknown_label">Unknown connection</string>
+    <string name="last_seen_label">Last update:\n%1$s</string>
+    <string name="ring_device_button">Ring the device</string>
+    <string name="ring_confirm_title">Ring the device?</string>
+    <string name="ring_confirm_body">A sound alert will be sent to %1$s\'s phone to help locate it.</string>
+    <string name="ring_sent_confirmation">Sound alert sent</string>
+
+    <!-- Emergency message -->
+    <string name="emergency_message_button">Send priority message</string>
+    <string name="emergency_message_sent">Message sent</string>
+    <string name="emergency_compose_title">Priority message</string>
+    <string name="emergency_compose_hint">Write your message…</string>
+    <string name="emergency_attach_photo">Photo</string>
+    <string name="emergency_attach_video">Video</string>
+    <string name="emergency_attach_file">File</string>
+    <string name="emergency_attachment_photo_selected">Photo attached</string>
+    <string name="emergency_attachment_video_selected">Video attached</string>
+    <string name="emergency_attachment_file_selected">File attached</string>
+    <string name="emergency_remove_attachment">Remove</string>
+    <string name="emergency_send_button">Send</string>
+    <string name="emergency_confirm_title">Send emergency message?</string>
+    <string name="emergency_confirm_body">It will ring and vibrate on %1$s\'s device even if silent mode is on, ignoring their notification preferences.</string>
+    <string name="emergency_attachment_generic">Attached file</string>
+    <string name="emergency_save_button">Save</string>
+    <string name="emergency_share_button">Share</string>
+    <string name="emergency_media_saved">Saved to device</string>
+    <string name="emergency_media_error">Couldn\'t save it</string>
+    <string name="ring_stop_action">Stop</string>
+
+    <!-- Settings: notification sound and vibration -->
+    <string name="settings_ring_section">Notification sound and vibration</string>
+    <string name="settings_ring_section_desc">Used for zone alerts. \"Ring device\" and priority messages always use the system alarm sound and strong vibration, regardless of these settings or silent mode.</string>
+    <string name="settings_ring_sound_alarm">Alarm</string>
+    <string name="settings_ring_sound_notification">Notification</string>
+    <string name="settings_ring_sound_ringtone">Ringtone</string>
+    <string name="settings_ring_sound_custom">Choose another…</string>
+    <string name="settings_vibration_pattern">Vibration pattern</string>
+    <string name="vibration_soft">Soft</string>
+    <string name="vibration_strong">Strong</string>
+    <string name="vibration_sos">SOS</string>
+    <string name="vibration_heartbeat">Heartbeat</string>
+    <string name="settings_ring_test">Test</string>
+    <string name="notification_channel_ring_name">Locate device</string>
+    <string name="notification_channel_ring_desc">\"Ring device\" alert — can bypass silent mode</string>
+    <string name="no_location_yet">No location for this member yet</string>
+    <string name="refresh_location">Refresh location</string>
+    <string name="location_request_in_progress">One moment…</string>
+    <string name="location_request_success_title">Location obtained</string>
+    <string name="location_request_success_body">%1$s\'s location has been updated.</string>
+    <string name="location_request_view_on_map">View on map</string>
+    <string name="location_request_failure_title">Couldn\'t get the location</string>
+    <string name="location_request_failure_body">The device may have no coverage or be restricted in the background. You can try again.</string>
+    <string name="location_request_retry">Retry</string>
+    <string name="time_just_now">just now</string>
+    <string name="time_minutes">%1$d min</string>
+    <string name="time_hours">%1$d h</string>
+    <string name="time_days">%1$d d</string>
+
+    <!-- Zones -->
+    <string name="zones_title">Zones</string>
+    <string name="zone_add">Add zone</string>
+    <string name="zone_name_label">Zone name</string>
+    <string name="zone_radius_label">Radius (meters)</string>
+    <string name="zone_radius_manual_label">Exact meters</string>
+    <string name="zone_search_address">Search address</string>
+    <string name="zone_save">Save zone</string>
+    <string name="zone_delete">Delete zone</string>
+    <string name="zone_delete_confirm_title">Delete this zone?</string>
+    <string name="zone_delete_confirm_body">You\'ll stop receiving entry and exit alerts for \"%1$s\".</string>
+    <string name="zone_notify_enter">Notify on entry</string>
+    <string name="zone_notify_exit">Notify on exit</string>
+
+    <!-- History -->
+    <string name="history_title">History</string>
+    <string name="history_yesterday">Yesterday</string>
+    <string name="history_today">Today</string>
+    <string name="history_pick_date">Pick a date</string>
+    <string name="history_no_points">No locations recorded in this period</string>
+    <string name="history_choose_person">Choose person</string>
+
+    <!-- Settings -->
+    <string name="settings_title">Settings</string>
+    <string name="settings_theme">Theme</string>
+    <string name="settings_theme_light">Light</string>
+    <string name="settings_theme_dark">Dark</string>
+    <string name="settings_theme_amoled">AMOLED</string>
+    <string name="settings_theme_system">Automatic</string>
+    <string name="settings_language">Language</string>
+    <string name="settings_language_auto">Automatic</string>
+    <string name="settings_language_es">Español</string>
+    <string name="settings_language_en">English</string>
+    <string name="settings_accent_color">Accent color</string>
+    <string name="settings_update_frequency">Location update frequency</string>
+    <string name="settings_map_zoom">Initial map zoom</string>
+    <string name="settings_map_zoom_value">Level %1$d</string>
+    <string name="settings_map_cache_desc">Map tiles are stored on the device to load faster, and refresh themselves every %1$d days. You can clear them right now if the map looks out of date.</string>
+    <string name="settings_map_cache_clear">Clear map cache</string>
+    <string name="settings_map_cache_cleared">Cache cleared: %1$.1f MB freed</string>
+    <string name="settings_permissions">Permissions</string>
+    <string name="settings_zones">Saved zones</string>
+    <string name="settings_notifications">Notifications</string>
+    <string name="settings_notifications_zone">Zone alerts</string>
+    <string name="settings_notifications_system">System messages</string>
+    <string name="settings_account">Account</string>
+    <string name="settings_logout">Log out</string>
+    <string name="settings_display_name">Name</string>
+    <string name="settings_clear_local_data">Clear local data</string>
+    <string name="settings_clear_local_data_confirm">Delete all data saved on this device (zones and settings)? This doesn\'t affect what\'s on the server.</string>
+    <string name="settings_admin_section">Administration</string>
+    <string name="settings_update_section">Updates</string>
+    <string name="settings_update_button">Check for and install the latest version</string>
+    <string name="update_available_title">Update available</string>
+    <string name="update_available_body">A new version of Lokate is available. Install it now?</string>
+    <string name="update_available_downloading">Downloading…</string>
+    <string name="update_available_now">Update now</string>
+    <string name="update_available_later">Not now</string>
+    <string name="settings_update_flag_title">Notify everyone about the update</string>
+    <string name="settings_update_flag_desc">Turn it on when you upload a new version to the server so everyone gets the prompt; turn it off when you no longer want it to nag.</string>
+    <string name="settings_send_test_notification">Send test notification to the whole group</string>
+    <string name="settings_test_notification_sent">Test notification sent</string>
+    <string name="settings_server_url">Server address</string>
+    <string name="settings_server_url_hint">E.g.: https://familia.dskmusic.com/</string>
+    <string name="settings_server_url_save">Save</string>
+    <string name="settings_server_url_reset">Reset to default</string>
+
+    <string name="frequency_high">Real time (like Find My Device, more battery)</string>
+    <string name="frequency_balanced">Balanced (every 2 min)</string>
+    <string name="frequency_battery_saver">Battery saver (every 10 min)</string>
+
+    <string name="error_generic">Something went wrong. Please try again.</string>
+    <string name="error_network">Couldn\'t connect to the server.</string>
+
+    <string name="footer_made_with_love">Made with ❤️ by</string>
+
+    <!-- People -->
+    <string name="people_open_detail">View detail</string>
+    <string name="people_photo_view_title">Profile photo</string>
+    <string name="close">Close</string>
+
+    <!-- Native admin panel -->
+    <string name="admin_title">Administration</string>
+    <string name="admin_tab_dashboard">Dashboard</string>
+    <string name="admin_stat_groups">Groups</string>
+    <string name="admin_stat_users">Users</string>
+    <string name="admin_stat_online">Online now</string>
+    <string name="admin_stat_pings_24h">Locations (24h)</string>
+    <string name="admin_stat_active_24h">Active (24h)</string>
+    <string name="admin_stat_push">With notifications</string>
+    <string name="admin_dashboard_activity_7d">Activity (last 7 days)</string>
+    <string name="admin_dashboard_recent_activity">Recent activity</string>
+    <string name="admin_dashboard_no_activity">No recent activity</string>
+    <string name="admin_confirm_delete">Are you sure you want to delete this? This action can\'t be undone.</string>
+    <string name="admin_storage_title">Storage</string>
+    <string name="admin_storage_database">Database</string>
+    <string name="admin_storage_avatars">Avatars</string>
+    <string name="admin_storage_attachments">Attachments</string>
+    <string name="admin_storage_apk">APK</string>
+    <string name="admin_storage_web_static">Static web</string>
+    <string name="admin_storage_total">Total</string>
+    <string name="admin_storage_backups">Backups</string>
+    <string name="admin_tab_groups">Groups</string>
+    <string name="admin_tab_backups">Backups</string>
+    <string name="admin_add">Add</string>
+    <string name="admin_create_user_title">New user</string>
+    <string name="admin_create_group_title">New group</string>
+    <string name="admin_create_zone_title">New zone</string>
+    <string name="admin_no_group">No group</string>
+    <string name="admin_zone_lat">Latitude</string>
+    <string name="admin_zone_lng">Longitude</string>
+
+    <!-- Backups -->
+    <string name="backups_none">No backups yet</string>
+    <string name="backups_no_description">No description</string>
+    <string name="backups_create">New backup</string>
+    <string name="backups_create_button">Create</string>
+    <string name="backups_description_placeholder">Description (optional)</string>
+    <string name="backups_download">Download</string>
+    <string name="backups_download_success">Backup downloaded</string>
+    <string name="backups_download_failure">Couldn\'t download the backup</string>
+    <string name="backups_restore">Restore</string>
+    <string name="backups_restore_confirm">Restore this backup? Current data (users, locations, avatars, attachments) will be OVERWRITTEN with this backup\'s data. This can\'t be undone.</string>
+    <string name="backups_restore_success">Backup restored successfully</string>
+    <string name="backups_restore_failure">Couldn\'t restore the backup</string>
+    <string name="backups_delete">Delete</string>
+    <string name="backups_delete_confirm">Delete this backup? This can\'t be undone.</string>
+</resources>

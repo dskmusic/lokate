@@ -1,0 +1,44 @@
+services:
+  lokate-api:
+    build: .
+    container_name: lokate-api
+    restart: unless-stopped
+    # Techo de recursos: es una app familiar, no debería acercarse ni de lejos a esto, pero
+    # así un bug raro (bucle, fuga de memoria...) no puede ahogar el resto de servicios de la
+    # máquina donde corra (especialmente relevante compartiendo servidor con la web/BD/paneles).
+    mem_limit: 512m
+    cpus: 1.0
+    ports:
+      - "8082:8082"
+    env_file:
+      - .env
+    volumes:
+      - lokate-data:/data
+      - ./firebase-credentials.json:/app/firebase-credentials.json:ro
+      # Carpeta (no el archivo suelto) para que reemplazar el APK se note SIN reiniciar el
+      # contenedor: montar un archivo concreto ata el mount al inodo que tenía en el momento
+      # de arrancar, así que si luego lo sobrescribes (scp/rsync suelen crear un archivo nuevo
+      # y renombrarlo encima) el contenedor se queda sirviendo el inodo viejo para siempre.
+      # Montando la carpeta entera, los cambios de lo que haya dentro se ven al momento.
+      # La carpeta ./apk debe existir (con lokate.apk dentro) antes de "docker compose up".
+      # SIN ":ro" a propósito: el endpoint /update-flag necesita poder crear/borrar
+      # apk/update_si él mismo (el interruptor de Ajustes), no solo leer.
+      - ./apk:/app/apk
+      # Misma razón: la landing (/), el manifest.json/sw.js/iconos de la PWA y el favicon son
+      # archivos estáticos que no necesitan ni rebuild ni restart para actualizarse — se sirven
+      # directo del disco. La imagen ya trae una copia propia (por si alguien la despliega sin
+      # este docker-compose.yml), pero este bind mount la tapa con la carpeta real del host.
+      - ./web_inicial:/app/web_inicial:ro
+      # Copias de seguridad (panel Backups, nativo y web): carpeta real en el host, no un
+      # volumen con nombre — así, además de descargarlas desde la app, también se pueden coger
+      # directamente por WinSCP/SSH sin pasar por la API. SIN ":ro": la app necesita crear y
+      # borrar backups aquí.
+      - ./backups:/app/backups
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://localhost:8082/healthz')"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+
+volumes:
+  lokate-data:

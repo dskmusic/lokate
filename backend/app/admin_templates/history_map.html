@@ -1,0 +1,103 @@
+{% extends "sqladmin/layout.html" %}
+{# La tarjeta de abajo ya trae su propio título — la cabecera de página por defecto se queda
+   vacía (sin title/subtitle) pero sigue ocupando su alto fijo, dejando un hueco feo entre el
+   menú y el contenido. Se quita del todo en vez de dejarla vacía. #}
+{% block content_header %}{% endblock %}
+{% block head %}
+{{ super() }}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+{% endblock %}
+{% block content %}
+<div class="col-12">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">{{ t('history_title') }}</h3>
+    </div>
+    <div class="card-body">
+      <form method="get" class="row g-2 mb-3">
+        <div class="col-auto">
+          <label class="form-label visually-hidden">{{ t('select_user') }}</label>
+          <select name="user_id" class="form-select" onchange="this.form.submit()">
+            {% for u in users %}
+            <option value="{{ u.id }}" {% if u.id == selected_user_id %}selected{% endif %}>{{ u.display_name }} ({{ u.username }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-auto">
+          <label class="form-label visually-hidden">{{ t('select_date') }}</label>
+          <input type="date" name="date" value="{{ selected_date }}" class="form-control" onchange="this.form.submit()" />
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary">{{ t('view') }}</button>
+        </div>
+      </form>
+      <div class="row g-3">
+        <div class="col-12 col-lg-8">
+          <div id="history-map" style="height:520px;border-radius:8px;"></div>
+        </div>
+        <div class="col-12 col-lg-4">
+          <div class="list-group" id="history-point-list" style="max-height:520px;overflow-y:auto;">
+            {% for p in points %}
+            <a href="#" class="list-group-item list-group-item-action history-point" data-index="{{ loop.index0 }}">
+              <div class="text-truncate">{{ p.ts[11:16] }} — {{ '%.5f'|format(p.lat) }}, {{ '%.5f'|format(p.lng) }}</div>
+            </a>
+            {% else %}
+            <div class="list-group-item text-secondary">{{ t('no_points') }}</div>
+            {% endfor %}
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block tail %}
+{{ super() }}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function () {
+  var points = {{ points_json | safe }};
+  var map = L.map('history-map');
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors',
+  }).addTo(map);
+
+  var markers = [];
+  if (points.length > 0) {
+    var latlngs = points.map(function (p) { return [p.lat, p.lng]; });
+    L.polyline(latlngs, { color: '#4A6FE3', weight: 3 }).addTo(map);
+    points.forEach(function (p, i) {
+      var marker = L.circleMarker([p.lat, p.lng], { radius: 5, color: '#4A6FE3', fillOpacity: 0.7 })
+        .bindPopup(p.ts)
+        .addTo(map);
+      marker.on('click', function () { highlight(i); });
+      markers.push(marker);
+    });
+    map.fitBounds(latlngs, { padding: [30, 30] });
+  } else {
+    map.setView([40.4168, -3.7038], 5);
+  }
+
+  function highlight(index) {
+    document.querySelectorAll('.history-point').forEach(function (el) { el.classList.remove('active'); });
+    var items = document.querySelectorAll('.history-point');
+    if (items[index]) {
+      items[index].classList.add('active');
+      items[index].scrollIntoView({ block: 'nearest' });
+    }
+    var marker = markers[index];
+    if (marker) {
+      marker.openPopup();
+      map.panTo(marker.getLatLng());
+    }
+  }
+
+  document.querySelectorAll('.history-point').forEach(function (el) {
+    el.addEventListener('click', function (e) {
+      e.preventDefault();
+      highlight(parseInt(el.dataset.index, 10));
+    });
+  });
+})();
+</script>
+{% endblock %}

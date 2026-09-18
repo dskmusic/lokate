@@ -1,0 +1,179 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Lokate by DSK — Localización familiar</title>
+<meta name="description" content="Lokate by DSK: localización familiar privada, self-hosted, sin cuotas ni anuncios." />
+<link rel="icon" type="image/svg+xml" href="/favicon.svg">
+<style>
+  :root {
+    --bg: #0a0d16;
+    --surface: #121628;
+    --surface-2: #1a2036;
+    --border: #262d4a;
+    --accent: #5b7cf0;
+    --accent-dark: #2a3f9e;
+    --text: #eef0f8;
+    --text-dim: #9ba3c2;
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; }
+  body {
+    background: radial-gradient(circle at 20% -10%, #141c3a 0%, var(--bg) 45%);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+  }
+  header {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 24px 32px;
+  }
+  .logo-dot {
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent);
+    box-shadow: 0 0 16px 2px var(--accent);
+  }
+  header span {
+    font-weight: 700;
+    font-size: 1.1rem;
+    letter-spacing: 0.02em;
+  }
+  main {
+    flex: 1;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    padding: 24px;
+  }
+  .hero {
+    max-width: 640px;
+    text-align: center;
+  }
+  .badge {
+    display: inline-block;
+    padding: 6px 14px;
+    border-radius: 999px;
+    background: var(--surface-2);
+    border: 1px solid var(--border);
+    color: var(--accent);
+    font-size: 0.8rem;
+    font-weight: 600;
+    letter-spacing: 0.04em;
+    text-transform: uppercase;
+    margin-bottom: 24px;
+  }
+  h1 {
+    font-size: clamp(2.2rem, 5vw, 3.2rem);
+    line-height: 1.1;
+    margin: 0 0 16px;
+    font-weight: 800;
+    letter-spacing: -0.02em;
+  }
+  h1 em {
+    color: var(--accent);
+    font-style: normal;
+  }
+  p.lead {
+    color: var(--text-dim);
+    font-size: 1.1rem;
+    line-height: 1.6;
+    margin: 0 0 40px;
+  }
+  .cta {
+    display: inline-flex;
+    align-items: center;
+    gap: 10px;
+    background: linear-gradient(135deg, var(--accent), var(--accent-dark));
+    color: #060a18;
+    font-weight: 700;
+    font-size: 1.05rem;
+    padding: 16px 32px;
+    border-radius: 14px;
+    text-decoration: none;
+    box-shadow: 0 8px 30px -8px rgba(91, 124, 240, 0.55);
+    transition: transform 0.15s ease, box-shadow 0.15s ease;
+  }
+  .cta:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 12px 34px -6px rgba(91, 124, 240, 0.7);
+  }
+  .cta svg { width: 20px; height: 20px; }
+  .features {
+    margin-top: 56px;
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(150px, 1fr));
+    gap: 16px;
+    text-align: left;
+  }
+  .feature {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    border-radius: 14px;
+    padding: 18px;
+  }
+  .feature .icon { font-size: 1.4rem; margin-bottom: 8px; }
+  .feature h3 { margin: 0 0 6px; font-size: 0.95rem; }
+  .feature p { margin: 0; color: var(--text-dim); font-size: 0.85rem; line-height: 1.4; }
+  footer {
+    text-align: center;
+    padding: 24px;
+    color: var(--text-dim);
+    font-size: 0.8rem;
+  }
+  footer a { color: var(--text-dim); }
+</style>
+</head>
+<body>
+  <header>
+    <div class="logo-dot"></div>
+    <span>Lokate <em style="color:var(--accent); font-style:normal;">by DSK</em></span>
+  </header>
+
+  <main>
+    <div class="hero">
+      <span class="badge">Privado · Self-hosted · Sin cuotas</span>
+      <h1>Conoce dónde está tu <em>familia</em>, sin depender de nadie más.</h1>
+      <p class="lead">
+        Mapa en tiempo real, zonas seguras con aviso de entrada y salida, historial de
+        ubicaciones y todo en un servidor privado — sin anuncios, sin vender tus datos.
+      </p>
+
+      <a class="cta" href="/lokate.apk" download>
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/>
+        </svg>
+        Descargar la app (APK)
+      </a>
+
+      <div class="features">
+        <div class="feature">
+          <div class="icon">📍</div>
+          <h3>Mapa en vivo</h3>
+          <p>Ubicación de toda la familia actualizada al momento.</p>
+        </div>
+        <div class="feature">
+          <div class="icon">🔔</div>
+          <h3>Zonas guardadas</h3>
+          <p>Avisos configurables al entrar o salir de casa, el cole...</p>
+        </div>
+        <div class="feature">
+          <div class="icon">🔒</div>
+          <h3>100% privado</h3>
+          <p>Tus datos se quedan en tu propio servidor.</p>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    Lokate by DSK — instalación privada
+  </footer>
+</body>
+</html>

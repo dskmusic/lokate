@@ -1,0 +1,60 @@
+{% extends "sqladmin/layout.html" %}
+{% block content %}
+<div class="col-12 col-lg-5">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">{{ t('backups_create') }}</h3>
+    </div>
+    <div class="card-body">
+      <form method="post">
+        <input type="text" name="description" maxlength="200" class="form-control mb-3"
+               placeholder="{{ t('backups_description_placeholder') }}" />
+        <button type="submit" class="btn btn-primary">{{ t('backups_create_button') }}</button>
+      </form>
+    </div>
+  </div>
+</div>
+
+<div class="col-12">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">{{ t('backups_title') }}</h3>
+    </div>
+    <div class="table-responsive">
+      <table class="table card-table table-vcenter">
+        <thead>
+          <tr>
+            <th>{{ t('backups_date') }}</th>
+            <th>{{ t('backups_description') }}</th>
+            <th>{{ t('backups_size') }}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for b in backups %}
+          <tr>
+            <td>{{ b.created_at.strftime('%d/%m/%Y %H:%M') }}</td>
+            <td>{{ b.description or t('backups_no_description') }}</td>
+            <td>{{ '%.1f'|format(b.size_bytes / 1048576) }} MB</td>
+            <td class="text-end">
+              <a href="{{ url_for('admin:backups-download', backup_id=b.id) }}"
+                 class="btn btn-sm btn-outline-primary">{{ t('backups_download') }}</a>
+              <form method="post" action="{{ url_for('admin:backups-restore', backup_id=b.id) }}"
+                    style="display:inline" onsubmit="return confirm('{{ t('backups_restore_confirm') }}');">
+                <button type="submit" class="btn btn-sm btn-outline-warning">{{ t('backups_restore') }}</button>
+              </form>
+              <form method="post" action="{{ url_for('admin:backups-delete', backup_id=b.id) }}"
+                    style="display:inline" onsubmit="return confirm('{{ t('backups_delete_confirm') }}');">
+                <button type="submit" class="btn btn-sm btn-outline-danger">{{ t('backups_delete') }}</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="4" class="text-secondary">{{ t('backups_none') }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}
