@@ -11,6 +11,8 @@ backend/firebase-credentials.json
 android/app/google-services.json
 android/local.properties
 CONTROL_DOCKER_VPS.md
+CONTROL_DOCKER_VPS.md
+CONTROL_DOCKER_VPS2.md
 Subir cambios a github.bat
 
 # ---- Backend (Python) ----
