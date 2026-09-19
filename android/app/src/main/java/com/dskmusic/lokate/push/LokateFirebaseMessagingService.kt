@@ -1,8 +1,9 @@
 package com.dskmusic.lokate.push
 
+import com.dskmusic.lokate.R
 import com.dskmusic.lokate.di.ServiceLocator
-import com.dskmusic.lokate.util.Constants
 import com.dskmusic.lokate.util.DeviceStatusUtils
+import com.dskmusic.lokate.util.LocationFrequency
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
@@ -29,21 +30,30 @@ class LokateFirebaseMessagingService : FirebaseMessagingService() {
 
     override fun onMessageReceived(message: RemoteMessage) {
         val locator = ServiceLocator.getInstance(applicationContext)
-        val title = message.notification?.title ?: message.data["title"] ?: return
-        val body = message.notification?.body ?: message.data["body"] ?: ""
         val type = message.data["type"]
+        // Antes, un push sin título se descartaba entero con un return silencioso. Ahora cae al
+        // nombre de la app: perder el aviso es mucho peor que enseñarlo sin título propio.
+        val title = message.notification?.title ?: message.data["title"] ?: getString(R.string.app_name)
+        val body = message.notification?.body ?: message.data["body"] ?: ""
+        // Rastro en logcat para poder diagnosticar los "no me llegó": si esta línea aparece, el
+        // push SÍ llegó al dispositivo y el problema está de aquí hacia dentro (permiso de
+        // notificaciones, canal bloqueado, un ajuste apagado); si no aparece, no llegó nunca.
+        android.util.Log.i("LokatePush", "Push recibido: type=$type")
 
         val notifyZone = runBlocking { locator.settings.notifyZoneEnabled.first() }
         val notifySystem = runBlocking { locator.settings.notifySystemEnabled.first() }
 
         when (type) {
             // Zona: notificación normal, respeta el silencio/no molestar del teléfono. El
-            // sonido/vibración son los que el usuario elija en Ajustes ("Notificaciones").
+            // sonido/vibración son los que el usuario elija en Ajustes ("Notificaciones"), pero
+            // los pone el CANAL, no este código: por aquí solo se pasa con la app en primer
+            // plano — fuera de ella este push lleva bloque "notification" y lo pinta el sistema
+            // sin arrancar el proceso (ver push.py). Llamar aquí a playRingAlarm sonaría dos veces.
             "zone_transition" -> if (notifyZone) {
-                val soundUri = runBlocking { locator.settings.ringSoundUri.first() }
-                val pattern = runBlocking { locator.settings.vibrationPattern.first() }
-                NotificationHelper.playRingAlarm(this, soundUri, pattern, forcePriority = false)
-                NotificationHelper.showZoneNotification(this, title, body, Constants.LOCATION_SERVICE_NOTIFICATION_ID + 1)
+                val channelId = runBlocking {
+                    NotificationHelper.currentZoneChannelId(this@LokateFirebaseMessagingService, locator.settings)
+                }
+                NotificationHelper.showZoneNotification(this, channelId, title, body)
             }
             // "Hacer sonar" y mensajes de emergencia: SIEMPRE con el sonido de alarma del
             // sistema y vibración fuerte, ignorando silencio/no molestar — no son
@@ -53,14 +63,21 @@ class LokateFirebaseMessagingService : FirebaseMessagingService() {
                 NotificationHelper.playRingAlarm(this, null, com.dskmusic.lokate.util.VibrationPattern.STRONG, forcePriority = true)
                 NotificationHelper.showRingNotification(this, title, body)
             }
+            // Parada remota: quien hizo sonar pulsa "Detener" en su móvil. Silencioso, mismo
+            // efecto que la acción "Detener" de la propia notificación.
+            "stop_ring" -> NotificationHelper.dismissRing(this)
             // Ubicación puntual pedida desde otro dispositivo (icono "actualizar" en detalle de
             // miembro): totalmente silencioso, sin sonido ni notificación — solo se lee la
             // posición una vez y se sube igual que un ping normal en segundo plano.
             "request_location" -> CoroutineScope(Dispatchers.IO).launch {
                 runCatching {
+                    // Con el envío desactivado en Ajustes no se responde ni a las peticiones
+                    // puntuales: quien la pidió ve "desactivado" en la ficha del miembro.
+                    if (locator.settings.locationFrequency.first() == LocationFrequency.DISABLED) return@runCatching
                     val location = fetchOneShotLocation(this@LokateFirebaseMessagingService) ?: return@runCatching
                     val status = DeviceStatusUtils.read(applicationContext)
-                    locator.locationRepository.ping(location.latitude, location.longitude, location.accuracy, status)
+                    val frequency = locator.settings.locationFrequency.first()
+                    locator.locationRepository.ping(location.latitude, location.longitude, location.accuracy, status, frequency)
                 }
             }
             "emergency_message" -> {
@@ -71,7 +88,7 @@ class LokateFirebaseMessagingService : FirebaseMessagingService() {
                 NotificationHelper.showEmergencyMessageNotification(this, title, body, absoluteAttachmentUrl, attachmentKind)
             }
             else -> if (notifySystem) {
-                NotificationHelper.showSystemNotification(this, title, body, Constants.LOCATION_SERVICE_NOTIFICATION_ID + 2)
+                NotificationHelper.showSystemNotification(this, title, body)
             }
         }
     }

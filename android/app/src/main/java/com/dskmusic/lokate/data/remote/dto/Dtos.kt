@@ -46,6 +46,9 @@ data class GroupMemberDto(
     val avatar_url: String?,
 )
 
+/** null = a todo el grupo. */
+data class TestNotificationRequestDto(val user_ids: List<String>?)
+
 data class LocationPingRequestDto(
     val lat: Double,
     val lng: Double,
@@ -54,6 +57,8 @@ data class LocationPingRequestDto(
     val is_charging: Boolean?,
     val wifi_connected: Boolean?,
     val wifi_ssid: String?,
+    val location_frequency: String?,
+    val config_issues: String?,
 )
 
 data class LocationDto(
@@ -68,6 +73,13 @@ data class LocationDto(
     val is_charging: Boolean?,
     val wifi_connected: Boolean?,
     val wifi_ssid: String?,
+    /** Nombre del enum [com.dskmusic.lokate.util.LocationFrequency] que ese miembro tiene
+     * elegido; null si su app aún no ha mandado ningún ping con esta versión. */
+    val location_frequency: String?,
+    /** Códigos de [com.dskmusic.lokate.util.ConfigCheck] separados por comas con lo que ese
+     * miembro tiene sin configurar. Cadena vacía = todo correcto; null = su app es anterior a
+     * esta versión y no lo manda (se muestra como "desconocido"). */
+    val config_issues: String?,
 )
 
 data class LocationHistoryPointDto(
@@ -105,7 +117,16 @@ data class ZoneNotificationPrefUpdateRequestDto(
 
 data class UpdateProfileRequestDto(val display_name: String)
 
-data class RegisterDeviceRequestDto(val fcm_token: String)
+data class RegisterDeviceRequestDto(
+    val fcm_token: String,
+    val location_frequency: String,
+    val config_issues: String,
+    val zone_channel_id: String,
+    val battery_level: Int?,
+    val is_charging: Boolean?,
+    val wifi_connected: Boolean?,
+    val wifi_ssid: String?,
+)
 
 data class UpdateCheckDto(val update_available: Boolean)
 

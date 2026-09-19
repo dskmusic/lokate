@@ -1,0 +1,77 @@
+{% extends "sqladmin/layout.html" %}
+{% block content %}
+<div class="col-12">
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <ul class="nav nav-pills">
+        {% for f in folders %}
+        <li class="nav-item">
+          <a class="nav-link {% if f == folder %}active{% endif %}"
+             href="{{ url_for('admin:files') }}?folder={{ f }}">{{ t('storage_' + f) }}</a>
+        </li>
+        {% endfor %}
+      </ul>
+      {% if files %}
+      <form method="post" action="{{ url_for('admin:files-delete-all', folder=folder) }}"
+            onsubmit="return confirm('{{ t('files_delete_all_confirm') }}');">
+        <button type="submit" class="btn btn-sm btn-danger">
+          {{ t('files_delete_all') }} ({{ files|length }})
+        </button>
+      </form>
+      {% endif %}
+    </div>
+    <div class="table-responsive">
+      <table class="table card-table table-vcenter">
+        <thead>
+          <tr>
+            <th>{{ t('files_preview') }}</th>
+            <th>{{ t('files_name') }}</th>
+            <th>{{ t('files_size') }}</th>
+            <th>{{ t('files_modified') }}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for file in files %}
+          <tr>
+            <td style="width:120px">
+              {% if file.kind == 'image' %}
+              <a href="{{ file.url }}" target="_blank" rel="noopener">
+                <img src="{{ file.url }}" alt="{{ file.name }}"
+                     style="max-width:100px;max-height:70px;object-fit:cover;border-radius:4px;" />
+              </a>
+              {% elif file.kind == 'video' %}
+              <video src="{{ file.url }}" controls preload="metadata"
+                     style="max-width:100px;max-height:70px;"></video>
+              {% elif file.kind == 'audio' %}
+              <audio src="{{ file.url }}" controls preload="metadata" style="max-width:110px"></audio>
+              {% else %}
+              <span class="text-secondary">—</span>
+              {% endif %}
+            </td>
+            <td>
+              <a href="{{ file.url }}" target="_blank" rel="noopener">{{ file.name }}</a>
+              {% if file.in_use %}
+              <span class="badge bg-azure-lt ms-1">{{ t('files_in_use') }}</span>
+              {% endif %}
+            </td>
+            <td>{{ '%.2f'|format(file.size_bytes / 1048576) }} MB</td>
+            <td>{{ file.modified.strftime('%d/%m/%Y %H:%M') }}</td>
+            <td class="text-end">
+              <form method="post" action="{{ url_for('admin:files-delete', folder=folder) }}"
+                    style="display:inline"
+                    onsubmit="return confirm('{{ t('files_delete_confirm') }}');">
+                <input type="hidden" name="name" value="{{ file.name }}" />
+                <button type="submit" class="btn btn-sm btn-outline-danger">{{ t('files_delete') }}</button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-secondary">{{ t('files_none') }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

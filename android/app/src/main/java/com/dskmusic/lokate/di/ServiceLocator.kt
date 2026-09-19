@@ -36,7 +36,7 @@ class ServiceLocator(context: Context) {
     private val api: ApiService by lazy { NetworkModule.createApiService(session) }
     val nominatim by lazy { createNominatimService() }
 
-    val authRepository: AuthRepository by lazy { AuthRepository(api, session) }
+    val authRepository: AuthRepository by lazy { AuthRepository(api, session, settings, context.applicationContext) }
     val groupRepository: GroupRepository by lazy { GroupRepository(api) }
     val zoneRepository: ZoneRepository by lazy { ZoneRepository(api, database.zoneDao()) }
     val locationRepository: LocationRepository by lazy { LocationRepository(api, database.locationHistoryDao()) }

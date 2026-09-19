@@ -91,10 +91,35 @@
     <string name="wifi_not_connected_label">No Wi-Fi (mobile data)</string>
     <string name="wifi_unknown_label">Unknown connection</string>
     <string name="last_seen_label">Last update:\n%1$s</string>
+    <string name="update_frequency_label">Updates: %1$s</string>
+    <string name="frequency_short_high">in real time</string>
+    <string name="frequency_short_balanced">every 2 min</string>
+    <string name="frequency_short_battery_saver">every 10 min</string>
+    <string name="frequency_short_unknown">unknown frequency</string>
+    <string name="frequency_disabled">Disabled</string>
+    <string name="frequency_disabled_confirm_title">Disable updates?</string>
+    <string name="frequency_disabled_confirm_body">Your device will stop sending its location, and nobody in your group will be able to see you or request a one-off location. You can turn it back on here at any time.</string>
+    <string name="frequency_short_disabled">updates disabled</string>
+    <!-- Configuration status of a member's phone (member detail) -->
+    <string name="config_status_ok">Correctly set up</string>
+    <string name="config_status_unknown">Setup unknown (app not updated)</string>
+    <string name="config_status_issues">Still to set up:</string>
+    <string name="config_issue_location">Location permission denied</string>
+    <string name="config_issue_bg_location">Background location denied: only visible while the app is open</string>
+    <string name="config_issue_notifications">Notifications turned off: receives no alerts at all</string>
+    <string name="config_issue_notif_channel">Some notification type is blocked in the phone settings</string>
+    <string name="config_issue_battery">Battery optimisation on: Android may close the app</string>
+    <string name="config_issue_gps_off">System location (GPS) turned off</string>
+    <string name="test_notification_confirm_title">Send a test notification?</string>
+    <string name="test_notification_confirm_body">A test notification will be sent to %1$s\'s device.</string>
     <string name="ring_device_button">Ring the device</string>
     <string name="ring_confirm_title">Ring the device?</string>
     <string name="ring_confirm_body">A sound alert will be sent to %1$s\'s phone to help locate it.</string>
-    <string name="ring_sent_confirmation">Sound alert sent</string>
+    <string name="ring_progress_title">Ringing the device</string>
+    <string name="ring_progress_connecting">Connecting…</string>
+    <string name="ring_progress_ringing">Ringing %1$s\'s device…</string>
+    <string name="ring_stop_confirm_title">Stop the sound?</string>
+    <string name="ring_stop_confirm_body">%1$s\'s phone will stop ringing.</string>
 
     <!-- Emergency message -->
     <string name="emergency_message_button">Send priority message</string>
@@ -153,7 +178,6 @@
     <string name="zone_name_label">Zone name</string>
     <string name="zone_radius_label">Radius (meters)</string>
     <string name="zone_radius_manual_label">Exact meters</string>
-    <string name="zone_search_address">Search address</string>
     <string name="zone_save">Save zone</string>
     <string name="zone_delete">Delete zone</string>
     <string name="zone_delete_confirm_title">Delete this zone?</string>
@@ -184,6 +208,8 @@
     <string name="settings_update_frequency">Location update frequency</string>
     <string name="settings_map_zoom">Initial map zoom</string>
     <string name="settings_map_zoom_value">Level %1$d</string>
+    <string name="settings_map_zoom_reset">Reset</string>
+    <string name="settings_map_zoom_reset_confirm">The initial zoom goes back to the default (level %1$d) and the map forgets its current position and zoom: next time it will open centred on your location.</string>
     <string name="settings_map_cache_desc">Map tiles are stored on the device to load faster, and refresh themselves every %1$d days. You can clear them right now if the map looks out of date.</string>
     <string name="settings_map_cache_clear">Clear map cache</string>
     <string name="settings_map_cache_cleared">Cache cleared: %1$.1f MB freed</string>
@@ -207,7 +233,11 @@
     <string name="update_available_later">Not now</string>
     <string name="settings_update_flag_title">Notify everyone about the update</string>
     <string name="settings_update_flag_desc">Turn it on when you upload a new version to the server so everyone gets the prompt; turn it off when you no longer want it to nag.</string>
-    <string name="settings_send_test_notification">Send test notification to the whole group</string>
+    <string name="settings_send_test_notification">Send test notification</string>
+    <string name="settings_test_notification_pick">Who should get it?</string>
+    <string name="settings_test_notification_all">Send to the whole group</string>
+    <string name="settings_test_notification_all_confirm_title">Send to the whole group?</string>
+    <string name="settings_test_notification_all_confirm_body">Every group member will get a test notification on their phone.</string>
     <string name="settings_test_notification_sent">Test notification sent</string>
     <string name="settings_server_url">Server address</string>
     <string name="settings_server_url_hint">E.g.: https://familia.dskmusic.com/</string>
@@ -227,6 +257,16 @@
     <string name="people_open_detail">View detail</string>
     <string name="people_photo_view_title">Profile photo</string>
     <string name="close">Close</string>
+
+    <!-- Test mode (admins only): drag members around the map to fire real zone alerts -->
+    <string name="test_mode_badge">TEST MODE</string>
+    <string name="test_mode_exit">Exit test mode</string>
+    <string name="test_mode_hint">Test mode: long-press a marker and drag it in or out of a zone</string>
+    <string name="test_mode_recipients">Who gets the alerts</string>
+    <string name="test_mode_no_recipients">Pick who should get the alerts first</string>
+    <string name="test_mode_no_transition">No change: the drag did not cross any zone</string>
+    <string name="test_mode_sent">Sent to %1$d: %2$s</string>
+    <string name="test_mode_error">Could not simulate the position</string>
 
     <!-- Native admin panel -->
     <string name="admin_title">Administration</string>
@@ -249,6 +289,16 @@
     <string name="admin_storage_web_static">Static web</string>
     <string name="admin_storage_total">Total</string>
     <string name="admin_storage_backups">Backups</string>
+    <string name="admin_storage_manage">Manage storage</string>
+    <string name="admin_storage_empty">No files in this folder</string>
+    <string name="admin_storage_in_use">in use</string>
+    <string name="admin_storage_no_preview">This file can\'t be previewed</string>
+    <string name="admin_storage_delete_confirm_title">Delete this file?</string>
+    <string name="admin_storage_delete_confirm_body">\"%1$s\" will be removed from the server. This can\'t be undone.</string>
+    <string name="admin_storage_delete_confirm_in_use">\"%1$s\" is someone\'s avatar. Deleting it leaves that profile without a picture. This can\'t be undone.</string>
+    <string name="admin_storage_delete_all">Delete all</string>
+    <string name="admin_storage_delete_all_confirm_title">Delete all attachments?</string>
+    <string name="admin_storage_delete_all_confirm_body">All %1$d files in this folder will be removed from the server. This can\'t be undone.</string>
     <string name="admin_tab_groups">Groups</string>
     <string name="admin_tab_backups">Backups</string>
     <string name="admin_add">Add</string>
@@ -274,4 +324,20 @@
     <string name="backups_restore_failure">Couldn\'t restore the backup</string>
     <string name="backups_delete">Delete</string>
     <string name="backups_delete_confirm">Delete this backup? This can\'t be undone.</string>
+
+    <!-- Place search (map and zones) -->
+    <string name="place_search_label">Address or coordinates</string>
+    <string name="place_search_action">Search</string>
+    <string name="place_search_clear">Clear</string>
+    <string name="place_search_not_found">Nothing found</string>
+    <string name="place_search_failed">Couldn\'t search. Check your connection.</string>
+    <string name="zone_map_hint">Tap the map to pick the zone centre, or search for it above</string>
+
+    <!-- Distance and people list sorting -->
+    <string name="distance_from_you">%1$s from you</string>
+    <string name="distance_unknown">distance unknown</string>
+    <string name="people_sort_label">Sort by</string>
+    <string name="people_sort_name">Name</string>
+    <string name="people_sort_distance">Distance</string>
+    <string name="people_sort_recent">Recent</string>
 </resources>

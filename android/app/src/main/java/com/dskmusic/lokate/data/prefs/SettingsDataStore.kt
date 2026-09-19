@@ -7,6 +7,7 @@ import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.dskmusic.lokate.util.Constants
 import com.dskmusic.lokate.util.LocationFrequency
 import com.dskmusic.lokate.util.MapStyle
 import com.dskmusic.lokate.util.ThemeMode
@@ -33,6 +34,7 @@ class SettingsDataStore(private val context: Context) {
         val APP_LANGUAGE = stringPreferencesKey("app_language")
         val LAST_HISTORY_USER_ID = stringPreferencesKey("last_history_user_id")
         val MAP_STYLE = stringPreferencesKey("map_style")
+        val TEST_MODE_RECIPIENTS = stringPreferencesKey("test_mode_recipients")
         val MAP_CACHE_CLEARED_AT = longPreferencesKey("map_cache_cleared_at")
     }
 
@@ -52,6 +54,16 @@ class SettingsDataStore(private val context: Context) {
         context.dataStore.edit { it[Keys.MAP_STYLE] = style.name }
     }
 
+    /** A quién le llegan los avisos disparados en el modo prueba de los administradores (ids
+     * separados por comas). Se recuerda entre sesiones: montar la prueba cada vez es lo pesado,
+     * y normalmente se repite sobre los mismos móviles. Vacío = nadie elegido todavía. */
+    val testModeRecipients: Flow<Set<String>> = context.dataStore.data.map { prefs ->
+        prefs[Keys.TEST_MODE_RECIPIENTS].orEmpty().split(",").filter { it.isNotBlank() }.toSet()
+    }
+    suspend fun setTestModeRecipients(userIds: Set<String>) {
+        context.dataStore.edit { it[Keys.TEST_MODE_RECIPIENTS] = userIds.joinToString(",") }
+    }
+
     /** Último miembro consultado en Historial (se recuerda entre sesiones). null = el propio usuario. */
     val lastHistoryUserId: Flow<String?> = context.dataStore.data.map { it[Keys.LAST_HISTORY_USER_ID] }
     suspend fun setLastHistoryUserId(userId: String?) {
@@ -60,8 +72,11 @@ class SettingsDataStore(private val context: Context) {
         }
     }
 
-    /** Nivel de zoom inicial del mapa (osmdroid: 3 = mundo, 19 = calle). Por defecto 20. */
-    val mapInitialZoom: Flow<Int> = context.dataStore.data.map { it[Keys.MAP_ZOOM] ?: 20 }
+    /** Nivel de zoom inicial del mapa (osmdroid: 3 = mundo, 19 = calle). Por defecto
+     * [Constants.MAP_DEFAULT_ZOOM]; se acota al tope actual del ajuste por si quedó guardado
+     * un valor mayor de alguna versión anterior. */
+    val mapInitialZoom: Flow<Int> =
+        context.dataStore.data.map { (it[Keys.MAP_ZOOM] ?: Constants.MAP_DEFAULT_ZOOM).coerceAtMost(Constants.MAP_MAX_ZOOM) }
     suspend fun setMapInitialZoom(zoom: Int) {
         context.dataStore.edit { it[Keys.MAP_ZOOM] = zoom }
     }

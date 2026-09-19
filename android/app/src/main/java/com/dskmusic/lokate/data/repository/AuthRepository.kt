@@ -2,6 +2,7 @@ package com.dskmusic.lokate.data.repository
 
 import android.content.Context
 import com.dskmusic.lokate.data.prefs.SessionManager
+import com.dskmusic.lokate.data.prefs.SettingsDataStore
 import com.dskmusic.lokate.data.remote.ApiService
 import com.dskmusic.lokate.data.remote.dto.LoginRequestDto
 import com.dskmusic.lokate.data.remote.dto.RegisterDeviceRequestDto
@@ -9,9 +10,12 @@ import com.dskmusic.lokate.data.remote.dto.RegisterRequestDto
 import com.dskmusic.lokate.data.remote.dto.UpdateFlagRequestDto
 import com.dskmusic.lokate.data.remote.dto.UpdateProfileRequestDto
 import com.dskmusic.lokate.data.remote.dto.UserDto
+import com.dskmusic.lokate.push.NotificationHelper
 import com.dskmusic.lokate.ui.map.MapCameraMemory
+import com.dskmusic.lokate.util.DeviceStatusUtils
 import com.google.firebase.messaging.FirebaseMessaging
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.suspendCancellableCoroutine
 import kotlinx.coroutines.withContext
 import okhttp3.MediaType.Companion.toMediaType
@@ -22,6 +26,8 @@ import java.io.File
 class AuthRepository(
     private val api: ApiService,
     private val session: SessionManager,
+    private val settings: SettingsDataStore,
+    private val appContext: Context,
 ) {
     suspend fun register(username: String, password: String, displayName: String): UserDto =
         withContext(Dispatchers.IO) {
@@ -56,8 +62,29 @@ class AuthRepository(
         api.uploadAvatar(part).avatar_url
     }
 
+    /**
+     * Registra el token FCM y, de paso, TODO el estado de este móvil: frecuencia, batería,
+     * WiFi, lo que falte por configurar y el canal de notificaciones de zona. Hace también de
+     * latido — con el envío de ubicación desactivado no hay pings, y esta es la única vía por
+     * la que el grupo ve su batería y por la que el servidor se entera de a qué canal mandar
+     * los avisos de zona (sin canal registrado, el push va "solo data" y no se ve hasta que el
+     * móvil despierta). Lo llaman el arranque de la app, el login, un token nuevo, un cambio en
+     * Ajustes y el worker cada 15 min.
+     */
     suspend fun registerDevice(fcmToken: String) = withContext(Dispatchers.IO) {
-        api.registerDevice(RegisterDeviceRequestDto(fcmToken))
+        val status = DeviceStatusUtils.read(appContext)
+        api.registerDevice(
+            RegisterDeviceRequestDto(
+                fcm_token = fcmToken,
+                location_frequency = settings.locationFrequency.first().name,
+                config_issues = status.configIssues.orEmpty(),
+                zone_channel_id = NotificationHelper.currentZoneChannelId(appContext, settings),
+                battery_level = status.batteryLevel,
+                is_charging = status.isCharging,
+                wifi_connected = status.wifiConnected,
+                wifi_ssid = status.wifiSsid,
+            ),
+        )
     }
 
     /**

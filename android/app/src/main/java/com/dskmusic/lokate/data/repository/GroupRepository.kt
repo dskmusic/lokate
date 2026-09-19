@@ -5,6 +5,7 @@ import com.dskmusic.lokate.data.remote.dto.GroupCreateRequestDto
 import com.dskmusic.lokate.data.remote.dto.GroupDto
 import com.dskmusic.lokate.data.remote.dto.GroupJoinRequestDto
 import com.dskmusic.lokate.data.remote.dto.GroupMemberDto
+import com.dskmusic.lokate.data.remote.dto.TestNotificationRequestDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import retrofit2.HttpException
@@ -34,5 +35,8 @@ class GroupRepository(private val api: ApiService) {
 
     suspend fun leaveGroup() = withContext(Dispatchers.IO) { api.leaveGroup() }
 
-    suspend fun sendTestNotification() = withContext(Dispatchers.IO) { api.sendTestNotification() }
+    /** userIds null = a todo el grupo. */
+    suspend fun sendTestNotification(userIds: List<String>? = null) = withContext(Dispatchers.IO) {
+        api.sendTestNotification(TestNotificationRequestDto(userIds))
+    }
 }

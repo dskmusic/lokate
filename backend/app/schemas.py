@@ -72,6 +72,12 @@ class GroupMemberResponse(BaseModel):
     model_config = {"from_attributes": True}
 
 
+class TestNotificationRequest(BaseModel):
+    """user_ids vacío/ausente = todo el grupo (así los APK antiguos, que mandan POST sin cuerpo, siguen funcionando)."""
+
+    user_ids: list[str] | None = None
+
+
 # ---- Locations ----
 class LocationPingRequest(BaseModel):
     lat: float = Field(ge=-90, le=90)
@@ -81,6 +87,8 @@ class LocationPingRequest(BaseModel):
     is_charging: bool | None = None
     wifi_connected: bool | None = None
     wifi_ssid: str | None = None
+    location_frequency: str | None = None
+    config_issues: str | None = None
 
 
 class LocationResponse(BaseModel):
@@ -95,6 +103,8 @@ class LocationResponse(BaseModel):
     is_charging: bool | None
     wifi_connected: bool | None
     wifi_ssid: str | None
+    location_frequency: str | None
+    config_issues: str | None
 
     model_config = {"from_attributes": True}
 
@@ -129,6 +139,16 @@ class ZoneResponse(BaseModel):
 # ---- Device ----
 class RegisterDeviceRequest(BaseModel):
     fcm_token: str
+    location_frequency: str | None = None
+    config_issues: str | None = None
+    # Canal de notificación de zona de ese móvil (ver models.User.zone_channel_id).
+    zone_channel_id: str | None = None
+    # Estado del dispositivo: /auth/device hace también de latido para quien tiene el envío de
+    # ubicación desactivado — sin pings, es la única vía por la que el grupo ve su batería.
+    battery_level: int | None = Field(default=None, ge=0, le=100)
+    is_charging: bool | None = None
+    wifi_connected: bool | None = None
+    wifi_ssid: str | None = None
 
 
 class AvatarResponse(BaseModel):
@@ -271,6 +291,25 @@ class AdminDiskUsageResponse(BaseModel):
     total_bytes: int
 
 
+class AdminFileResponse(BaseModel):
+    name: str
+    size_bytes: int
+    modified: datetime
+    url: str
+    #: image / video / audio / other — decide si la app lo previsualiza y con qué
+    kind: str
+    #: solo los avatares pueden estar referenciados en la BD; los adjuntos viajan en el push y
+    #: nadie los apunta, así que ahí siempre es False
+    in_use: bool
+
+    # managed_files devuelve dataclasses, no dicts
+    model_config = {"from_attributes": True}
+
+
+class AdminDeleteAllResponse(BaseModel):
+    deleted: int
+
+
 class AdminBackupResponse(BaseModel):
     id: str
     description: str
@@ -280,3 +319,21 @@ class AdminBackupResponse(BaseModel):
 
 class AdminBackupCreateRequest(BaseModel):
     description: str = Field(default="", max_length=200)
+
+
+class AdminSimulateRequest(BaseModel):
+    """Posición falsa a la que un admin arrastra a un miembro en el modo prueba."""
+
+    lat: float
+    lng: float
+    # A quién le llega el aviso si el arrastre cruza el borde de una zona. El admin lo elige a
+    # mano en la app (y se recuerda ahí), en vez de respetar las preferencias por zona de cada
+    # uno: es una prueba, quien la hace decide en qué móvil quiere verla sonar.
+    recipient_ids: list[str] = []
+
+
+class AdminSimulateResponse(BaseModel):
+    # Textos de los avisos disparados por este arrastre ("Luci ha salido de Casa"); vacío = el
+    # arrastre no ha cruzado ningún borde.
+    transitions: list[str]
+    notified: int

@@ -7,6 +7,7 @@ import androidx.lifecycle.viewModelScope
 import com.dskmusic.lokate.data.remote.dto.AdminBackupDto
 import com.dskmusic.lokate.data.remote.dto.AdminDashboardDto
 import com.dskmusic.lokate.data.remote.dto.AdminDiskUsageDto
+import com.dskmusic.lokate.data.remote.dto.AdminFileDto
 import com.dskmusic.lokate.data.remote.dto.AdminGroupDto
 import com.dskmusic.lokate.data.remote.dto.AdminUserDto
 import com.dskmusic.lokate.data.remote.dto.AdminZoneDto
@@ -27,6 +28,8 @@ data class AdminUiState(
     val groups: List<AdminGroupDto> = emptyList(),
     val loadingZones: Boolean = false,
     val zones: List<AdminZoneDto> = emptyList(),
+    val loadingFiles: Boolean = false,
+    val files: List<AdminFileDto> = emptyList(),
     val loadingBackups: Boolean = false,
     val backups: List<AdminBackupDto> = emptyList(),
     val error: String? = null,
@@ -187,6 +190,38 @@ class AdminViewModel(private val repository: AdminRepository) : ViewModel() {
                     zones = _uiState.value.zones.filterNot { it.id == id },
                 )
                 onDone()
+            }
+            .onFailure { _uiState.value = _uiState.value.copy(actionInProgress = false); fail(it) }
+    }
+
+    fun loadFiles(folder: String) = viewModelScope.launch {
+        _uiState.value = _uiState.value.copy(loadingFiles = true, files = emptyList())
+        runCatching { repository.listFiles(folder) }
+            .onSuccess { _uiState.value = _uiState.value.copy(files = it, loadingFiles = false) }
+            .onFailure { _uiState.value = _uiState.value.copy(loadingFiles = false); fail(it) }
+    }
+
+    /** Tras borrar se recalcula el uso de disco: el desglose del dashboard queda al día sin
+     * tener que salir y volver a entrar. */
+    fun deleteFile(folder: String, name: String) = viewModelScope.launch {
+        _uiState.value = _uiState.value.copy(actionInProgress = true)
+        runCatching { repository.deleteFile(folder, name) }
+            .onSuccess {
+                _uiState.value = _uiState.value.copy(
+                    actionInProgress = false,
+                    files = _uiState.value.files.filterNot { it.name == name },
+                )
+                loadDiskUsage()
+            }
+            .onFailure { _uiState.value = _uiState.value.copy(actionInProgress = false); fail(it) }
+    }
+
+    fun deleteAllFiles(folder: String) = viewModelScope.launch {
+        _uiState.value = _uiState.value.copy(actionInProgress = true)
+        runCatching { repository.deleteAllFiles(folder) }
+            .onSuccess {
+                _uiState.value = _uiState.value.copy(actionInProgress = false, files = emptyList())
+                loadDiskUsage()
             }
             .onFailure { _uiState.value = _uiState.value.copy(actionInProgress = false); fail(it) }
     }

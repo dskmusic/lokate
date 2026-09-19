@@ -21,6 +21,7 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
@@ -69,6 +70,7 @@ import com.dskmusic.lokate.util.AppUpdater
 import com.dskmusic.lokate.util.Constants
 import kotlinx.coroutines.launch
 import com.dskmusic.lokate.di.ServiceLocator
+import com.dskmusic.lokate.location.LocationServiceController
 import com.dskmusic.lokate.ui.common.AvatarPicker
 import com.dskmusic.lokate.ui.theme.AccentPresets
 import com.dskmusic.lokate.util.LocationFrequency
@@ -93,14 +95,19 @@ fun SettingsScreen(locator: ServiceLocator, onBack: () -> Unit, onLoggedOut: () 
     val testNotificationSent by viewModel.testNotificationSent.collectAsStateWithLifecycle()
     val ringSoundUri by locator.settings.ringSoundUri.collectAsStateWithLifecycle(initialValue = null)
     val vibrationPattern by locator.settings.vibrationPattern.collectAsStateWithLifecycle(initialValue = VibrationPattern.SOFT)
-    val mapZoom by locator.settings.mapInitialZoom.collectAsStateWithLifecycle(initialValue = 20)
+    val mapZoom by locator.settings.mapInitialZoom.collectAsStateWithLifecycle(initialValue = Constants.MAP_DEFAULT_ZOOM)
     val appLanguage by locator.settings.appLanguage.collectAsStateWithLifecycle(initialValue = "auto")
     val mapCacheClearedBytes by viewModel.mapCacheClearedBytes.collectAsStateWithLifecycle()
     val updateFlagEnabled by viewModel.updateFlagEnabled.collectAsStateWithLifecycle()
     val updateFlagError by viewModel.updateFlagError.collectAsStateWithLifecycle()
+    val groupMembers by viewModel.groupMembers.collectAsStateWithLifecycle()
 
     var showColorPicker by remember { mutableStateOf(false) }
     var showClearDataConfirm by remember { mutableStateOf(false) }
+    var showResetZoomConfirm by remember { mutableStateOf(false) }
+    var showDisableUpdatesConfirm by remember { mutableStateOf(false) }
+    var showTestNotificationPicker by remember { mutableStateOf(false) }
+    var showTestNotificationAllConfirm by remember { mutableStateOf(false) }
     var showEditNameDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var updating by remember { mutableStateOf(false) }
@@ -116,7 +123,10 @@ fun SettingsScreen(locator: ServiceLocator, onBack: () -> Unit, onLoggedOut: () 
         currentAvatarUrl = me?.avatar_url?.let { absoluteAvatarUrl(it) }
         currentDisplayName = me?.display_name.orEmpty()
         isAdmin = me?.is_admin == true
-        if (isAdmin) viewModel.loadUpdateFlag()
+        if (isAdmin) {
+            viewModel.loadUpdateFlag()
+            viewModel.loadGroupMembers()
+        }
     }
 
     Scaffold(
@@ -235,16 +245,27 @@ fun SettingsScreen(locator: ServiceLocator, onBack: () -> Unit, onLoggedOut: () 
             item { SectionTitle(stringResource(R.string.settings_update_frequency)) }
             item {
                 Column(Modifier.padding(horizontal = 16.dp)) {
+                    // Desactivar pide confirmación; volver a una frecuencia normal rearranca el
+                    // servicio en el momento, sin esperar al worker de respaldo.
+                    val pick: (LocationFrequency) -> Unit = { freq ->
+                        if (freq == LocationFrequency.DISABLED) {
+                            showDisableUpdatesConfirm = true
+                        } else {
+                            viewModel.setLocationFrequency(freq)
+                            LocationServiceController.ensureStarted(context)
+                        }
+                    }
                     listOf(
                         LocationFrequency.REAL_TIME to stringResource(R.string.frequency_high),
                         LocationFrequency.BALANCED to stringResource(R.string.frequency_balanced),
                         LocationFrequency.BATTERY_SAVER to stringResource(R.string.frequency_battery_saver),
+                        LocationFrequency.DISABLED to stringResource(R.string.frequency_disabled),
                     ).forEach { (freq, label) ->
                         Row(
-                            modifier = Modifier.fillMaxWidth().clickable { viewModel.setLocationFrequency(freq) }.padding(vertical = 8.dp),
+                            modifier = Modifier.fillMaxWidth().clickable { pick(freq) }.padding(vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            RadioButton(selected = frequency == freq, onClick = { viewModel.setLocationFrequency(freq) })
+                            RadioButton(selected = frequency == freq, onClick = { pick(freq) })
                             Text(label)
                         }
                     }
@@ -259,12 +280,17 @@ fun SettingsScreen(locator: ServiceLocator, onBack: () -> Unit, onLoggedOut: () 
                         stringResource(R.string.settings_map_zoom_value, mapZoom),
                         style = MaterialTheme.typography.bodyMedium,
                     )
+                    // Del 19 para arriba las teselas ya son aproximadas (ver MAP_DEFAULT_ZOOM):
+                    // se puede elegir, pero abrir ahí carga más lento y con menos nitidez.
                     Slider(
                         value = mapZoom.toFloat(),
                         onValueChange = { viewModel.setMapInitialZoom(it.toInt()) },
-                        valueRange = 3f..25f,
-                        steps = 21,
+                        valueRange = 3f..Constants.MAP_MAX_ZOOM.toFloat(),
+                        steps = Constants.MAP_MAX_ZOOM - 4,
                     )
+                    OutlinedButton(onClick = { showResetZoomConfirm = true }) {
+                        Text(stringResource(R.string.settings_map_zoom_reset))
+                    }
                 }
             }
             item {
@@ -483,7 +509,7 @@ fun SettingsScreen(locator: ServiceLocator, onBack: () -> Unit, onLoggedOut: () 
                 item {
                     Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp)) {
                         OutlinedButton(
-                            onClick = { viewModel.sendTestNotification() },
+                            onClick = { showTestNotificationPicker = true },
                             modifier = Modifier.fillMaxWidth(),
                         ) {
                             Text(stringResource(R.string.settings_send_test_notification))
@@ -552,6 +578,23 @@ fun SettingsScreen(locator: ServiceLocator, onBack: () -> Unit, onLoggedOut: () 
         )
     }
 
+    if (showResetZoomConfirm) {
+        AlertDialog(
+            onDismissRequest = { showResetZoomConfirm = false },
+            title = { Text(stringResource(R.string.settings_map_zoom_reset)) },
+            text = { Text(stringResource(R.string.settings_map_zoom_reset_confirm, Constants.MAP_DEFAULT_ZOOM)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showResetZoomConfirm = false
+                    viewModel.resetMapInitialZoom()
+                }) { Text(stringResource(R.string.confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showResetZoomConfirm = false }) { Text(stringResource(R.string.cancel)) }
+            },
+        )
+    }
+
     if (showClearDataConfirm) {
         AlertDialog(
             onDismissRequest = { showClearDataConfirm = false },
@@ -564,6 +607,82 @@ fun SettingsScreen(locator: ServiceLocator, onBack: () -> Unit, onLoggedOut: () 
                 }) { Text(stringResource(R.string.settings_clear_local_data)) }
             },
             dismissButton = { TextButton(onClick = { showClearDataConfirm = false }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+
+    if (showDisableUpdatesConfirm) {
+        AlertDialog(
+            onDismissRequest = { showDisableUpdatesConfirm = false },
+            title = { Text(stringResource(R.string.frequency_disabled_confirm_title)) },
+            text = { Text(stringResource(R.string.frequency_disabled_confirm_body)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showDisableUpdatesConfirm = false
+                    viewModel.setLocationFrequency(LocationFrequency.DISABLED)
+                    LocationServiceController.stop(context)
+                }) { Text(stringResource(R.string.confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showDisableUpdatesConfirm = false }) { Text(stringResource(R.string.cancel)) }
+            },
+        )
+    }
+
+    if (showTestNotificationPicker) {
+        AlertDialog(
+            onDismissRequest = { showTestNotificationPicker = false },
+            title = { Text(stringResource(R.string.settings_test_notification_pick)) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    groupMembers.forEach { member ->
+                        Text(
+                            member.display_name,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    showTestNotificationPicker = false
+                                    viewModel.sendTestNotification(listOf(member.id))
+                                }
+                                .padding(vertical = 12.dp),
+                        )
+                    }
+                    HorizontalDivider()
+                    Text(
+                        stringResource(R.string.settings_test_notification_all),
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showTestNotificationPicker = false
+                                showTestNotificationAllConfirm = true
+                            }
+                            .padding(vertical = 12.dp),
+                    )
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showTestNotificationPicker = false }) { Text(stringResource(R.string.cancel)) }
+            },
+        )
+    }
+
+    if (showTestNotificationAllConfirm) {
+        AlertDialog(
+            onDismissRequest = { showTestNotificationAllConfirm = false },
+            title = { Text(stringResource(R.string.settings_test_notification_all_confirm_title)) },
+            text = {
+                Text(stringResource(R.string.settings_test_notification_all_confirm_body))
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    showTestNotificationAllConfirm = false
+                    viewModel.sendTestNotification(null)
+                }) { Text(stringResource(R.string.confirm)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTestNotificationAllConfirm = false }) { Text(stringResource(R.string.cancel)) }
+            },
         )
     }
 }

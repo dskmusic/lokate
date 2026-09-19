@@ -71,6 +71,16 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "backups_delete": "Eliminar",
         "backups_delete_confirm": "¿Eliminar esta copia de seguridad? No se puede deshacer.",
         "backups_none": "Todavía no hay copias de seguridad",
+        "files_preview": "Vista previa",
+        "files_name": "Nombre",
+        "files_size": "Tamaño",
+        "files_modified": "Modificado",
+        "files_in_use": "en uso",
+        "files_delete": "Eliminar",
+        "files_delete_confirm": "¿Eliminar este archivo del servidor? No se puede deshacer.",
+        "files_delete_all": "Borrar todos",
+        "files_delete_all_confirm": "¿Borrar TODOS los archivos de esta carpeta? No se puede deshacer.",
+        "files_none": "No hay archivos en esta carpeta",
     },
     "en": {
         "dashboard": "Dashboard",
@@ -132,6 +142,16 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "backups_delete": "Delete",
         "backups_delete_confirm": "Delete this backup? This can't be undone.",
         "backups_none": "No backups yet",
+        "files_preview": "Preview",
+        "files_name": "Name",
+        "files_size": "Size",
+        "files_modified": "Modified",
+        "files_in_use": "in use",
+        "files_delete": "Delete",
+        "files_delete_confirm": "Delete this file from the server? This cannot be undone.",
+        "files_delete_all": "Delete all",
+        "files_delete_all_confirm": "Delete ALL files in this folder? This cannot be undone.",
+        "files_none": "No files in this folder",
     },
 }
 
@@ -157,6 +177,7 @@ UI_DICT_ES: dict[str, str] = {
     "Users": "Usuarios",
     "Zones": "Zonas",
     "Location history": "Historial de ubicaciones",
+    "Files": "Archivos",
     "History": "Historial",
     # Columnas de las listas (Usuarios/Grupos/Zonas), recortadas y renombradas para que quepan
     # en móvil sin scroll horizontal — ver column_labels en admin.py.

@@ -101,6 +101,7 @@ fun AdminScreen(locator: ServiceLocator, onBack: () -> Unit) {
             when (tab) {
                 AdminTab.DASHBOARD -> AdminDashboardTab(
                     state,
+                    viewModel,
                     onRefresh = { viewModel.loadDashboard(); viewModel.loadDiskUsage() },
                 )
                 AdminTab.USERS -> AdminUsersTab(state, viewModel)

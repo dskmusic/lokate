@@ -1,3 +1,4 @@
+import logging
 import os
 from pathlib import Path
 
@@ -13,7 +14,29 @@ from .database import Base, SessionLocal, engine
 from .i18n import LOCALE_COOKIE, detect_locale, set_current_locale
 from .routers import admin_api, auth, groups, locations, messages, zones
 
+# uvicorn solo configura SUS loggers ("uvicorn", "uvicorn.access"...): los nuestros quedan sin
+# handler y caen en el de último recurso de Python, que descarta todo lo que no llegue a
+# WARNING. Sin esta línea, los INFO de envío de push (quién recibe y quién no) no aparecerían
+# nunca en "docker compose logs".
+logging.basicConfig(level=logging.INFO, format="%(asctime)s %(levelname)s %(name)s: %(message)s")
+
 Base.metadata.create_all(bind=engine)
+
+
+def _add_missing_columns() -> None:
+    """create_all solo crea tablas nuevas: las columnas añadidas después a una tabla que ya
+    existe hay que meterlas a mano, o la API revienta contra una BD de una versión anterior.
+    ponytail: ALTER directo en vez de Alembic — con una sola BD SQLite no compensa."""
+    if not engine.url.drivername.startswith("sqlite"):
+        return
+    with engine.begin() as conn:
+        columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(users)")}
+        for column in ("location_frequency", "config_issues", "zone_channel_id"):
+            if column not in columns:
+                conn.exec_driver_sql(f"ALTER TABLE users ADD COLUMN {column} VARCHAR")
+
+
+_add_missing_columns()
 
 Path("/data/avatars").mkdir(parents=True, exist_ok=True)
 Path("/data/attachments").mkdir(parents=True, exist_ok=True)

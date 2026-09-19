@@ -5,6 +5,7 @@ import com.dskmusic.lokate.data.local.LocationHistoryEntity
 import com.dskmusic.lokate.data.remote.ApiService
 import com.dskmusic.lokate.data.remote.dto.LocationDto
 import com.dskmusic.lokate.data.remote.dto.LocationPingRequestDto
+import com.dskmusic.lokate.util.LocationFrequency
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
@@ -16,13 +17,24 @@ data class DeviceStatus(
     val isCharging: Boolean?,
     val wifiConnected: Boolean?,
     val wifiSsid: String? = null,
+    /** Códigos de [com.dskmusic.lokate.util.ConfigCheck] separados por comas, vacío si todo
+     * está bien. Va aquí y no como parámetro suelto de [LocationRepository.ping] porque se lee
+     * en el mismo sitio que el resto del estado del dispositivo, en cada ping, sin tocar los
+     * sitios que llaman. */
+    val configIssues: String? = null,
 )
 
 class LocationRepository(
     private val api: ApiService,
     private val historyDao: LocationHistoryDao,
 ) {
-    suspend fun ping(lat: Double, lng: Double, accuracy: Float?, status: DeviceStatus) = withContext(Dispatchers.IO) {
+    suspend fun ping(
+        lat: Double,
+        lng: Double,
+        accuracy: Float?,
+        status: DeviceStatus,
+        frequency: LocationFrequency,
+    ) = withContext(Dispatchers.IO) {
         api.ping(
             LocationPingRequestDto(
                 lat = lat,
@@ -32,6 +44,8 @@ class LocationRepository(
                 is_charging = status.isCharging,
                 wifi_connected = status.wifiConnected,
                 wifi_ssid = status.wifiSsid,
+                location_frequency = frequency.name,
+                config_issues = status.configIssues,
             ),
         )
     }
@@ -39,6 +53,8 @@ class LocationRepository(
     suspend fun groupLatest(): List<LocationDto> = withContext(Dispatchers.IO) { api.groupLatestLocations() }
 
     suspend fun ringDevice(userId: String) = withContext(Dispatchers.IO) { api.ringDevice(userId) }
+
+    suspend fun stopRing(userId: String) = withContext(Dispatchers.IO) { api.stopRing(userId) }
 
     suspend fun requestLocation(userId: String) = withContext(Dispatchers.IO) { api.requestLocation(userId) }
 

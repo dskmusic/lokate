@@ -36,6 +36,10 @@ class MapViewModel(
 
     private var pollingJob: Job? = null
 
+    /** Modo prueba de los admins: con él activo el sondeo se para, para que un marcador que se
+     * acaba de arrastrar no vuelva de golpe a su sitio a los 15 s. */
+    private var testMode = false
+
     init {
         refresh()
     }
@@ -63,7 +67,7 @@ class MapViewModel(
     }
 
     private fun startPolling() {
-        if (pollingJob?.isActive == true) return
+        if (testMode || pollingJob?.isActive == true) return
         pollingJob = viewModelScope.launch {
             while (true) {
                 runCatching { locationRepository.groupLatest() }
@@ -72,6 +76,22 @@ class MapViewModel(
                 delay(POLL_INTERVAL_MS)
             }
         }
+    }
+
+    fun setTestMode(active: Boolean) {
+        testMode = active
+        if (active) pollingJob?.cancel() else refresh()
+    }
+
+    /** Mueve a un miembro solo en el mapa de quien está probando: el arrastre no se guarda en
+     * ningún sitio (ver AdminRepository.simulatePosition), así que la posición simulada solo
+     * existe aquí hasta salir del modo. */
+    fun moveMemberLocally(userId: String, lat: Double, lng: Double) {
+        _uiState.value = _uiState.value.copy(
+            members = _uiState.value.members.map {
+                if (it.user_id == userId) it.copy(lat = lat, lng = lng) else it
+            },
+        )
     }
 
     override fun onCleared() {

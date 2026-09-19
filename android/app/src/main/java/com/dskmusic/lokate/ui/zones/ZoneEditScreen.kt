@@ -16,8 +16,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
-import androidx.compose.material3.DropdownMenu
-import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.MaterialTheme
@@ -37,13 +35,13 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dskmusic.lokate.R
 import com.dskmusic.lokate.data.remote.dto.ZoneDto
 import com.dskmusic.lokate.di.ServiceLocator
+import com.dskmusic.lokate.ui.common.PlaceSearchField
 import com.dskmusic.lokate.ui.map.OsmMapView
 import com.google.android.gms.location.LocationServices
 import org.osmdroid.util.GeoPoint
@@ -69,10 +67,9 @@ fun ZoneEditScreen(locator: ServiceLocator, zoneId: String?, onDone: () -> Unit)
 private fun ZoneEditContent(locator: ServiceLocator, existingZone: ZoneDto?, onDone: () -> Unit) {
     val context = LocalContext.current
     val viewModel = remember(existingZone?.id) {
-        ZoneEditViewModel(locator.zoneRepository, locator.nominatim, existingZone)
+        ZoneEditViewModel(locator.zoneRepository, existingZone)
     }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    var searchQuery by remember { mutableStateOf("") }
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
 
     LaunchedEffect(state.saved) {
@@ -138,30 +135,12 @@ private fun ZoneEditContent(locator: ServiceLocator, existingZone: ZoneDto?, onD
             )
             Spacer(Modifier.height(8.dp))
 
-            Box {
-                OutlinedTextField(
-                    value = searchQuery,
-                    onValueChange = { searchQuery = it; viewModel.searchAddress(it) },
-                    label = { Text(stringResource(R.string.zone_search_address)) },
-                    modifier = Modifier.fillMaxWidth(),
-                    singleLine = true,
-                )
-                DropdownMenu(
-                    expanded = state.searchResults.isNotEmpty(),
-                    onDismissRequest = viewModel::clearSearchResults,
-                    modifier = Modifier.fillMaxWidth(0.92f),
-                ) {
-                    state.searchResults.forEach { result ->
-                        DropdownMenuItem(
-                            text = { Text(result.label, maxLines = 2, overflow = TextOverflow.Ellipsis) },
-                            onClick = {
-                                viewModel.selectSearchResult(result)
-                                searchQuery = result.label
-                            },
-                        )
-                    }
-                }
-            }
+            PlaceSearchField(
+                nominatim = locator.nominatim,
+                label = stringResource(R.string.place_search_label),
+                modifier = Modifier.fillMaxWidth(),
+                onPicked = { viewModel.pickLocation(it.lat, it.lng) },
+            )
 
             Spacer(Modifier.height(12.dp))
             Text(stringResource(R.string.zone_radius_label) + ": ${state.radiusM.toInt()} m")
@@ -183,7 +162,7 @@ private fun ZoneEditContent(locator: ServiceLocator, existingZone: ZoneDto?, onD
             )
 
             Spacer(Modifier.height(12.dp))
-            Text("Toca el mapa para elegir el centro de la zona, o busca una dirección arriba")
+            Text(stringResource(R.string.zone_map_hint))
             Spacer(Modifier.height(4.dp))
             Box(modifier = Modifier.fillMaxWidth().height(280.dp).clip(MaterialTheme.shapes.medium)) {
                 // remember() es clave aquí: sin esto se crea una lista nueva en cada recomposición

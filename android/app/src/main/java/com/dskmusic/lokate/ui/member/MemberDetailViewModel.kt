@@ -3,6 +3,7 @@ package com.dskmusic.lokate.ui.member
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dskmusic.lokate.data.remote.dto.LocationDto
+import com.dskmusic.lokate.data.repository.GroupRepository
 import com.dskmusic.lokate.data.repository.LocationRepository
 import com.dskmusic.lokate.data.repository.MessageRepository
 import java.io.File
@@ -25,12 +26,15 @@ data class MemberDetailUiState(
     val ringSent: Boolean = false,
     val sendingMessage: Boolean = false,
     val messageSent: Boolean = false,
+    val sendingTestNotification: Boolean = false,
+    val testNotificationSent: Boolean = false,
     val error: String? = null,
 )
 
 class MemberDetailViewModel(
     private val locationRepository: LocationRepository,
     private val messageRepository: MessageRepository,
+    private val groupRepository: GroupRepository,
     private val userId: String,
 ) : ViewModel() {
 
@@ -91,6 +95,31 @@ class MemberDetailViewModel(
             runCatching { locationRepository.ringDevice(userId) }
                 .onSuccess { _uiState.value = _uiState.value.copy(ringing = false, ringSent = true) }
                 .onFailure { _uiState.value = _uiState.value.copy(ringing = false, error = it.message) }
+        }
+    }
+
+    /** Para la alarma en el dispositivo del miembro (push "stop_ring"). Cierra el diálogo de
+     * progreso al instante, sin esperar al servidor: el sonido ya está sonando allí y reabrirlo
+     * por un fallo de red confundiría más que ayudar — el error se muestra igual debajo. */
+    fun stopRing() {
+        _uiState.value = _uiState.value.copy(ringing = false, ringSent = false)
+        viewModelScope.launch {
+            runCatching { locationRepository.stopRing(userId) }
+                .onFailure { _uiState.value = _uiState.value.copy(error = it.message) }
+        }
+    }
+
+    /** Notificación de prueba a este miembro (mismo endpoint que Ajustes, solo admins). */
+    fun sendTestNotification() {
+        _uiState.value = _uiState.value.copy(sendingTestNotification = true, testNotificationSent = false)
+        viewModelScope.launch {
+            runCatching { groupRepository.sendTestNotification(listOf(userId)) }
+                .onSuccess {
+                    _uiState.value = _uiState.value.copy(sendingTestNotification = false, testNotificationSent = true)
+                }
+                .onFailure {
+                    _uiState.value = _uiState.value.copy(sendingTestNotification = false, error = it.message)
+                }
         }
     }
 

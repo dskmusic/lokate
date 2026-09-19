@@ -3,9 +3,13 @@ package com.dskmusic.lokate.data.remote
 import com.dskmusic.lokate.data.remote.dto.AdminBackupCreateRequestDto
 import com.dskmusic.lokate.data.remote.dto.AdminBackupDto
 import com.dskmusic.lokate.data.remote.dto.AdminDashboardDto
+import com.dskmusic.lokate.data.remote.dto.AdminDeleteAllDto
 import com.dskmusic.lokate.data.remote.dto.AdminDiskUsageDto
+import com.dskmusic.lokate.data.remote.dto.AdminFileDto
 import com.dskmusic.lokate.data.remote.dto.AdminGroupCreateRequestDto
 import com.dskmusic.lokate.data.remote.dto.AdminGroupDto
+import com.dskmusic.lokate.data.remote.dto.AdminSimulateDto
+import com.dskmusic.lokate.data.remote.dto.AdminSimulateRequestDto
 import com.dskmusic.lokate.data.remote.dto.AdminUserCreateRequestDto
 import com.dskmusic.lokate.data.remote.dto.AdminUserDto
 import com.dskmusic.lokate.data.remote.dto.AdminUserUpdateRequestDto
@@ -23,6 +27,7 @@ import com.dskmusic.lokate.data.remote.dto.LocationPingRequestDto
 import com.dskmusic.lokate.data.remote.dto.LoginRequestDto
 import com.dskmusic.lokate.data.remote.dto.RegisterDeviceRequestDto
 import com.dskmusic.lokate.data.remote.dto.RegisterRequestDto
+import com.dskmusic.lokate.data.remote.dto.TestNotificationRequestDto
 import com.dskmusic.lokate.data.remote.dto.TokenResponseDto
 import com.dskmusic.lokate.data.remote.dto.UpdateCheckDto
 import com.dskmusic.lokate.data.remote.dto.UpdateFlagRequestDto
@@ -83,7 +88,7 @@ interface ApiService {
     suspend fun leaveGroup()
 
     @POST("groups/test-notification")
-    suspend fun sendTestNotification()
+    suspend fun sendTestNotification(@Body body: TestNotificationRequestDto)
 
     @POST("location/ping")
     suspend fun ping(@Body body: LocationPingRequestDto)
@@ -101,6 +106,9 @@ interface ApiService {
 
     @POST("location/ring/{userId}")
     suspend fun ringDevice(@Path("userId") userId: String)
+
+    @POST("location/stop-ring/{userId}")
+    suspend fun stopRing(@Path("userId") userId: String)
 
     @POST("location/request-location/{userId}")
     suspend fun requestLocation(@Path("userId") userId: String)
@@ -191,6 +199,15 @@ interface ApiService {
     @DELETE("admin-api/zones/{id}")
     suspend fun adminDeleteZone(@Path("id") id: String)
 
+    @GET("admin-api/files/{folder}")
+    suspend fun adminListFiles(@Path("folder") folder: String): List<AdminFileDto>
+
+    @DELETE("admin-api/files/{folder}/{name}")
+    suspend fun adminDeleteFile(@Path("folder") folder: String, @Path("name") name: String)
+
+    @DELETE("admin-api/files/{folder}")
+    suspend fun adminDeleteAllFiles(@Path("folder") folder: String): AdminDeleteAllDto
+
     @GET("admin-api/backups")
     suspend fun adminListBackups(): List<AdminBackupDto>
 
@@ -206,4 +223,10 @@ interface ApiService {
 
     @DELETE("admin-api/backups/{id}")
     suspend fun adminDeleteBackup(@Path("id") id: String)
+
+    @POST("admin-api/simulate/{id}")
+    suspend fun adminSimulatePosition(@Path("id") id: String, @Body body: AdminSimulateRequestDto): AdminSimulateDto
+
+    @POST("admin-api/simulate/stop")
+    suspend fun adminStopSimulation()
 }

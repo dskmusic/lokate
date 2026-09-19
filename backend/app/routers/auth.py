@@ -64,7 +64,31 @@ def register_device(
     user: models.User = Depends(get_current_user),
     db: Session = Depends(get_db),
 ):
+    # Un token FCM identifica a un DISPOSITIVO, no a una cuenta: si en este móvil hubo antes
+    # otra sesión, esa otra fila se quedó con el mismo token y FCM le seguía entregando aquí
+    # sus avisos — el destinatario real no veía nada y el de este móvil recibía avisos ajenos.
+    # Al registrarlo, se lo quitamos a cualquier otro usuario que lo tuviera.
+    db.query(models.User).filter(
+        models.User.fcm_token == body.fcm_token, models.User.id != user.id
+    ).update({"fcm_token": None}, synchronize_session=False)
+
     user.fcm_token = body.fcm_token
+    if body.location_frequency is not None:
+        user.location_frequency = body.location_frequency
+    if body.config_issues is not None:
+        user.config_issues = body.config_issues
+    if body.zone_channel_id is not None:
+        user.zone_channel_id = body.zone_channel_id
+    # Latido: quien tiene el envío de ubicación desactivado no manda pings nunca, así que este
+    # es el único sitio donde el grupo se entera de su batería y su WiFi. Campo a campo y solo
+    # si viene, para no borrar lo que ya había cuando llama una app anterior.
+    if body.battery_level is not None:
+        user.battery_level = body.battery_level
+    if body.is_charging is not None:
+        user.is_charging = body.is_charging
+    if body.wifi_connected is not None:
+        user.wifi_connected = body.wifi_connected
+        user.wifi_ssid = body.wifi_ssid
     db.commit()
 
 

@@ -31,6 +31,10 @@ class LokateApplication : Application() {
             tileDownloadThreads = 8
             tileDownloadMaxQueueSize = 40
             cacheMapTileCount = 12
+            // osmdroid dimensiona la caché en memoria justo a las teselas que caben en pantalla,
+            // así que al arrastrar el mapa las que acaban de salir por un borde ya no están y
+            // hay que volver a leerlas. Este margen guarda un anillo extra alrededor.
+            cacheMapTileOvershoot = 12
         }
 
         // Vaciado automático de la caché de teselas cada MAP_CACHE_MAX_AGE_DAYS: no comprueba

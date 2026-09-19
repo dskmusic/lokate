@@ -16,6 +16,16 @@ def _generate_invite_code() -> str:
     return "".join(secrets.choice(alphabet) for _ in range(6))
 
 
+def _resolve_test_targets(member_ids: list[str], requested: list[str] | None) -> list[str]:
+    """Sin destinatarios pedidos = todo el grupo. Con ellos, solo los que además son del grupo:
+    filtrado a propósito para que un admin no pueda mandar push a usuarios de otros grupos
+    pasando ids a mano."""
+    if not requested:
+        return member_ids
+    wanted = set(requested)
+    return [i for i in member_ids if i in wanted]
+
+
 @router.post("", response_model=schemas.GroupResponse, status_code=status.HTTP_201_CREATED)
 def create_group(
     body: schemas.GroupCreateRequest,
@@ -82,14 +92,19 @@ def leave_group(
 
 @router.post("/test-notification", status_code=status.HTTP_204_NO_CONTENT)
 def send_test_notification(
+    body: schemas.TestNotificationRequest | None = None,
     user: models.User = Depends(get_current_user_with_group),
     db: Session = Depends(get_db),
 ):
-    """Solo administradores: prueba el envío de push a todo el grupo (incluido quien la manda)."""
+    """Solo administradores: prueba el envío de push a miembros concretos, o a todo el grupo si no se indican."""
     if not user.is_admin:
         raise HTTPException(status.HTTP_403_FORBIDDEN, "Solo los usuarios administradores pueden hacer esto")
 
-    member_ids = [m.id for m in db.query(models.User).filter(models.User.group_id == user.group_id).all()]
+    group_ids = [m.id for m in db.query(models.User).filter(models.User.group_id == user.group_id).all()]
+    member_ids = _resolve_test_targets(group_ids, body.user_ids if body else None)
+    if not member_ids:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ningún destinatario válido en tu grupo")
+
     push.send_to_users(
         db,
         user_ids=member_ids,

@@ -25,6 +25,15 @@ def ping(
     user.is_charging = body.is_charging
     user.wifi_connected = body.wifi_connected
     user.wifi_ssid = body.wifi_ssid
+    # Solo si viene: un cliente con una versión anterior no manda este campo, y asignarlo a
+    # ciegas borraba en cada ping (cada pocos segundos) la frecuencia que ese mismo usuario
+    # había registrado por /auth/device — los demás lo veían siempre como "desconocida".
+    if body.location_frequency is not None:
+        user.location_frequency = body.location_frequency
+    # Mismo motivo que arriba: "" (todo correcto) es un valor válido y distinto de None
+    # (cliente antiguo que no lo manda), así que la guarda mira is not None, no si es falsy.
+    if body.config_issues is not None:
+        user.config_issues = body.config_issues
 
     cutoff = datetime.now(timezone.utc) - timedelta(days=RETENTION_DAYS)
     db.query(models.LocationPing).filter(
@@ -32,7 +41,14 @@ def ping(
     ).delete()
     db.commit()
 
-    geofence.check_zone_transitions(db, user, body.lat, body.lng)
+    # Modo prueba: mientras un administrador esté arrastrando a este usuario por el mapa, su
+    # posición real se guarda igual (arriba) pero no evalúa zonas — si no, este mismo ping
+    # desharía la simulación al instante. Si la simulación caducó sin que el admin saliera del
+    # modo, este primer ping real recoloca su estado de zonas en silencio.
+    simulation = geofence.simulation_status(user.id)
+    if simulation == "active":
+        return
+    geofence.check_zone_transitions(db, user, body.lat, body.lng, notify=simulation is None)
 
 
 @router.get("/group/latest", response_model=list[schemas.LocationResponse])
@@ -63,6 +79,8 @@ def group_latest(
                     is_charging=member.is_charging,
                     wifi_connected=member.wifi_connected,
                     wifi_ssid=member.wifi_ssid,
+                    location_frequency=member.location_frequency,
+                    config_issues=member.config_issues,
                 )
             )
     return results
@@ -114,6 +132,29 @@ def ring_device(
         title="Lokate",
         body=f"{user.display_name} quiere localizar tu dispositivo",
         data={"type": "ring"},
+    )
+
+
+@router.post("/stop-ring/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def stop_ring_device(
+    user_id: str,
+    user: models.User = Depends(get_current_user_with_group),
+    db: Session = Depends(get_db),
+):
+    """Push silencioso que para la alarma que /ring dejó sonando en ese dispositivo — lo manda
+    quien pulsa "Detener" en el diálogo de "hacer sonar"."""
+    target = db.query(models.User).filter(
+        models.User.id == user_id, models.User.group_id == user.group_id
+    ).first()
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Member not found in your group")
+
+    push.send_to_user(
+        db,
+        user_id=target.id,
+        title="Lokate",
+        body="Parar alarma",
+        data={"type": "stop_ring"},
     )
 
 

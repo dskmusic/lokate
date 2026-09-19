@@ -9,6 +9,7 @@ import com.dskmusic.lokate.di.ServiceLocator
 import com.dskmusic.lokate.push.NotificationHelper
 import com.dskmusic.lokate.util.Constants
 import com.dskmusic.lokate.util.DeviceStatusUtils
+import com.dskmusic.lokate.util.LocationFrequency
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -40,7 +41,8 @@ class LocationForegroundService : Service() {
             serviceScope.launch {
                 runCatching {
                     val status = DeviceStatusUtils.read(applicationContext)
-                    locator.locationRepository.ping(location.latitude, location.longitude, location.accuracy, status)
+                    val frequency = locator.settings.locationFrequency.first()
+                    locator.locationRepository.ping(location.latitude, location.longitude, location.accuracy, status, frequency)
                 }
             }
         }
@@ -62,6 +64,15 @@ class LocationForegroundService : Service() {
         )
         serviceScope.launch {
             val frequency = locator.settings.locationFrequency.first()
+            // El guardia va aquí y no en LocationServiceController.ensureStarted porque a este
+            // servicio lo arrancan cinco sitios distintos (MainActivity, el NavHost, el
+            // onboarding, el BootReceiver y el worker de respaldo cada 15 min): comprobarlo en el
+            // propio servicio los cubre todos. La notificación asoma unos milisegundos antes de
+            // pararse — startForeground tiene que salir ya, antes de leer el DataStore.
+            if (frequency == LocationFrequency.DISABLED) {
+                stopSelf()
+                return@launch
+            }
             startLocationUpdates(frequency.intervalMs)
         }
         return START_STICKY

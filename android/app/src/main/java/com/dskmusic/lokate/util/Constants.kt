@@ -25,6 +25,20 @@ object Constants {
      * cuando es mucho más simple y ya evita que se quede desactualizada indefinidamente. */
     const val MAP_CACHE_MAX_AGE_DAYS = 14L
 
+    /** Zoom inicial del mapa por defecto. 19 es el último nivel con teselas reales (tanto en el
+     * mapa estándar de OSM como en el satélite de Esri): a partir de 20 osmdroid ya no descarga
+     * nada, se inventa la tesela escalando la de 19 (MapTileApproximater), que sale borrosa y
+     * tarda más en aparecer. Por eso el defecto se queda por debajo de ese límite. */
+    const val MAP_DEFAULT_ZOOM = 18
+
+    /** Tope del ajuste de zoom inicial. Por encima de 19 son teselas aproximadas (ver
+     * [MAP_DEFAULT_ZOOM]), pero se deja elegir hasta 24 para quien quiera abrir muy cerca. */
+    const val MAP_MAX_ZOOM = 24
+
+    /** Zoom al que se salta tras elegir un resultado del buscador: suficiente para ver la calle
+     * sin pasarse del último nivel con teselas reales (ver [MAP_DEFAULT_ZOOM]). */
+    const val MAP_SEARCH_RESULT_ZOOM = 17.0
+
     /** Valor guardado en [com.dskmusic.lokate.data.prefs.SettingsDataStore.ringSoundUri] cuando el
      * usuario elige explícitamente "Alarma" — distinto de `null` (nunca tocado), que ahora usa el
      * sonido de notificación por defecto en vez de alarma. Sin este distintivo, elegir "Alarma" y
@@ -36,6 +50,10 @@ object Constants {
     const val EXTRA_EMERGENCY_TEXT = "extra_emergency_text"
     const val EXTRA_EMERGENCY_ATTACHMENT_URL = "extra_emergency_attachment_url"
     const val EXTRA_EMERGENCY_ATTACHMENT_KIND = "extra_emergency_attachment_kind"
+
+    /** Id de la notificación concreta que lanzó el intent — cada mensaje de emergencia tiene
+     * el suyo, para que descartar uno no borre los demás. */
+    const val EXTRA_NOTIFICATION_ID = "extra_notification_id"
 }
 
 enum class LocationFrequency(val intervalMs: Long) {
@@ -45,6 +63,10 @@ enum class LocationFrequency(val intervalMs: Long) {
     REAL_TIME(3_000L),
     BALANCED(120_000L),
     BATTERY_SAVER(600_000L),
+
+    /** No se envía nada: el servicio en primer plano se para solo al leer este valor y las
+     * peticiones de ubicación a distancia tampoco responden. El intervalo no se usa. */
+    DISABLED(0L),
 }
 
 enum class ThemeMode {

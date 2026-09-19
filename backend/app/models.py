@@ -44,6 +44,24 @@ class User(Base):
     is_charging = Column(Boolean, nullable=True)
     wifi_connected = Column(Boolean, nullable=True)
     wifi_ssid = Column(String, nullable=True)
+    # Frecuencia de actualización que ese usuario tiene elegida en su app (REAL_TIME /
+    # BALANCED / BATTERY_SAVER / DISABLED): la manda en cada ping y en /auth/device, y el resto
+    # del grupo la ve en su ficha. Con DISABLED no llegan pings, por eso importa que /auth/device
+    # también la registre: es la única vía por la que el grupo se entera de que está apagada.
+    location_frequency = Column(String, nullable=True)
+    # Lista separada por comas de lo que ese usuario tiene SIN configurar en su móvil
+    # (permisos denegados, batería sin excluir, GPS apagado...). Cadena vacía = todo correcto;
+    # NULL = su app es anterior a esta versión y no lo manda. Viaja por el mismo camino que
+    # location_frequency (ping + /auth/device) y el grupo la ve en su ficha.
+    config_issues = Column(String, nullable=True)
+    # Id del canal de notificaciones de zona en SU móvil. El push de zona lo lleva como
+    # android_channel_id para que el aviso lo pinte el SISTEMA aunque la app esté muerta: un
+    # push "solo data" obliga a arrancar el proceso, y en un móvil con el envío de ubicación
+    # desactivado no hay servicio en primer plano que lo mantenga vivo (de ahí los avisos que
+    # llegaban con minutos de retraso). El id cambia cuando el usuario cambia el sonido o la
+    # vibración —un canal es inmutable—, por eso lo manda el móvil en cada /auth/device.
+    # NULL o vacío = no quiere avisos de zona, o su app es anterior: se le manda "solo data".
+    zone_channel_id = Column(String, nullable=True)
     is_admin = Column(Boolean, nullable=False, default=False)
     created_at = Column(DateTime, default=utcnow)
 

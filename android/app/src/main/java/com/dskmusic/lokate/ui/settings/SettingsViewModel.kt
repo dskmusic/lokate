@@ -10,6 +10,9 @@ import com.dskmusic.lokate.data.repository.LocationRepository
 import com.dskmusic.lokate.data.repository.ZoneRepository
 import com.dskmusic.lokate.data.prefs.SettingsDataStore
 import com.dskmusic.lokate.data.remote.ServerConfig
+import com.dskmusic.lokate.data.remote.dto.GroupMemberDto
+import com.dskmusic.lokate.ui.map.MapCameraMemory
+import com.dskmusic.lokate.util.Constants
 import com.dskmusic.lokate.util.FileUtils
 import com.dskmusic.lokate.util.LocationFrequency
 import com.dskmusic.lokate.util.MapTileCache
@@ -34,6 +37,9 @@ class SettingsViewModel(
 
     private val _testNotificationSent = MutableStateFlow(false)
     val testNotificationSent: StateFlow<Boolean> = _testNotificationSent
+
+    private val _groupMembers = MutableStateFlow<List<GroupMemberDto>>(emptyList())
+    val groupMembers: StateFlow<List<GroupMemberDto>> = _groupMembers
 
     private val _mapCacheClearedBytes = MutableStateFlow<Long?>(null)
     val mapCacheClearedBytes: StateFlow<Long?> = _mapCacheClearedBytes
@@ -65,17 +71,41 @@ class SettingsViewModel(
         _mapCacheClearedBytes.value = freedBytes
     }
 
-    fun sendTestNotification() = viewModelScope.launch {
-        runCatching { groupRepository.sendTestNotification() }
+    fun loadGroupMembers() = viewModelScope.launch {
+        runCatching { groupRepository.members() }.onSuccess { _groupMembers.value = it }
+    }
+
+    /** userIds null = a todo el grupo (la pantalla pide confirmación antes de eso). */
+    fun sendTestNotification(userIds: List<String>?) = viewModelScope.launch {
+        runCatching { groupRepository.sendTestNotification(userIds) }
             .onSuccess { _testNotificationSent.value = true }
     }
 
-    fun setRingSoundUri(uri: String?) = viewModelScope.launch { settings.setRingSoundUri(uri) }
+    fun setRingSoundUri(uri: String?) = viewModelScope.launch {
+        settings.setRingSoundUri(uri)
+        syncZoneChannel()
+    }
 
-    fun setVibrationPattern(pattern: com.dskmusic.lokate.util.VibrationPattern) =
-        viewModelScope.launch { settings.setVibrationPattern(pattern) }
+    fun setVibrationPattern(pattern: com.dskmusic.lokate.util.VibrationPattern) = viewModelScope.launch {
+        settings.setVibrationPattern(pattern)
+        syncZoneChannel()
+    }
+
+    /** El sonido y la vibración de los avisos de zona los pone el canal de notificación, y su
+     * id cambia al cambiarlos (ver NotificationHelper.ensureZoneChannel): hay que recrearlo y
+     * volver a registrarlo en el servidor, que es quien lo manda dentro del push. */
+    private suspend fun syncZoneChannel() {
+        runCatching { authRepository.registerCurrentDeviceToken() }
+    }
 
     fun setMapInitialZoom(zoom: Int) = viewModelScope.launch { settings.setMapInitialZoom(zoom) }
+
+    /** Vuelve al zoom por defecto y además olvida la posición/zoom que el mapa tenía
+     * recordados, que si no seguirían mandando sobre el ajuste al volver al mapa. */
+    fun resetMapInitialZoom() = viewModelScope.launch {
+        settings.setMapInitialZoom(Constants.MAP_DEFAULT_ZOOM)
+        MapCameraMemory.resetView()
+    }
 
     fun setAppLanguage(language: String) = viewModelScope.launch { settings.setAppLanguage(language) }
 
@@ -93,8 +123,16 @@ class SettingsViewModel(
 
     fun setThemeMode(mode: ThemeMode) = viewModelScope.launch { settings.setThemeMode(mode) }
     fun setAccentColor(argb: Int) = viewModelScope.launch { settings.setAccentColor(argb) }
-    fun setLocationFrequency(freq: LocationFrequency) = viewModelScope.launch { settings.setLocationFrequency(freq) }
-    fun setNotifyZone(enabled: Boolean) = viewModelScope.launch { settings.setNotifyZoneEnabled(enabled) }
+    fun setLocationFrequency(freq: LocationFrequency) = viewModelScope.launch {
+        settings.setLocationFrequency(freq)
+        runCatching { authRepository.registerCurrentDeviceToken() }
+    }
+    fun setNotifyZone(enabled: Boolean) = viewModelScope.launch {
+        settings.setNotifyZoneEnabled(enabled)
+        // Apagarlos aquí deja de registrar canal: el servidor vuelve a mandar "solo data", que
+        // esta app filtra. Si no, el sistema los seguiría pintando por su cuenta.
+        syncZoneChannel()
+    }
     fun setNotifySystem(enabled: Boolean) = viewModelScope.launch { settings.setNotifySystemEnabled(enabled) }
 
     /** null/blank restaura la URL por defecto de compilación. Se aplica de inmediato, sin reiniciar la app. */

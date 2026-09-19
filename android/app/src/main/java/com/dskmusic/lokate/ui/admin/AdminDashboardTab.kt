@@ -6,6 +6,8 @@ import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
+import androidx.compose.foundation.layout.Spacer
+import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
@@ -16,8 +18,10 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.FolderOpen
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material3.Card
+import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -26,6 +30,10 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableStateOf
+import androidx.compose.runtime.remember
+import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
@@ -40,7 +48,8 @@ import com.dskmusic.lokate.data.remote.dto.AdminDiskUsageDto
 import com.dskmusic.lokate.data.remote.dto.AdminRecentActivityItemDto
 
 @Composable
-internal fun AdminDashboardTab(state: AdminUiState, onRefresh: () -> Unit) {
+internal fun AdminDashboardTab(state: AdminUiState, viewModel: AdminViewModel, onRefresh: () -> Unit) {
+    var showStorageManager by remember { mutableStateOf(false) }
     val dashboard = state.dashboard
     if (state.loadingDashboard && dashboard == null) {
         Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
@@ -91,6 +100,16 @@ internal fun AdminDashboardTab(state: AdminUiState, onRefresh: () -> Unit) {
                 )
             }
             item { StorageBreakdown(usage) }
+            item {
+                OutlinedButton(
+                    onClick = { showStorageManager = true },
+                    modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                ) {
+                    Icon(Icons.Filled.FolderOpen, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.admin_storage_manage))
+                }
+            }
         }
         item {
             Text(
@@ -117,6 +136,10 @@ internal fun AdminDashboardTab(state: AdminUiState, onRefresh: () -> Unit) {
                 HorizontalDivider()
             }
         }
+    }
+
+    if (showStorageManager) {
+        AdminStorageManager(state, viewModel, onClose = { showStorageManager = false })
     }
 }
 

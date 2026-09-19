@@ -14,7 +14,7 @@ from fastapi import APIRouter, Depends, HTTPException, Path, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from .. import backups, models, push, schemas
+from .. import backups, geofence, managed_files, models, push, schemas
 from ..auth import get_current_admin_user, hash_password
 from ..database import get_db
 from ..disk_usage import compute_disk_usage
@@ -30,6 +30,50 @@ _BACKUP_ID = Path(pattern=r"^[0-9a-f]{32}$")
 @router.get("/disk-usage", response_model=schemas.AdminDiskUsageResponse)
 def disk_usage(admin: models.User = Depends(get_current_admin_user)):
     return compute_disk_usage()
+
+
+# ---- Explorador de archivos borrables ----
+# La lista blanca de carpetas y el guardia de rutas viven en app/managed_files.py, compartidos
+# con el panel web.
+def _check_folder(folder: str) -> None:
+    if folder not in managed_files.MANAGED_DIRS:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Unknown folder")
+
+
+@router.get("/files/{folder}", response_model=list[schemas.AdminFileResponse])
+def list_files(
+    folder: str,
+    admin: models.User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    _check_folder(folder)
+    return managed_files.list_files(db, folder)
+
+
+@router.delete("/files/{folder}", response_model=schemas.AdminDeleteAllResponse)
+def delete_all_files(
+    folder: str,
+    admin: models.User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    _check_folder(folder)
+    return schemas.AdminDeleteAllResponse(deleted=managed_files.delete_folder(db, folder))
+
+
+@router.delete("/files/{folder}/{name}", status_code=status.HTTP_204_NO_CONTENT)
+def delete_file(
+    folder: str,
+    name: str,
+    admin: models.User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    _check_folder(folder)
+    try:
+        deleted = managed_files.delete_file(db, folder, name)
+    except managed_files.InvalidName:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Invalid file name")
+    if not deleted:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "File not found")
 
 
 # ---- Copias de seguridad ----
@@ -352,4 +396,56 @@ def admin_history(
         )
         .order_by(models.LocationPing.timestamp.asc())
         .all()
+    )
+
+
+# ---- Modo prueba: arrastrar a un miembro por el mapa para disparar avisos de zona de verdad ----
+@router.post("/simulate/stop", status_code=status.HTTP_204_NO_CONTENT)
+def stop_simulation(
+    admin: models.User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Salir del modo prueba: todo el grupo vuelve a su posición real y su estado de zonas se
+    recalcula a partir de ella en silencio (deshacer un arrastre no debe avisar a nadie)."""
+    if admin.group_id is None:
+        return
+    member_ids = [
+        u.id for u in db.query(models.User).filter(models.User.group_id == admin.group_id).all()
+    ]
+    geofence.stop_simulation(member_ids)
+    geofence.resync_zone_states(db, member_ids)
+
+
+@router.post("/simulate/{user_id}", response_model=schemas.AdminSimulateResponse)
+def simulate_position(
+    user_id: str,
+    body: schemas.AdminSimulateRequest,
+    admin: models.User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Evalúa las zonas como si ese miembro estuviera en (lat, lng), sin guardar la posición:
+    no deja rastro en el historial. A partir de aquí sus pings reales dejan de evaluar zonas
+    hasta salir del modo (ver geofence.SIMULATION_TTL_S)."""
+    target = db.query(models.User).filter(
+        models.User.id == user_id, models.User.group_id == admin.group_id
+    ).first()
+    if not target or admin.group_id is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Member not found in your group")
+    if target.id == admin.id:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "No puedes simular tu propia posición")
+
+    # Solo destinatarios del propio grupo: la lista viene del móvil del admin y podría traer
+    # ids de alguien que ya no está.
+    allowed = {
+        u.id for u in db.query(models.User).filter(models.User.group_id == admin.group_id).all()
+    }
+    recipients = [uid for uid in body.recipient_ids if uid in allowed]
+
+    geofence.start_simulation(target.id)
+    report = geofence.check_zone_transitions(
+        db, target, body.lat, body.lng, recipients_override=recipients
+    )
+    return schemas.AdminSimulateResponse(
+        transitions=[body_text for body_text, _ in report],
+        notified=sum(count for _, count in report),
     )

@@ -89,6 +89,19 @@ data class AdminDiskUsageDto(
     val total_bytes: Long,
 )
 
+/** Un archivo borrable de /data (avatar o adjunto). [kind]: image/video/audio/other — decide
+ * cómo lo previsualiza la app. [in_use]: solo los avatares pueden estar en uso. */
+data class AdminFileDto(
+    val name: String,
+    val size_bytes: Long,
+    val modified: String,
+    val url: String,
+    val kind: String,
+    val in_use: Boolean,
+)
+
+data class AdminDeleteAllDto(val deleted: Int)
+
 data class AdminBackupDto(
     val id: String,
     val description: String,
@@ -97,3 +110,17 @@ data class AdminBackupDto(
 )
 
 data class AdminBackupCreateRequestDto(val description: String)
+
+/** Modo prueba: posición falsa a la que el admin arrastra a un miembro, y a quién avisar si
+ * ese arrastre cruza el borde de una zona (ver admin_api.simulate_position). */
+data class AdminSimulateRequestDto(
+    val lat: Double,
+    val lng: Double,
+    val recipient_ids: List<String>,
+)
+
+data class AdminSimulateDto(
+    /** Textos de los avisos disparados; vacío = el arrastre no ha cruzado ninguna zona. */
+    val transitions: List<String>,
+    val notified: Int,
+)

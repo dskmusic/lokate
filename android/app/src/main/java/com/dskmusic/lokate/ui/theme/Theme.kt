@@ -25,7 +25,18 @@ import com.dskmusic.lokate.util.ThemeMode
 private fun onColorFor(background: Color): Color =
     if (background.luminance() > 0.45f) Color(0xFF1A1A1A) else Color.White
 
-private fun buildColorScheme(accent: Color, dark: Boolean, amoled: Boolean = false): androidx.compose.material3.ColorScheme {
+/** Un acento muy oscuro (el gris pizarra de la paleta, o cualquiera que se elija a mano en el
+ * selector) se pierde sobre el fondo del modo oscuro y AMOLED, y uno casi blanco desaparece en
+ * el modo claro: se aclara u oscurece lo justo para que siga distinguiéndose del fondo. AMOLED
+ * es el mismo caso que oscuro, solo cambia cuánto de negro es el fondo. */
+private fun accentFor(accent: Color, dark: Boolean): Color = when {
+    dark && accent.luminance() < 0.12f -> lerp(accent, Color.White, 0.45f)
+    !dark && accent.luminance() > 0.85f -> lerp(accent, Color.Black, 0.35f)
+    else -> accent
+}
+
+private fun buildColorScheme(accentColor: Color, dark: Boolean, amoled: Boolean = false): androidx.compose.material3.ColorScheme {
+    val accent = accentFor(accentColor, dark)
     val container = if (dark) lerp(accent, Color.Black, 0.55f) else lerp(accent, Color.White, 0.78f)
     val onContainer = if (dark) lerp(accent, Color.White, 0.75f) else lerp(accent, Color.Black, 0.45f)
 

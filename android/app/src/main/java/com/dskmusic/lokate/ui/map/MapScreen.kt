@@ -1,22 +1,25 @@
 package com.dskmusic.lokate.ui.map
 
-import android.Manifest
-import android.annotation.SuppressLint
 import android.app.Activity
 import android.content.Context
-import android.content.pm.PackageManager
+import android.widget.Toast
 import androidx.activity.compose.BackHandler
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.awaitEachGesture
+import androidx.compose.foundation.gestures.awaitFirstDown
+import androidx.compose.foundation.gestures.waitForUpOrCancellation
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.GpsFixed
@@ -28,6 +31,7 @@ import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MyLocation
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Place
@@ -36,6 +40,7 @@ import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
@@ -61,11 +66,13 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.hapticfeedback.HapticFeedbackType
+import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalHapticFeedback
 import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
-import androidx.core.content.ContextCompat
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
@@ -74,16 +81,24 @@ import com.dskmusic.lokate.R
 import com.dskmusic.lokate.data.remote.absoluteAvatarUrl
 import com.dskmusic.lokate.data.remote.absoluteMediaUrl
 import com.dskmusic.lokate.di.ServiceLocator
+import com.dskmusic.lokate.ui.common.PlaceSearchField
+import com.dskmusic.lokate.ui.common.lastKnownLocation
 import com.dskmusic.lokate.ui.help.HelpDialog
 import com.dskmusic.lokate.util.AppUpdater
+import com.dskmusic.lokate.util.Constants
 import com.dskmusic.lokate.util.LocationSharing
 import com.dskmusic.lokate.util.MapStyle
 import com.dskmusic.lokate.util.UpdateCheckState
-import com.google.android.gms.location.LocationServices
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.withTimeoutOrNull
 import kotlinx.coroutines.launch
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
+
+/** Pulsación larga sobre el candado para entrar en el modo prueba. Deliberadamente muy por
+ * encima del medio segundo de una pulsación larga normal: es un modo de pruebas, no algo que
+ * se deba poder activar sin querer. */
+private const val TEST_MODE_LONG_PRESS_MS = 1_500L
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -108,7 +123,7 @@ fun MapScreen(
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val zones by viewModel.zones.collectAsStateWithLifecycle(initialValue = emptyList())
     val avatarBitmaps = rememberAvatarBitmaps(state.members)
-    val initialZoom by locator.settings.mapInitialZoom.collectAsStateWithLifecycle(initialValue = 20)
+    val initialZoom by locator.settings.mapInitialZoom.collectAsStateWithLifecycle(initialValue = Constants.MAP_DEFAULT_ZOOM)
     val mapStyle by locator.settings.mapStyle.collectAsStateWithLifecycle(initialValue = MapStyle.STANDARD)
     val scope = rememberCoroutineScope()
 
@@ -128,6 +143,31 @@ fun MapScreen(
         val map = mapViewRef ?: return@LaunchedEffect
         val followed = state.members.find { it.user_id == uid } ?: return@LaunchedEffect
         map.controller.animateTo(GeoPoint(followed.lat, followed.lng))
+    }
+
+    // Modo prueba (solo admins): se guarda fuera de la composición porque cambiar de pestaña
+    // destruye esta pantalla y su ViewModel - si no, el modo se apagaría en la app pero el
+    // servidor seguiría con las posiciones simuladas hasta que caducaran solas.
+    var testMode by remember { mutableStateOf(MapCameraMemory.testMode) }
+    var showRecipientsMenu by remember { mutableStateOf(false) }
+    val testRecipients by locator.settings.testModeRecipients.collectAsStateWithLifecycle(initialValue = emptySet())
+    val haptic = LocalHapticFeedback.current
+    LaunchedEffect(Unit) { if (testMode) viewModel.setTestMode(true) }
+
+    fun enterTestMode() {
+        testMode = true
+        MapCameraMemory.testMode = true
+        viewModel.setTestMode(true)
+        Toast.makeText(context, R.string.test_mode_hint, Toast.LENGTH_LONG).show()
+    }
+
+    fun exitTestMode() {
+        testMode = false
+        MapCameraMemory.testMode = false
+        // Primero el servidor (devuelve a cada uno su estado de zonas real, en silencio) y
+        // luego el sondeo, que vuelve a traer las posiciones de verdad.
+        scope.launch { runCatching { locator.adminRepository.stopSimulation() } }
+        viewModel.setTestMode(false)
     }
 
     var showUpdateDialog by remember { mutableStateOf(false) }
@@ -167,12 +207,23 @@ fun MapScreen(
     // sino preguntar primero (en el resto de pantallas, atrás simplemente deshace la
     // navegación por defecto de Jetpack Navigation, sin necesitar nada extra).
     var showExitConfirm by remember { mutableStateOf(false) }
-    BackHandler { showExitConfirm = true }
+    BackHandler { if (testMode) exitTestMode() else showExitConfirm = true }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.app_name)) },
+                title = {
+                    Column {
+                        Text(stringResource(R.string.app_name))
+                        if (testMode) {
+                            Text(
+                                stringResource(R.string.test_mode_badge),
+                                style = MaterialTheme.typography.labelMedium,
+                                color = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    }
+                },
                 navigationIcon = {
                     IconButton(onClick = onOpenGroup) {
                         Icon(Icons.Filled.Group, contentDescription = stringResource(R.string.group_title))
@@ -213,8 +264,67 @@ fun MapScreen(
                     IconButton(onClick = { showHelp = true }) {
                         Icon(Icons.Filled.HelpOutline, contentDescription = stringResource(R.string.help_title))
                     }
-                    if (isAdmin) {
-                        IconButton(onClick = onOpenAdmin) {
+                    if (isAdmin && testMode) {
+                        Box {
+                            IconButton(onClick = { showRecipientsMenu = true }) {
+                                Icon(
+                                    Icons.Filled.NotificationsActive,
+                                    contentDescription = stringResource(R.string.test_mode_recipients),
+                                )
+                            }
+                            // A quién le llegan los avisos de la prueba. Se elige a mano (y se
+                            // recuerda) en vez de respetar quién los tenga activados en cada
+                            // zona: probar es querer verlo sonar en un móvil concreto.
+                            DropdownMenu(expanded = showRecipientsMenu, onDismissRequest = { showRecipientsMenu = false }) {
+                                state.members.forEach { member ->
+                                    val checked = member.user_id in testRecipients
+                                    DropdownMenuItem(
+                                        text = { Text(member.display_name) },
+                                        leadingIcon = { Checkbox(checked = checked, onCheckedChange = null) },
+                                        onClick = {
+                                            val next = if (checked) testRecipients - member.user_id
+                                            else testRecipients + member.user_id
+                                            scope.launch { locator.settings.setTestModeRecipients(next) }
+                                        },
+                                    )
+                                }
+                            }
+                        }
+                        IconButton(onClick = { exitTestMode() }) {
+                            Icon(
+                                Icons.Filled.Close,
+                                contentDescription = stringResource(R.string.test_mode_exit),
+                                tint = MaterialTheme.colorScheme.error,
+                            )
+                        }
+                    } else if (isAdmin) {
+                        // Caja con gesto propio en vez de IconButton: hace falta distinguir el
+                        // toque (abrir administración) de la pulsación MUY larga (modo prueba),
+                        // y el umbral de pulsación larga de Compose es de medio segundo. Se
+                        // pierde el efecto de onda al tocar, de ahí la vibración al entrar.
+                        Box(
+                            modifier = Modifier
+                                .size(48.dp)
+                                .pointerInput(Unit) {
+                                    awaitEachGesture {
+                                        awaitFirstDown(requireUnconsumed = false)
+                                        val start = System.currentTimeMillis()
+                                        val up = withTimeoutOrNull(TEST_MODE_LONG_PRESS_MS) { waitForUpOrCancellation() }
+                                        when {
+                                            up != null -> onOpenAdmin()
+                                            // up == null también puede ser un gesto cancelado
+                                            // antes de tiempo (otro elemento se queda el dedo):
+                                            // solo cuenta si de verdad ha pasado el tiempo.
+                                            System.currentTimeMillis() - start >= TEST_MODE_LONG_PRESS_MS -> {
+                                                haptic.performHapticFeedback(HapticFeedbackType.LongPress)
+                                                enterTestMode()
+                                                waitForUpOrCancellation()
+                                            }
+                                        }
+                                    }
+                                },
+                            contentAlignment = Alignment.Center,
+                        ) {
                             Icon(Icons.Filled.Lock, contentDescription = stringResource(R.string.admin_title))
                         }
                     }
@@ -302,6 +412,34 @@ fun MapScreen(
                 mapStyle = mapStyle,
                 rememberCamera = true,
                 onMemberClick = { member -> onOpenMember(member.user_id) },
+                // Solo los demás: arrastrarse a uno mismo no probaría nada (los avisos de zona
+                // nunca se mandan a quien se ha movido).
+                draggableUserIds = if (testMode) {
+                    state.members.map { it.user_id }.filter { it != locator.session.userId }.toSet()
+                } else {
+                    emptySet()
+                },
+                onMemberDragEnd = { member, point ->
+                    viewModel.moveMemberLocally(member.user_id, point.latitude, point.longitude)
+                    scope.launch {
+                        runCatching {
+                            locator.adminRepository.simulatePosition(
+                                member.user_id, point.latitude, point.longitude, testRecipients.toList(),
+                            )
+                        }.onSuccess { result ->
+                            val message = when {
+                                result.transitions.isEmpty() -> context.getString(R.string.test_mode_no_transition)
+                                testRecipients.isEmpty() -> context.getString(R.string.test_mode_no_recipients)
+                                else -> context.getString(
+                                    R.string.test_mode_sent, result.notified, result.transitions.joinToString(" · "),
+                                )
+                            }
+                            Toast.makeText(context, message, Toast.LENGTH_LONG).show()
+                        }.onFailure {
+                            Toast.makeText(context, R.string.test_mode_error, Toast.LENGTH_LONG).show()
+                        }
+                    }
+                },
                 onMapReady = { view ->
                     mapViewRef = view
                     // Al abrir la app el mapa debe mostrar ya la posición actual, sin tener que
@@ -310,12 +448,33 @@ fun MapScreen(
                     // cambiar de pestaña, no de abrir la app), OsmMapView ya la restauró solo y
                     // no hay que recentrar sobre la ubicación actual por encima.
                     if (MapCameraMemory.center == null) {
-                        locateMe(context) { point -> view.controller.setCenter(point) }
+                        lastKnownLocation(context) { view.controller.setCenter(GeoPoint(it.latitude, it.longitude)) }
                     }
                 },
             )
             if (state.loading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
+            }
+
+            // Buscador flotante sobre el mapa. Al elegir un sitio hay que dejar de seguir a
+            // nadie: si no, la siguiente ubicación del seguido recentraría el mapa y daría la
+            // sensación de que la búsqueda no ha funcionado.
+            PlaceSearchField(
+                nominatim = locator.nominatim,
+                label = stringResource(R.string.place_search_label),
+                modifier = Modifier.align(Alignment.TopCenter).padding(8.dp).fillMaxWidth(),
+            ) { place ->
+                followUserId = null
+                MapCameraMemory.followUserId = null
+                // setZoom + setCenter dentro de map.post, sin animateTo: encadenar zoom y
+                // animación en osmdroid cuelga el mapa (mismo problema que ya había al
+                // posicionar la zona nueva, ver ZoneEditScreen).
+                mapViewRef?.let { map ->
+                    map.post {
+                        map.controller.setZoom(Constants.MAP_SEARCH_RESULT_ZOOM)
+                        map.controller.setCenter(GeoPoint(place.lat, place.lng))
+                    }
+                }
             }
 
             // Botón "dónde estoy" + seguir en vivo (a quien se elija), a la izquierda, para
@@ -379,7 +538,9 @@ fun MapScreen(
                     }
                 }
                 FloatingActionButton(
-                    onClick = { locateMe(context) { point -> mapViewRef?.controller?.animateTo(point) } },
+                    onClick = {
+                        lastKnownLocation(context) { mapViewRef?.controller?.animateTo(GeoPoint(it.latitude, it.longitude)) }
+                    },
                 ) {
                     Icon(Icons.Filled.MyLocation, contentDescription = stringResource(R.string.locate_me))
                 }
@@ -464,25 +625,6 @@ fun MapScreen(
     }
 }
 
-@SuppressLint("MissingPermission")
-private fun locateMe(context: Context, onFound: (GeoPoint) -> Unit) {
-    if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-        return
-    }
-    LocationServices.getFusedLocationProviderClient(context).lastLocation
-        .addOnSuccessListener { location ->
-            if (location != null) onFound(GeoPoint(location.latitude, location.longitude))
-        }
-}
-
-@SuppressLint("MissingPermission")
-private fun shareCurrentLocation(context: Context) {
-    if (ContextCompat.checkSelfPermission(context, Manifest.permission.ACCESS_FINE_LOCATION) != PackageManager.PERMISSION_GRANTED) {
-        return
-    }
-    LocationServices.getFusedLocationProviderClient(context).lastLocation.addOnSuccessListener { location ->
-        if (location != null) {
-            context.startActivity(LocationSharing.shareIntent(location.latitude, location.longitude))
-        }
-    }
+private fun shareCurrentLocation(context: Context) = lastKnownLocation(context) { location ->
+    context.startActivity(LocationSharing.shareIntent(location.latitude, location.longitude))
 }

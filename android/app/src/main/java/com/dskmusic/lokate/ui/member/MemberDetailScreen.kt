@@ -20,10 +20,15 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.BatteryFull
+import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsActive
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Refresh
+import androidx.compose.material.icons.filled.Schedule
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiOff
@@ -33,6 +38,7 @@ import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
@@ -41,6 +47,7 @@ import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
@@ -56,8 +63,13 @@ import coil.compose.AsyncImage
 import com.dskmusic.lokate.R
 import com.dskmusic.lokate.data.remote.absoluteAvatarUrl
 import com.dskmusic.lokate.di.ServiceLocator
+import com.dskmusic.lokate.ui.common.rememberMyLocation
+import com.dskmusic.lokate.util.ConfigCheck
 import com.dskmusic.lokate.util.FileUtils
+import com.dskmusic.lokate.util.LocationFrequency
 import com.dskmusic.lokate.util.LocationSharing
+import com.dskmusic.lokate.util.distanceMeters
+import com.dskmusic.lokate.util.formatDistance
 import com.dskmusic.lokate.util.formatTimestamp
 
 private enum class AttachmentKind { PHOTO, VIDEO, FILE }
@@ -73,10 +85,18 @@ fun MemberDetailScreen(
 ) {
     val context = LocalContext.current
     val viewModel = remember(userId) {
-        MemberDetailViewModel(locator.locationRepository, locator.messageRepository, userId)
+        MemberDetailViewModel(locator.locationRepository, locator.messageRepository, locator.groupRepository, userId)
     }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showRingConfirm by remember { mutableStateOf(false) }
+    var showStopRingConfirm by remember { mutableStateOf(false) }
+    var showTestNotificationConfirm by remember { mutableStateOf(false) }
+    // El endpoint de notificación de prueba es solo para admins (devuelve 403 al resto), así que
+    // el botón solo se muestra si lo eres — mismo criterio que la sección admin de Ajustes.
+    var isAdmin by remember { mutableStateOf(false) }
+    LaunchedEffect(Unit) {
+        isAdmin = runCatching { locator.authRepository.me() }.getOrNull()?.is_admin == true
+    }
 
     var showEmergencyCompose by remember { mutableStateOf(false) }
     var showEmergencyConfirm by remember { mutableStateOf(false) }
@@ -84,6 +104,8 @@ fun MemberDetailScreen(
     var attachmentUri by remember { mutableStateOf<Uri?>(null) }
     var attachmentMime by remember { mutableStateOf<String?>(null) }
     var attachmentKind by remember { mutableStateOf<AttachmentKind?>(null) }
+
+    val myLocation = rememberMyLocation()
 
     fun resetEmergencyCompose() {
         emergencyText = ""
@@ -183,6 +205,17 @@ fun MemberDetailScreen(
             }
             Spacer(Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Place, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    myLocation?.let { me ->
+                        val meters = distanceMeters(me.latitude, me.longitude, location.lat, location.lng)
+                        stringResource(R.string.distance_from_you, formatDistance(meters))
+                    } ?: stringResource(R.string.distance_unknown),
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
                 Icon(if (location.wifi_connected == true) Icons.Filled.Wifi else Icons.Filled.WifiOff, contentDescription = null)
                 Spacer(Modifier.width(8.dp))
                 Text(
@@ -194,18 +227,30 @@ fun MemberDetailScreen(
                     },
                 )
             }
+            Spacer(Modifier.height(12.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Icon(Icons.Filled.Schedule, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(
+                    stringResource(
+                        R.string.update_frequency_label,
+                        stringResource(
+                            when (location.location_frequency) {
+                                LocationFrequency.REAL_TIME.name -> R.string.frequency_short_high
+                                LocationFrequency.BALANCED.name -> R.string.frequency_short_balanced
+                                LocationFrequency.BATTERY_SAVER.name -> R.string.frequency_short_battery_saver
+                                LocationFrequency.DISABLED.name -> R.string.frequency_short_disabled
+                                else -> R.string.frequency_short_unknown
+                            },
+                        ),
+                    ),
+                )
+            }
+            Spacer(Modifier.height(12.dp))
+            ConfigStatusRow(location.config_issues)
 
             Spacer(Modifier.height(32.dp))
 
-            OutlinedButton(
-                onClick = { LocationSharing.openInGoogleMaps(context, location.lat, location.lng, location.display_name) },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(Icons.Filled.Map, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.open_in_google_maps))
-            }
-            Spacer(Modifier.height(12.dp))
             OutlinedButton(
                 onClick = { onOpenHistory(location.user_id, location.display_name) },
                 modifier = Modifier.fillMaxWidth(),
@@ -236,10 +281,36 @@ fun MemberDetailScreen(
                 Text(stringResource(R.string.emergency_message_button))
             }
 
-            if (state.ringSent) {
+            if (isAdmin) {
                 Spacer(Modifier.height(12.dp))
-                Text(stringResource(R.string.ring_sent_confirmation), color = MaterialTheme.colorScheme.primary)
+                OutlinedButton(
+                    onClick = { showTestNotificationConfirm = true },
+                    modifier = Modifier.fillMaxWidth(),
+                    enabled = !state.sendingTestNotification,
+                ) {
+                    Icon(Icons.Filled.Notifications, contentDescription = null)
+                    Spacer(Modifier.width(8.dp))
+                    Text(stringResource(R.string.settings_send_test_notification))
+                }
+                if (state.testNotificationSent) {
+                    Spacer(Modifier.height(6.dp))
+                    Text(
+                        stringResource(R.string.settings_test_notification_sent),
+                        color = MaterialTheme.colorScheme.primary,
+                    )
+                }
             }
+
+            Spacer(Modifier.height(12.dp))
+            OutlinedButton(
+                onClick = { LocationSharing.openInGoogleMaps(context, location.lat, location.lng, location.display_name) },
+                modifier = Modifier.fillMaxWidth(),
+            ) {
+                Icon(Icons.Filled.Map, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.open_in_google_maps))
+            }
+
             if (state.messageSent) {
                 Spacer(Modifier.height(12.dp))
                 Text(stringResource(R.string.emergency_message_sent), color = MaterialTheme.colorScheme.primary)
@@ -249,6 +320,24 @@ fun MemberDetailScreen(
                 Text(it, color = MaterialTheme.colorScheme.error)
             }
         }
+    }
+
+    if (showTestNotificationConfirm) {
+        AlertDialog(
+            onDismissRequest = { showTestNotificationConfirm = false },
+            title = { Text(stringResource(R.string.test_notification_confirm_title)) },
+            text = {
+                Text(stringResource(R.string.test_notification_confirm_body, state.location?.display_name.orEmpty()))
+            },
+            confirmButton = {
+                TextButton(onClick = { showTestNotificationConfirm = false; viewModel.sendTestNotification() }) {
+                    Text(stringResource(R.string.confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showTestNotificationConfirm = false }) { Text(stringResource(R.string.cancel)) }
+            },
+        )
     }
 
     if (showRingConfirm) {
@@ -263,6 +352,49 @@ fun MemberDetailScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showRingConfirm = false }) { Text(stringResource(R.string.cancel)) }
+            },
+        )
+    }
+
+    // Mientras suena, el diálogo no se puede descartar tocando fuera: la única salida es
+    // "Detener", que es también lo que para el sonido en el otro móvil.
+    if (state.ringing || state.ringSent) {
+        AlertDialog(
+            onDismissRequest = {},
+            title = { Text(stringResource(R.string.ring_progress_title)) },
+            text = {
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    CircularProgressIndicator(modifier = Modifier.size(20.dp), strokeWidth = 2.dp)
+                    Spacer(Modifier.width(12.dp))
+                    Text(
+                        if (state.ringing) {
+                            stringResource(R.string.ring_progress_connecting)
+                        } else {
+                            stringResource(R.string.ring_progress_ringing, state.location?.display_name.orEmpty())
+                        },
+                    )
+                }
+            },
+            confirmButton = {
+                TextButton(onClick = { showStopRingConfirm = true }, enabled = !state.ringing) {
+                    Text(stringResource(R.string.ring_stop_action))
+                }
+            },
+        )
+    }
+
+    if (showStopRingConfirm) {
+        AlertDialog(
+            onDismissRequest = { showStopRingConfirm = false },
+            title = { Text(stringResource(R.string.ring_stop_confirm_title)) },
+            text = { Text(stringResource(R.string.ring_stop_confirm_body, state.location?.display_name.orEmpty())) },
+            confirmButton = {
+                TextButton(onClick = { showStopRingConfirm = false; viewModel.stopRing() }) {
+                    Text(stringResource(R.string.confirm))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { showStopRingConfirm = false }) { Text(stringResource(R.string.cancel)) }
             },
         )
     }
@@ -378,5 +510,59 @@ fun MemberDetailScreen(
             },
         )
         null -> {}
+    }
+}
+
+/**
+ * Estado de configuración del móvil de ese miembro (permisos, batería, GPS del sistema). El
+ * dato lo manda su propia app en cada ping y al arrancar, así que refleja la ÚLTIMA vez que
+ * conectó — igual que la batería o el wifi de arriba, no es tiempo real.
+ *
+ * [raw] null = su app es anterior a esta versión y no lo manda; cadena vacía = todo correcto.
+ */
+@Composable
+private fun ConfigStatusRow(raw: String?) {
+    val issues = ConfigCheck.parse(raw)
+    val icon = when {
+        issues == null -> Icons.Filled.HelpOutline
+        issues.isEmpty() -> Icons.Filled.CheckCircle
+        else -> Icons.Filled.Warning
+    }
+    val tint = when {
+        issues.isNullOrEmpty() -> LocalContentColor.current
+        else -> MaterialTheme.colorScheme.error
+    }
+
+    Row(verticalAlignment = Alignment.Top) {
+        Icon(icon, contentDescription = null, tint = tint)
+        Spacer(Modifier.width(8.dp))
+        Column {
+            Text(
+                stringResource(
+                    when {
+                        issues == null -> R.string.config_status_unknown
+                        issues.isEmpty() -> R.string.config_status_ok
+                        else -> R.string.config_status_issues
+                    },
+                ),
+                color = tint,
+            )
+            issues.orEmpty().forEach { issue ->
+                Text(
+                    "• " + stringResource(
+                        when (issue) {
+                            ConfigCheck.LOCATION -> R.string.config_issue_location
+                            ConfigCheck.BACKGROUND_LOCATION -> R.string.config_issue_bg_location
+                            ConfigCheck.NOTIFICATIONS -> R.string.config_issue_notifications
+                            ConfigCheck.NOTIFICATION_CHANNEL -> R.string.config_issue_notif_channel
+                            ConfigCheck.BATTERY -> R.string.config_issue_battery
+                            else -> R.string.config_issue_gps_off
+                        },
+                    ),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+        }
     }
 }

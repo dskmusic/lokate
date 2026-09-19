@@ -12,7 +12,7 @@ from sqladmin.authentication import AuthenticationBackend
 from starlette.responses import FileResponse, RedirectResponse
 
 from . import backups as backups_module
-from . import models, push
+from . import managed_files, models, push
 from .auth import create_access_token
 from .database import SessionLocal, engine
 from .disk_usage import compute_disk_usage
@@ -250,6 +250,81 @@ class BackupDeleteView(BaseView):
         return RedirectResponse(request.url_for("admin:backups"), status_code=303)
 
 
+class FilesView(BaseView):
+    """Explorador de los archivos borrables del servidor (avatares y adjuntos). El borrado, en
+    vistas propias y ocultas, por la misma razón que explica BackupsView arriba."""
+
+    name = "Archivos"
+    icon = "fa-solid fa-folder-open"
+
+    @expose("/files", identity="files", methods=["GET"])
+    async def index(self, request: Request):
+        folder = request.query_params.get("folder", "attachments")
+        if folder not in managed_files.MANAGED_DIRS:
+            folder = "attachments"
+        db = SessionLocal()
+        try:
+            files = managed_files.list_files(db, folder)
+        finally:
+            db.close()
+        return await self.templates.TemplateResponse(
+            request, "files.html",
+            {"folder": folder, "folders": list(managed_files.MANAGED_DIRS), "files": files},
+        )
+
+
+class FileDeleteView(BaseView):
+    """Ruta propia (oculta) por la misma razón que BackupsView explica arriba."""
+
+    name = "Borrar archivo"
+
+    def is_visible(self, request: Request) -> bool:
+        return False
+
+    @expose("/files/{folder}/delete", identity="files-delete", methods=["POST"])
+    async def delete(self, request: Request):
+        folder = request.path_params["folder"]
+        form = await request.form()
+        name = str(form.get("name") or "")
+        db = SessionLocal()
+        try:
+            # Nombre y carpeta se validan dentro; un formulario manipulado acaba en la misma
+            # redirección que un borrado normal, sin tocar nada.
+            try:
+                managed_files.delete_file(db, folder, name)
+            except (KeyError, managed_files.InvalidName):
+                pass
+        finally:
+            db.close()
+        return RedirectResponse(
+            str(request.url_for("admin:files")) + f"?folder={folder}", status_code=303,
+        )
+
+
+class FileDeleteAllView(BaseView):
+    """Ruta propia (oculta) por la misma razón que BackupsView explica arriba."""
+
+    name = "Vaciar carpeta"
+
+    def is_visible(self, request: Request) -> bool:
+        return False
+
+    @expose("/files/{folder}/delete-all", identity="files-delete-all", methods=["POST"])
+    async def delete_all(self, request: Request):
+        folder = request.path_params["folder"]
+        db = SessionLocal()
+        try:
+            try:
+                managed_files.delete_folder(db, folder)
+            except KeyError:
+                pass
+        finally:
+            db.close()
+        return RedirectResponse(
+            str(request.url_for("admin:files")) + f"?folder={folder}", status_code=303,
+        )
+
+
 class UserAvatarUploadView(BaseView):
     """Subir avatar a un usuario desde el propio panel, sin tener que escribir la URL a mano.
     Solo se llega desde el icono 📷 de la lista de usuarios — no aparece como opción del menú."""
@@ -474,6 +549,9 @@ def register_admin(app: FastAPI) -> None:
     admin.add_view(BackupDownloadView)
     admin.add_view(BackupRestoreView)
     admin.add_view(BackupDeleteView)
+    admin.add_view(FilesView)
+    admin.add_view(FileDeleteView)
+    admin.add_view(FileDeleteAllView)
     admin.add_view(GroupAdmin)
     admin.add_view(UserAdmin)
     admin.add_view(UserAvatarUploadView)

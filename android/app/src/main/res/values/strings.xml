@@ -91,10 +91,35 @@
     <string name="wifi_not_connected_label">Sin WiFi (datos móviles)</string>
     <string name="wifi_unknown_label">Conexión desconocida</string>
     <string name="last_seen_label">Última actualización:\n%1$s</string>
+    <string name="update_frequency_label">Actualiza: %1$s</string>
+    <string name="frequency_short_high">en tiempo real</string>
+    <string name="frequency_short_balanced">cada 2 min</string>
+    <string name="frequency_short_battery_saver">cada 10 min</string>
+    <string name="frequency_short_unknown">frecuencia desconocida</string>
+    <string name="frequency_disabled">Deshabilitado</string>
+    <string name="frequency_disabled_confirm_title">¿Deshabilitar las actualizaciones?</string>
+    <string name="frequency_disabled_confirm_body">Tu dispositivo dejará de enviar su ubicación y nadie de tu grupo podrá verte ni pedirte una ubicación puntual. Puedes volver a activarlo en cualquier momento desde aquí.</string>
+    <string name="frequency_short_disabled">actualizaciones desactivadas</string>
+    <!-- Estado de configuración del móvil de un miembro (ficha de miembro) -->
+    <string name="config_status_ok">Configuración correcta</string>
+    <string name="config_status_unknown">Configuración desconocida (app sin actualizar)</string>
+    <string name="config_status_issues">Le falta por configurar:</string>
+    <string name="config_issue_location">Permiso de ubicación denegado</string>
+    <string name="config_issue_bg_location">Ubicación en segundo plano denegada: solo se le ve con la app abierta</string>
+    <string name="config_issue_notifications">Notificaciones desactivadas: no recibe ningún aviso</string>
+    <string name="config_issue_notif_channel">Algún tipo de notificación bloqueado en los ajustes del móvil</string>
+    <string name="config_issue_battery">Optimización de batería activa: Android puede cerrar la app</string>
+    <string name="config_issue_gps_off">Ubicación del sistema (GPS) apagada</string>
+    <string name="test_notification_confirm_title">¿Enviar notificación de prueba?</string>
+    <string name="test_notification_confirm_body">Se enviará una notificación de prueba al dispositivo de %1$s.</string>
     <string name="ring_device_button">Hacer sonar el dispositivo</string>
     <string name="ring_confirm_title">¿Hacer sonar el dispositivo?</string>
     <string name="ring_confirm_body">Se enviará una notificación sonora al móvil de %1$s para ayudar a localizarlo.</string>
-    <string name="ring_sent_confirmation">Notificación de sonido enviada</string>
+    <string name="ring_progress_title">Hacer sonar el dispositivo</string>
+    <string name="ring_progress_connecting">Conectando…</string>
+    <string name="ring_progress_ringing">Haciendo sonar el dispositivo de %1$s…</string>
+    <string name="ring_stop_confirm_title">¿Parar el sonido?</string>
+    <string name="ring_stop_confirm_body">El móvil de %1$s dejará de sonar.</string>
 
     <!-- Mensaje de emergencia -->
     <string name="emergency_message_button">Enviar mensaje prioritario</string>
@@ -153,7 +178,6 @@
     <string name="zone_name_label">Nombre de la zona</string>
     <string name="zone_radius_label">Radio (metros)</string>
     <string name="zone_radius_manual_label">Metros exactos</string>
-    <string name="zone_search_address">Buscar dirección</string>
     <string name="zone_save">Guardar zona</string>
     <string name="zone_delete">Eliminar zona</string>
     <string name="zone_delete_confirm_title">¿Eliminar esta zona?</string>
@@ -183,6 +207,8 @@
     <string name="settings_update_frequency">Frecuencia de actualización de ubicación</string>
     <string name="settings_map_zoom">Zoom inicial del mapa</string>
     <string name="settings_map_zoom_value">Nivel %1$d</string>
+    <string name="settings_map_zoom_reset">Restablecer</string>
+    <string name="settings_map_zoom_reset_confirm">Se volverá al zoom inicial por defecto (nivel %1$d) y el mapa dejará de recordar la posición y el zoom actuales: la próxima vez se abrirá centrado en tu ubicación.</string>
     <string name="settings_map_cache_desc">Las teselas del mapa se guardan en el dispositivo para cargar más rápido, y se refrescan solas cada %1$d días. Puedes borrarlas ya mismo si ves el mapa desactualizado.</string>
     <string name="settings_map_cache_clear">Borrar caché de mapas</string>
     <string name="settings_map_cache_cleared">Caché borrada: %1$.1f MB liberados</string>
@@ -206,7 +232,11 @@
     <string name="update_available_later">Ahora no</string>
     <string name="settings_update_flag_title">Avisar de actualización a todos</string>
     <string name="settings_update_flag_desc">Actívalo cuando subas una versión nueva al servidor para que a todos les salga el aviso; desactívalo cuando ya no quieras que insista.</string>
-    <string name="settings_send_test_notification">Enviar notificación de prueba a todo el grupo</string>
+    <string name="settings_send_test_notification">Enviar notificación de prueba</string>
+    <string name="settings_test_notification_pick">¿A quién se la enviamos?</string>
+    <string name="settings_test_notification_all">Enviar a todo el grupo</string>
+    <string name="settings_test_notification_all_confirm_title">¿Enviar a todo el grupo?</string>
+    <string name="settings_test_notification_all_confirm_body">Todos los miembros del grupo recibirán una notificación de prueba en su móvil.</string>
     <string name="settings_test_notification_sent">Notificación de prueba enviada</string>
     <string name="settings_server_url">Dirección del servidor</string>
     <string name="settings_server_url_hint">Ej: https://familia.dskmusic.com/</string>
@@ -230,6 +260,16 @@
     <string name="people_photo_view_title">Foto de perfil</string>
     <string name="close">Cerrar</string>
 
+    <!-- Modo prueba (solo admins): arrastrar miembros por el mapa para disparar avisos de zona -->
+    <string name="test_mode_badge">MODO PRUEBA</string>
+    <string name="test_mode_exit">Salir del modo prueba</string>
+    <string name="test_mode_hint">Modo prueba: mantén pulsado un marcador y arrástralo dentro o fuera de una zona</string>
+    <string name="test_mode_recipients">Quién recibe los avisos</string>
+    <string name="test_mode_no_recipients">Elige primero a quién mandar los avisos</string>
+    <string name="test_mode_no_transition">Sin cambios: el arrastre no ha cruzado ninguna zona</string>
+    <string name="test_mode_sent">Enviado a %1$d: %2$s</string>
+    <string name="test_mode_error">No se ha podido simular la posición</string>
+
     <!-- Panel de administración nativo -->
     <string name="admin_title">Administración</string>
     <string name="admin_tab_dashboard">Resumen</string>
@@ -251,6 +291,16 @@
     <string name="admin_storage_web_static">Web estática</string>
     <string name="admin_storage_total">Total</string>
     <string name="admin_storage_backups">Copias de seguridad</string>
+    <string name="admin_storage_manage">Administrar espacio</string>
+    <string name="admin_storage_empty">No hay archivos en esta carpeta</string>
+    <string name="admin_storage_in_use">en uso</string>
+    <string name="admin_storage_no_preview">Este archivo no se puede previsualizar</string>
+    <string name="admin_storage_delete_confirm_title">¿Eliminar el archivo?</string>
+    <string name="admin_storage_delete_confirm_body">Se borrará «%1$s» del servidor. No se puede deshacer.</string>
+    <string name="admin_storage_delete_confirm_in_use">«%1$s» es el avatar de alguien. Si lo borras, ese perfil se quedará sin foto. No se puede deshacer.</string>
+    <string name="admin_storage_delete_all">Borrar todos</string>
+    <string name="admin_storage_delete_all_confirm_title">¿Borrar todos los adjuntos?</string>
+    <string name="admin_storage_delete_all_confirm_body">Se borrarán del servidor los %1$d archivos de esta carpeta. No se puede deshacer.</string>
     <string name="admin_tab_groups">Grupos</string>
     <string name="admin_tab_backups">Copias</string>
     <string name="admin_add">Añadir</string>
@@ -276,4 +326,20 @@
     <string name="backups_restore_failure">No se ha podido restaurar la copia</string>
     <string name="backups_delete">Eliminar</string>
     <string name="backups_delete_confirm">¿Eliminar esta copia de seguridad? No se puede deshacer.</string>
+
+    <!-- Buscador de sitios (mapa y zonas) -->
+    <string name="place_search_label">Dirección o coordenadas</string>
+    <string name="place_search_action">Buscar</string>
+    <string name="place_search_clear">Borrar</string>
+    <string name="place_search_not_found">No se ha encontrado nada</string>
+    <string name="place_search_failed">No se ha podido buscar. Comprueba la conexión.</string>
+    <string name="zone_map_hint">Toca el mapa para elegir el centro de la zona, o búscalo arriba</string>
+
+    <!-- Distancia y orden de la lista de gente -->
+    <string name="distance_from_you">a %1$s de ti</string>
+    <string name="distance_unknown">distancia desconocida</string>
+    <string name="people_sort_label">Ordenar por</string>
+    <string name="people_sort_name">Nombre</string>
+    <string name="people_sort_distance">Cercanía</string>
+    <string name="people_sort_recent">Reciente</string>
 </resources>

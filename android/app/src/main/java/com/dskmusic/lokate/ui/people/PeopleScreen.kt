@@ -19,12 +19,14 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.BatteryChargingFull
-import androidx.compose.material.icons.filled.ChevronRight
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiOff
+import androidx.compose.material.icons.outlined.Info
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -43,6 +45,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
@@ -52,10 +55,16 @@ import com.dskmusic.lokate.R
 import com.dskmusic.lokate.data.remote.absoluteAvatarUrl
 import com.dskmusic.lokate.data.remote.dto.LocationDto
 import com.dskmusic.lokate.di.ServiceLocator
+import com.dskmusic.lokate.ui.common.rememberMyLocation
 import com.dskmusic.lokate.ui.map.MapViewModel
 import com.dskmusic.lokate.util.MediaSaver
+import com.dskmusic.lokate.util.distanceMeters
+import com.dskmusic.lokate.util.formatDistance
+import com.dskmusic.lokate.util.parseIsoDate
 import com.dskmusic.lokate.util.formatRelativeTime
 import kotlinx.coroutines.launch
+
+private enum class PeopleSort { NAME, DISTANCE, RECENT }
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -68,6 +77,18 @@ fun PeopleScreen(
     val viewModel = remember { MapViewModel(locator.locationRepository, locator.zoneRepository, locator.groupRepository) }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var photoMember by remember { mutableStateOf<LocationDto?>(null) }
+    var sort by remember { mutableStateOf(PeopleSort.NAME) }
+    val myLocation = rememberMyLocation()
+
+    val members = remember(state.members, sort, myLocation) {
+        when (sort) {
+            PeopleSort.NAME -> state.members.sortedBy { it.display_name.lowercase() }
+            PeopleSort.RECENT -> state.members.sortedByDescending { parseIsoDate(it.timestamp)?.time ?: 0L }
+            PeopleSort.DISTANCE -> myLocation?.let { me ->
+                state.members.sortedBy { distanceMeters(me.latitude, me.longitude, it.lat, it.lng) }
+            } ?: state.members
+        }
+    }
 
     Scaffold(
         topBar = {
@@ -91,15 +112,44 @@ fun PeopleScreen(
             return@Scaffold
         }
 
-        LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
-            items(state.members, key = { it.user_id }) { member ->
-                PersonRow(
-                    member = member,
-                    onClick = { onSelectMember(member.user_id) },
-                    onAvatarClick = { photoMember = member },
-                    onOpenDetail = { onOpenDetail(member.user_id) },
-                )
-                HorizontalDivider()
+        Column(Modifier.fillMaxSize().padding(padding)) {
+            Row(
+                modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 8.dp),
+                horizontalArrangement = Arrangement.spacedBy(8.dp),
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                PeopleSort.entries.forEach { option ->
+                    FilterChip(
+                        selected = sort == option,
+                        // Sin saber dónde estás no hay nada que ordenar por cercanía.
+                        enabled = option != PeopleSort.DISTANCE || myLocation != null,
+                        onClick = { sort = option },
+                        label = {
+                            Text(
+                                stringResource(
+                                    when (option) {
+                                        PeopleSort.NAME -> R.string.people_sort_name
+                                        PeopleSort.DISTANCE -> R.string.people_sort_distance
+                                        PeopleSort.RECENT -> R.string.people_sort_recent
+                                    },
+                                ),
+                            )
+                        },
+                    )
+                }
+            }
+            HorizontalDivider()
+            LazyColumn(modifier = Modifier.fillMaxSize()) {
+                items(members, key = { it.user_id }) { member ->
+                    PersonRow(
+                        member = member,
+                        distance = myLocation?.let { distanceMeters(it.latitude, it.longitude, member.lat, member.lng) },
+                        onClick = { onSelectMember(member.user_id) },
+                        onAvatarClick = { photoMember = member },
+                        onOpenDetail = { onOpenDetail(member.user_id) },
+                    )
+                    HorizontalDivider()
+                }
             }
         }
     }
@@ -112,6 +162,7 @@ fun PeopleScreen(
 @Composable
 private fun PersonRow(
     member: LocationDto,
+    distance: Float?,
     onClick: () -> Unit,
     onAvatarClick: () -> Unit,
     onOpenDetail: () -> Unit,
@@ -123,7 +174,8 @@ private fun PersonRow(
         AsyncImage(
             model = absoluteAvatarUrl(member.avatar_url),
             contentDescription = null,
-            modifier = Modifier.size(48.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant)
+            contentScale = ContentScale.Crop,
+            modifier = Modifier.size(64.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant)
                 .clickable(onClick = onAvatarClick),
         )
         Spacer(Modifier.width(16.dp))
@@ -143,6 +195,16 @@ private fun PersonRow(
                 Text("·", style = MaterialTheme.typography.bodySmall)
                 Text(formatRelativeTime(member.timestamp), style = MaterialTheme.typography.bodySmall)
             }
+            distance?.let {
+                Spacer(Modifier.width(2.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(Icons.Filled.Place, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Text(
+                        stringResource(R.string.distance_from_you, formatDistance(it)),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                }
+            }
             Spacer(Modifier.width(2.dp))
             Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
                 Icon(
@@ -158,7 +220,7 @@ private fun PersonRow(
             }
         }
         IconButton(onClick = onOpenDetail) {
-            Icon(Icons.Filled.ChevronRight, contentDescription = stringResource(R.string.people_open_detail))
+            Icon(Icons.Outlined.Info, contentDescription = stringResource(R.string.people_open_detail))
         }
     }
 }

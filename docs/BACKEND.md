@@ -1,9 +1,8 @@
 # Lokate — manual del backend
 
 Cómo funciona el servidor por dentro: qué hay, para qué sirve cada pieza y qué hace cada
-endpoint. Para cómo desplegarlo, ver `MIGRACION_VPS.md`/`OPERACION_VPS.md` (fuera de este
-directorio — llevan datos reales de infraestructura, no van en el repo). Para el manual de uso
-de la app, ver `APP.md`.
+endpoint. Para cómo desplegarlo, ver `DEPLOYMENT.md`. Para el manual de uso de la app, ver
+`ANDROID.md`.
 
 ## Arquitectura
 
@@ -27,24 +26,29 @@ de la app, ver `APP.md`.
 | POST | `/auth/login` | → token |
 | GET | `/auth/me` | Perfil del usuario autenticado |
 | PUT | `/auth/me` | Cambiar nombre mostrado |
-| POST | `/auth/device` | Registrar/actualizar el token FCM del dispositivo |
+| POST | `/auth/device` | Registrar/actualizar el token FCM del dispositivo y la frecuencia de actualización elegida en él |
 | POST | `/auth/avatar` | Subir/cambiar avatar propio (JPEG/PNG/WEBP, máx. 5 MB) |
 
 ## Grupos (`/groups`)
 
 Crear (solo admins, y solo si no perteneces ya a uno), unirse con código de invitación, ver el
-grupo propio y sus miembros, salir del grupo, enviar notificación de prueba a todo el grupo.
+grupo propio y sus miembros, salir del grupo, y enviar notificación de prueba
+(`POST /groups/test-notification`, solo admins) a miembros concretos —`{"user_ids": [...]}`— o a
+todo el grupo si no se indica ninguno. Los ids pedidos se filtran contra el propio grupo: un
+admin no puede usarlo para mandar push a usuarios de otros grupos.
 
 ## Ubicación (`/location`)
 
 | Método | Ruta | Qué hace |
 |---|---|---|
-| POST | `/location/ping` | Sube una posición (lat/lng/precisión/batería/wifi) — dispara la
-comprobación de entrada/salida de zonas (`app/geofence.py`) |
+| POST | `/location/ping` | Sube una posición (lat/lng/precisión/batería/wifi y la frecuencia
+de actualización que ese usuario tiene elegida en su app) — dispara la comprobación de
+entrada/salida de zonas (`app/geofence.py`) |
 | GET | `/location/group/latest` | Última posición conocida de cada miembro del grupo |
 | GET | `/location/history` | Historial de un usuario, por rango de fechas o últimas N horas |
 | POST | `/location/ring/{user_id}` | Hace sonar el dispositivo de ese usuario (alarma+vibración
 fuerte, salta el silencio) |
+| POST | `/location/stop-ring/{user_id}` | Push **silencioso** que para la alarma lanzada por `/ring` en ese dispositivo (botón "Detener" del diálogo de progreso) |
 | POST | `/location/request-location/{user_id}` | Push **silencioso** que pide una ubicación
 puntual fresca — el dispositivo la lee y la sube como un ping normal, sin sonido ni notificación
 visible |
@@ -56,6 +60,24 @@ CRUD de zonas del propio grupo, más preferencias de notificación por usuario+z
 asume que el usuario NO quiere avisos** — hay que activarlos a mano, no vienen activados por
 defecto. La histéresis de 30 m (`ZONE_EXIT_MARGIN_M` en `app/geofence.py`) evita avisos
 repetidos por ruido de GPS cerca del borde.
+
+### Modo prueba de zonas (solo admins)
+
+`POST /admin-api/simulate/{user_id}` evalúa las zonas como si ese miembro estuviera en la
+posición del cuerpo (`lat`, `lng`, `recipient_ids`) y manda los avisos de entrada/salida que
+correspondan, **sin guardar nada en su historial**. Devuelve los textos disparados y a cuántos
+llegaron, para que la app pueda decir qué ha pasado.
+
+Los destinatarios los elige el admin a mano (se recuerdan en su móvil) en vez de respetar las
+preferencias por zona de cada uno: probar es querer verlo sonar en un móvil concreto.
+
+Mientras dura, la posición real de ese usuario se sigue guardando pero deja de evaluar zonas
+(`geofence._simulated_until`, en memoria) — si no, su siguiente ping desharía la simulación al
+instante y dispararía el aviso contrario. `POST /admin-api/simulate/stop` lo desactiva para todo
+el grupo y recalcula el estado de zonas desde la última posición real **en silencio**: deshacer
+un arrastre no debe avisar a nadie. `SIMULATION_TTL_S` (15 min) es la red de seguridad por si la
+app del admin muere sin salir del modo; al caducar, el primer ping real recoloca el estado
+también en silencio.
 
 ## Mensajes (`/messages`)
 
@@ -77,7 +99,31 @@ complicaba más de lo que simplificaba):
 
 Ambas exponen las mismas acciones: dashboard con estadísticas y actividad, gestión de usuarios/
 grupos/zonas (crear/editar/eliminar, cualquiera del sistema, no solo el propio grupo), historial
-de cualquier usuario, y copias de seguridad.
+de cualquier usuario, explorador de archivos (avatares y adjuntos, con vista previa y borrado
+individual o de la carpeta entera) y copias de seguridad.
+
+### Explorador de archivos (`app/managed_files.py`)
+
+Listar y borrar lo que ocupa espacio **fuera** de la base de datos. La lógica vive en un módulo
+propio, como `backups.py`, porque la usan los dos paneles: el guardia de rutas es lo último que
+conviene tener duplicado, una copia que se queda atrás es un borrado arbitrario en el servidor.
+
+`MANAGED_DIRS` es la lista blanca: solo `avatars` y `attachments`. La BD, el APK, la web estática
+y las copias de seguridad no se tocan desde aquí (las copias tienen su propia pantalla). El nombre
+del archivo no puede contener `/` ni `\` (en Linux la barra invertida es un carácter normal, y sin
+prohibirla el comportamiento cambiaría según el host) y además se comprueba que la ruta ya resuelta
+siga colgando de la carpeta. Self-check: `python -m tests.test_managed_files` desde `backend/`.
+
+Cada archivo lleva `kind` (`image`/`video`/`audio`/`other`, deducido por `mimetypes`) para que el
+panel sepa si puede previsualizarlo, e `in_use`, que solo tiene sentido en `avatars`: los adjuntos
+viajan dentro del push y no quedan referenciados en ninguna tabla — por eso se acumulan y nada los
+borra solo. Al borrar un avatar en uso se pone a `NULL` el `users.avatar_url` que lo apuntaba, para
+no dejar perfiles enlazando a un 404.
+
+| Panel | Ruta |
+|---|---|
+| Nativo | `GET /admin-api/files/{folder}`, `DELETE /admin-api/files/{folder}/{name}`, `DELETE /admin-api/files/{folder}` (vacía la carpeta, devuelve `{"deleted": n}`) |
+| Web | `GET /admin/files?folder=…`, `POST /admin/files/{folder}/delete` (nombre en el formulario), `POST /admin/files/{folder}/delete-all` |
 
 ### Copias de seguridad (`app/backups.py`)
 
@@ -144,6 +190,7 @@ backend/
     push.py                # envío de notificaciones FCM
     disk_usage.py           # tamaño en disco por componente (dashboard)
     backups.py                # copias de seguridad
+    managed_files.py          # archivos borrables (avatares/adjuntos) de los dos paneles
     admin.py                   # panel web (sqladmin) + vistas propias (backups, historial...)
     i18n.py                     # traducción del panel web
     routers/

@@ -55,7 +55,8 @@ class MainActivity : ComponentActivity() {
         val emergencySender = intent.getStringExtra(Constants.EXTRA_EMERGENCY_SENDER)
         if (emergencySender != null && locator.authRepository.isLoggedIn()) {
             NotificationHelper.stopRingAlarm(applicationContext)
-            NotificationManagerCompat.from(this).cancel(RING_NOTIFICATION_ID)
+            NotificationManagerCompat.from(this)
+                .cancel(intent.getIntExtra(Constants.EXTRA_NOTIFICATION_ID, RING_NOTIFICATION_ID))
             startDestination = Routes.emergencyMessage(
                 sender = emergencySender,
                 text = intent.getStringExtra(Constants.EXTRA_EMERGENCY_TEXT).orEmpty(),

@@ -5,8 +5,11 @@ import com.dskmusic.lokate.data.remote.dto.AdminBackupCreateRequestDto
 import com.dskmusic.lokate.data.remote.dto.AdminBackupDto
 import com.dskmusic.lokate.data.remote.dto.AdminDashboardDto
 import com.dskmusic.lokate.data.remote.dto.AdminDiskUsageDto
+import com.dskmusic.lokate.data.remote.dto.AdminFileDto
 import com.dskmusic.lokate.data.remote.dto.AdminGroupCreateRequestDto
 import com.dskmusic.lokate.data.remote.dto.AdminGroupDto
+import com.dskmusic.lokate.data.remote.dto.AdminSimulateDto
+import com.dskmusic.lokate.data.remote.dto.AdminSimulateRequestDto
 import com.dskmusic.lokate.data.remote.dto.AdminUserCreateRequestDto
 import com.dskmusic.lokate.data.remote.dto.AdminUserDto
 import com.dskmusic.lokate.data.remote.dto.AdminUserUpdateRequestDto
@@ -62,6 +65,15 @@ class AdminRepository(private val api: ApiService) {
 
     suspend fun deleteZone(id: String) = withContext(Dispatchers.IO) { api.adminDeleteZone(id) }
 
+    suspend fun listFiles(folder: String): List<AdminFileDto> =
+        withContext(Dispatchers.IO) { api.adminListFiles(folder) }
+
+    suspend fun deleteFile(folder: String, name: String) =
+        withContext(Dispatchers.IO) { api.adminDeleteFile(folder, name) }
+
+    suspend fun deleteAllFiles(folder: String) =
+        withContext(Dispatchers.IO) { api.adminDeleteAllFiles(folder) }
+
     suspend fun listBackups(): List<AdminBackupDto> = withContext(Dispatchers.IO) { api.adminListBackups() }
 
     suspend fun createBackup(description: String): AdminBackupDto =
@@ -75,4 +87,18 @@ class AdminRepository(private val api: ApiService) {
             destFile.outputStream().use { output -> input.copyTo(output) }
         }
     }
+
+    /** Modo prueba: coloca a [userId] en (lat, lng) solo a efectos de zonas —no se guarda en su
+     * historial— y avisa a [recipientIds] si con eso entra o sale de alguna. */
+    suspend fun simulatePosition(
+        userId: String,
+        lat: Double,
+        lng: Double,
+        recipientIds: List<String>,
+    ): AdminSimulateDto = withContext(Dispatchers.IO) {
+        api.adminSimulatePosition(userId, AdminSimulateRequestDto(lat, lng, recipientIds))
+    }
+
+    /** Salir del modo prueba: todo el grupo vuelve a su posición real, sin avisar a nadie. */
+    suspend fun stopSimulation() = withContext(Dispatchers.IO) { api.adminStopSimulation() }
 }

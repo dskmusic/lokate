@@ -26,6 +26,12 @@ object DeviceStatusUtils {
             null
         }
 
-        return DeviceStatus(batteryLevel = level, isCharging = isCharging, wifiConnected = wifiConnected, wifiSsid = wifiSsid)
+        return DeviceStatus(
+            batteryLevel = level,
+            isCharging = isCharging,
+            wifiConnected = wifiConnected,
+            wifiSsid = wifiSsid,
+            configIssues = ConfigCheck.serialize(context),
+        )
     }
 }
