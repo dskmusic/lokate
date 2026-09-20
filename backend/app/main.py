@@ -35,6 +35,13 @@ def _add_missing_columns() -> None:
             if column not in columns:
                 conn.exec_driver_sql(f"ALTER TABLE users ADD COLUMN {column} VARCHAR")
 
+        # create_all no toca las tablas que ya existen, así que los índices nuevos sobre tablas
+        # viejas hay que crearlos a mano (como las columnas de aquí abajo).
+        conn.exec_driver_sql(
+            "CREATE INDEX IF NOT EXISTS ix_location_pings_user_ts ON location_pings (user_id, timestamp)"
+        )
+        conn.exec_driver_sql("DROP INDEX IF EXISTS ix_location_pings_user_id")
+
         zone_columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(zones)")}
         if "watched_ids" not in zone_columns:
             conn.exec_driver_sql("ALTER TABLE zones ADD COLUMN watched_ids VARCHAR")

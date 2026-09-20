@@ -6,6 +6,7 @@ from firebase_admin import credentials, exceptions as fb_exceptions, messaging
 from sqlalchemy.orm import Session
 
 from . import models
+from .database import SessionLocal
 
 logger = logging.getLogger("lokate.push")
 
@@ -45,6 +46,16 @@ def _build_message(user: models.User, token: str, title: str, body: str, payload
             notification=messaging.AndroidNotification(channel_id=channel),
         ),
     )
+
+
+def send_to_users_bg(user_ids: list[str], title: str, body: str, data: dict, system_notification: bool = False):
+    """Igual que send_to_users pero con su propia sesión, para usarlo desde BackgroundTasks:
+    cuando estas corren, la sesión de la petición ya está cerrada."""
+    db = SessionLocal()
+    try:
+        send_to_users(db, user_ids, title, body, data, system_notification)
+    finally:
+        db.close()
 
 
 def send_to_users(db: Session, user_ids: list[str], title: str, body: str, data: dict, system_notification: bool = False):

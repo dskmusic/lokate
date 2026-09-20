@@ -1,7 +1,7 @@
 import os
 from datetime import datetime, timedelta, timezone
 
-from fastapi import APIRouter, Depends, HTTPException, Query, status
+from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
 from .. import geofence, models, push, schemas
@@ -11,6 +11,25 @@ from ..database import get_db
 router = APIRouter(prefix="/location", tags=["location"])
 
 RETENTION_DAYS = int(os.getenv("LOCATION_RETENTION_DAYS", "30"))
+# Cada cuánto se barren los pings caducados. Antes se barría en CADA ping: un DELETE por ping
+# y por usuario para tirar, casi siempre, cero filas.
+PURGE_EVERY = timedelta(hours=6)
+_last_purge = datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _purge_old_pings(db: Session) -> None:
+    """Tira los pings más viejos que la retención, de todos los usuarios de una vez. No hace
+    falta que sea puntual: sobra con pasar la escoba unas cuantas veces al día.
+    ponytail: reloj en memoria del proceso, sin cron ni scheduler — si el contenedor reinicia,
+    la siguiente escoba pasa antes de tiempo y no pasa nada. Confirma el ping que la llame."""
+    global _last_purge
+    now = datetime.now(timezone.utc)
+    if now - _last_purge < PURGE_EVERY:
+        return
+    _last_purge = now
+    db.query(models.LocationPing).filter(
+        models.LocationPing.timestamp < now - timedelta(days=RETENTION_DAYS)
+    ).delete()
 
 
 def _group_member(db: Session, user: models.User, user_id: str) -> models.User | None:
@@ -25,6 +44,7 @@ def _group_member(db: Session, user: models.User, user_id: str) -> models.User |
 @router.post("/ping", status_code=status.HTTP_204_NO_CONTENT)
 def ping(
     body: schemas.LocationPingRequest,
+    tasks: BackgroundTasks,
     user: models.User = Depends(get_current_user_with_group),
     db: Session = Depends(get_db),
 ):
@@ -44,10 +64,7 @@ def ping(
     if body.config_issues is not None:
         user.config_issues = body.config_issues
 
-    cutoff = datetime.now(timezone.utc) - timedelta(days=RETENTION_DAYS)
-    db.query(models.LocationPing).filter(
-        models.LocationPing.user_id == user.id, models.LocationPing.timestamp < cutoff
-    ).delete()
+    _purge_old_pings(db)
     db.commit()
 
     # Modo prueba: mientras un administrador esté arrastrando a este usuario por el mapa, su
@@ -57,7 +74,7 @@ def ping(
     simulation = geofence.simulation_status(user.id)
     if simulation == "active":
         return
-    geofence.check_zone_transitions(db, user, body.lat, body.lng, notify=simulation is None)
+    geofence.check_zone_transitions(db, user, body.lat, body.lng, notify=simulation is None, tasks=tasks)
 
 
 @router.get("/group/latest", response_model=list[schemas.LocationResponse])

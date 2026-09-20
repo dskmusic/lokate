@@ -8,6 +8,8 @@ import uuid
 from datetime import datetime, timezone
 from pathlib import Path
 
+from .database import engine
+
 BACKUPS_DIR = Path("/app/backups")
 DATA_DIR = Path("/data")
 
@@ -40,7 +42,18 @@ def list_backups() -> list[dict]:
     return sorted((_info(i) for i in ids), key=lambda b: b["created_at"], reverse=True)
 
 
+def _checkpoint() -> None:
+    """Con WAL, lo recién escrito vive en lokate.db-wal hasta el siguiente checkpoint: sin
+    volcarlo antes, una copia podría llevarse una foto atrasada de la base. TRUNCATE lo vuelca
+    y deja el -wal vacío."""
+    if engine.url.get_backend_name() != "sqlite":
+        return
+    with engine.connect() as conn:
+        conn.exec_driver_sql("PRAGMA wal_checkpoint(TRUNCATE)")
+
+
 def create_backup(description: str) -> dict:
+    _checkpoint()
     BACKUPS_DIR.mkdir(parents=True, exist_ok=True)
     backup_id = uuid.uuid4().hex
     tar_path, meta_path = _paths(backup_id)
@@ -71,6 +84,9 @@ def restore_backup(backup_id: str) -> bool:
     tar_path, _ = _paths(backup_id)
     if not tar_path.exists():
         return False
+    # Cerrar las conexiones abiertas antes de pisar el fichero: con WAL, dejar handles vivos
+    # sobre una base que se sustituye por debajo es la forma clásica de corromperla.
+    engine.dispose()
     with tarfile.open(tar_path, "r:gz") as tar:
         try:
             tar.extractall(DATA_DIR, filter="data")
@@ -78,6 +94,7 @@ def restore_backup(backup_id: str) -> bool:
             # Python < 3.12 (y versiones de parche anteriores a la que añadió `filter`) — la
             # imagen Docker real usa python:3.12-slim, esto es solo red de seguridad.
             tar.extractall(DATA_DIR)
+    engine.dispose()
     return True
 
 

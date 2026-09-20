@@ -1,6 +1,7 @@
 from math import atan2, cos, radians, sin, sqrt
 from time import monotonic
 
+from fastapi import BackgroundTasks
 from sqlalchemy.orm import Session
 
 from . import models, push
@@ -112,10 +113,14 @@ def check_zone_transitions(
     *,
     notify: bool = True,
     recipients_override: list[str] | None = None,
+    tasks: BackgroundTasks | None = None,
 ) -> list[tuple[str, int]]:
     """Compara la posición contra cada zona del grupo y avisa al entrar/salir.
 
     notify=False actualiza el estado sin mandar nada (resincronizar tras el modo prueba).
+    tasks (el del ping): manda los push DESPUÉS de contestar, porque FCM tarda cientos de ms por
+    destinatario y mientras tanto el ping retiene un hilo del pool. Sin él se envían en el acto,
+    que es lo que quiere el modo prueba del panel: el admin ve el informe cuando ya ha salido.
     recipients_override sustituye a las preferencias por zona de cada uno: en el modo prueba el
     admin elige a mano a quién le llega el aviso, en vez de que lo decida quién lo tenga activado.
     Devuelve (texto del aviso, nº de destinatarios) por cada transición detectada.
@@ -156,8 +161,7 @@ def check_zone_transitions(
         report.append((body, len(recipients)))
 
         if notify:
-            push.send_to_users(
-                db,
+            aviso = dict(
                 user_ids=recipients,
                 title=zone.name,
                 body=body,
@@ -167,6 +171,10 @@ def check_zone_transitions(
                 # emergencia— necesita ejecutar código nuestro sí o sí).
                 system_notification=True,
             )
+            if tasks is None:
+                push.send_to_users(db, **aviso)
+            else:
+                tasks.add_task(push.send_to_users_bg, **aviso)
 
     db.commit()
     return report

@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, String
 from sqlalchemy.orm import relationship
 
 from .database import Base
@@ -91,11 +91,17 @@ class LocationPing(Base):
     __tablename__ = "location_pings"
 
     id = Column(String, primary_key=True, default=gen_id)
-    user_id = Column(String, ForeignKey("users.id"), nullable=False, index=True)
+    # Sin index=True propio: el índice compuesto de abajo ya empieza por user_id, así que servía
+    # para lo mismo y encarecía cada INSERT (y aquí los INSERT son todo el tráfico).
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
     lat = Column(Float, nullable=False)
     lng = Column(Float, nullable=False)
     accuracy = Column(Float, nullable=True)
     timestamp = Column(DateTime, default=utcnow, index=True)
+
+    # "La última posición de X" (el mapa, cada 15 s y por cada miembro) y "el historial de X
+    # entre dos fechas" son LAS dos consultas de esta tabla, y las dos son user_id + timestamp.
+    __table_args__ = (Index("ix_location_pings_user_ts", "user_id", "timestamp"),)
 
 
 class Zone(Base):
