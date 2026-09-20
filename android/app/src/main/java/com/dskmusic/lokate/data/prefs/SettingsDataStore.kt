@@ -27,6 +27,7 @@ class SettingsDataStore(private val context: Context) {
         val NOTIFY_SYSTEM = booleanPreferencesKey("notify_system")
         val HISTORY_HOURS = intPreferencesKey("history_hours")
         val ONBOARDING_DONE = booleanPreferencesKey("onboarding_done")
+        val ONBOARDING_ASKED = stringPreferencesKey("onboarding_asked_issues")
         val SERVER_BASE_URL = stringPreferencesKey("server_base_url_override")
         val RING_SOUND_URI = stringPreferencesKey("ring_sound_uri")
         val VIBRATION_PATTERN = stringPreferencesKey("vibration_pattern")
@@ -115,6 +116,15 @@ class SettingsDataStore(private val context: Context) {
     val onboardingCompleted: Flow<Boolean> = context.dataStore.data.map { it[Keys.ONBOARDING_DONE] ?: false }
     suspend fun setOnboardingCompleted(done: Boolean) {
         context.dataStore.edit { it[Keys.ONBOARDING_DONE] = done }
+    }
+
+    /** Códigos de [com.dskmusic.lokate.util.ConfigCheck] que el onboarding ya llegó a pedirle a
+     * ESTE móvil, separados por comas. Lo que falte y no esté aquí vuelve a sacar el onboarding
+     * al abrir la app — así, cuando una actualización añade un permiso nuevo, se pide solo sin
+     * tener que borrar los datos de la app. */
+    val onboardingAskedIssues: Flow<String> = context.dataStore.data.map { it[Keys.ONBOARDING_ASKED].orEmpty() }
+    suspend fun setOnboardingAskedIssues(issues: String) {
+        context.dataStore.edit { it[Keys.ONBOARDING_ASKED] = issues }
     }
 
     val themeMode: Flow<ThemeMode> = context.dataStore.data.map { prefs ->

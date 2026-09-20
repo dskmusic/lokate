@@ -1,0 +1,50 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Accesos directos al dejar pulsado el icono de la app. Cada uno lleva su propia acción en
+     vez de un extra porque el XML de shortcuts no admite extras; MainActivity las traduce a la
+     pantalla que toca abrir. El de Mapa no necesita acción: la app ya arranca ahí. -->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="map"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_map"
+        android:shortcutShortLabel="@string/map_title"
+        android:shortcutLongLabel="@string/map_title">
+        <intent
+            android:action="android.intent.action.MAIN"
+            android:targetPackage="com.dskmusic.lokate"
+            android:targetClass="com.dskmusic.lokate.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="people"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_people"
+        android:shortcutShortLabel="@string/people_title"
+        android:shortcutLongLabel="@string/people_title">
+        <intent
+            android:action="com.dskmusic.lokate.action.OPEN_PEOPLE"
+            android:targetPackage="com.dskmusic.lokate"
+            android:targetClass="com.dskmusic.lokate.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="zones"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_zones"
+        android:shortcutShortLabel="@string/zones_title"
+        android:shortcutLongLabel="@string/zones_title">
+        <intent
+            android:action="com.dskmusic.lokate.action.OPEN_ZONES"
+            android:targetPackage="com.dskmusic.lokate"
+            android:targetClass="com.dskmusic.lokate.MainActivity" />
+    </shortcut>
+    <shortcut
+        android:shortcutId="history"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_history"
+        android:shortcutShortLabel="@string/history_title"
+        android:shortcutLongLabel="@string/history_title">
+        <intent
+            android:action="com.dskmusic.lokate.action.OPEN_HISTORY"
+            android:targetPackage="com.dskmusic.lokate"
+            android:targetClass="com.dskmusic.lokate.MainActivity" />
+    </shortcut>
+</shortcuts>

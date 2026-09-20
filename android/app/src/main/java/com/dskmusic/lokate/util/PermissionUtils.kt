@@ -2,6 +2,7 @@ package com.dskmusic.lokate.util
 
 import android.Manifest
 import android.app.Activity
+import android.app.NotificationManager
 import android.content.Context
 import android.content.Intent
 import android.content.pm.PackageManager
@@ -28,6 +29,16 @@ object PermissionUtils {
         return ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==
             PackageManager.PERMISSION_GRANTED
     }
+
+    /** Acceso a "No molestar": permiso especial, no de los de diálogo — el usuario lo concede
+     * a mano en un panel del sistema ([dndAccessSettingsIntent]). Sin él, con el silencio total
+     * puesto, ni suena la alarma de "hacer sonar" ni se puede subir su volumen.
+     */
+    fun hasDndAccess(context: Context): Boolean =
+        context.getSystemService(NotificationManager::class.java)?.isNotificationPolicyAccessGranted == true
+
+    fun dndAccessSettingsIntent(): Intent =
+        Intent(Settings.ACTION_NOTIFICATION_POLICY_ACCESS_SETTINGS)
 
     fun isIgnoringBatteryOptimizations(context: Context): Boolean {
         val pm = context.getSystemService(Context.POWER_SERVICE) as PowerManager

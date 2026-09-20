@@ -1,6 +1,8 @@
 package com.dskmusic.lokate.ui.history
 
 import android.app.DatePickerDialog
+import android.os.Build
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.horizontalScroll
@@ -19,8 +21,12 @@ import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
+import androidx.compose.material.icons.filled.ContentCopy
+import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material3.AlertDialog
+import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -35,12 +41,15 @@ import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalClipboardManager
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.AnnotatedString
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
@@ -50,12 +59,21 @@ import com.dskmusic.lokate.data.remote.absoluteAvatarUrl
 import com.dskmusic.lokate.data.remote.dto.GroupMemberDto
 import com.dskmusic.lokate.di.ServiceLocator
 import com.dskmusic.lokate.ui.map.HistoryMapView
+import com.dskmusic.lokate.ui.map.MapStyleMenuButton
+import com.dskmusic.lokate.ui.map.routeDistanceMeters
+import com.dskmusic.lokate.ui.map.moveTo
+import com.dskmusic.lokate.util.LocationSharing
+import com.dskmusic.lokate.util.MapStyle
 import org.osmdroid.util.GeoPoint
+import kotlinx.coroutines.launch
 import org.osmdroid.views.MapView
 import java.text.SimpleDateFormat
 import java.time.LocalDate
 import java.time.format.DateTimeFormatter
 import java.util.Locale
+
+/** Tres ubicaciones a la vista (un ListItem de dos líneas mide 72dp); el resto, a scroll. */
+private val HISTORY_LIST_HEIGHT = 216.dp
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -82,6 +100,17 @@ fun HistoryScreen(
 
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
     var focusedPoint by remember { mutableStateOf<LocationHistoryEntity?>(null) }
+    val clipboard = LocalClipboardManager.current
+    val scope = rememberCoroutineScope()
+    // Mismo ajuste que el mapa principal: cambiar el estilo aquí lo cambia en los dos, que es lo
+    // que espera quien lo toca (es "cómo se ve el mapa", no "cómo se ve esta pantalla").
+    val mapStyle by locator.settings.mapStyle.collectAsStateWithLifecycle(initialValue = MapStyle.STANDARD)
+    val sdf = remember { SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()) }
+    // Ordenar miles de puntos en cada recomposición (dos veces, una por lista) era medio segundo
+    // de parón cada vez que se tocaba algo; con remember solo se hace al cambiar el día o la persona.
+    val oldestFirst = remember(points) { points.sortedBy { it.timestampMillis } }
+    val newestFirst = remember(oldestFirst) { oldestFirst.asReversed() }
+    val distanceMeters = remember(oldestFirst) { routeDistanceMeters(oldestFirst) }
 
     Scaffold(
         topBar = {
@@ -91,6 +120,7 @@ fun HistoryScreen(
                     IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = null) }
                 },
                 actions = {
+                    MapStyleMenuButton { scope.launch { locator.settings.setMapStyle(it) } }
                     val selectedMember = state.members.firstOrNull { it.id == state.selectedUserId }
                     IconButton(onClick = { showPicker = true }) {
                         if (selectedMember?.avatar_url != null) {
@@ -156,25 +186,82 @@ fun HistoryScreen(
             }
 
             if (points.isNotEmpty()) {
-                Box(Modifier.fillMaxWidth().height(220.dp).clip(MaterialTheme.shapes.medium)) {
+                Text(
+                    stringResource(R.string.history_distance, formatDistance(distanceMeters)),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+                Box(Modifier.fillMaxWidth().weight(1f).clip(MaterialTheme.shapes.medium)) {
                     HistoryMapView(
-                        points = points.sortedBy { it.timestampMillis },
+                        points = oldestFirst,
                         focusedPoint = focusedPoint,
+                        mapStyle = mapStyle,
                         modifier = Modifier.fillMaxSize(),
                         onMapReady = { mapViewRef = it },
+                        onPointSelected = { focusedPoint = it },
                     )
+                    focusedPoint?.let { point ->
+                        val coords = String.format(Locale.US, "%.5f, %.5f", point.lat, point.lng)
+                        Card(
+                            modifier = Modifier.align(Alignment.BottomStart).padding(8.dp).clickable {
+                                clipboard.setText(AnnotatedString(coords))
+                                // Android 13+ ya enseña su propio aviso al copiar; el Toast sobraría.
+                                if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) {
+                                    Toast.makeText(context, R.string.history_coords_copied, Toast.LENGTH_SHORT).show()
+                                }
+                            },
+                        ) {
+                            Row(
+                                verticalAlignment = Alignment.CenterVertically,
+                                modifier = Modifier.padding(start = 12.dp),
+                            ) {
+                                Column {
+                                    Text(
+                                        sdf.format(java.util.Date(point.timestampMillis)),
+                                        style = MaterialTheme.typography.labelMedium,
+                                    )
+                                    Text(coords, style = MaterialTheme.typography.bodyMedium)
+                                }
+                                Icon(
+                                    Icons.Filled.ContentCopy,
+                                    contentDescription = stringResource(R.string.history_coords_copy),
+                                    modifier = Modifier.padding(start = 12.dp).size(20.dp),
+                                )
+                                IconButton(
+                                    onClick = {
+                                        LocationSharing.openInGoogleMaps(
+                                            context,
+                                            point.lat,
+                                            point.lng,
+                                            state.selectedDisplayName.orEmpty(),
+                                        )
+                                    },
+                                ) {
+                                    Icon(
+                                        Icons.Filled.Map,
+                                        contentDescription = stringResource(R.string.history_open_maps),
+                                    )
+                                }
+                                IconButton(onClick = { focusedPoint = null }) {
+                                    Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.close))
+                                }
+                            }
+                        }
+                    }
                 }
             }
 
-            val sdf = remember { SimpleDateFormat("dd/MM HH:mm", Locale.getDefault()) }
-            LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(points.sortedByDescending { it.timestampMillis }, key = { it.id }) { point ->
+            // Alto fijo para la lista (y el mapa con el resto, arriba) en vez de al revés: así el
+            // mapa crece en pantallas grandes en vez de quedarse en una tira fina con la lista
+            // ocupándolo todo.
+            LazyColumn(modifier = Modifier.fillMaxWidth().height(HISTORY_LIST_HEIGHT)) {
+                items(newestFirst, key = { it.id }) { point ->
                     ListItem(
                         headlineContent = { Text(sdf.format(java.util.Date(point.timestampMillis))) },
-                        supportingContent = { Text("%.5f, %.5f".format(point.lat, point.lng)) },
+                        supportingContent = { Text(String.format(Locale.US, "%.5f, %.5f", point.lat, point.lng)) },
                         modifier = Modifier.clickable {
                             focusedPoint = point
-                            mapViewRef?.controller?.animateTo(GeoPoint(point.lat, point.lng))
+                            mapViewRef?.moveTo(GeoPoint(point.lat, point.lng))
                         },
                     )
                 }
@@ -227,3 +314,8 @@ private fun MemberPickerRow(member: GroupMemberDto, selected: Boolean, onClick: 
         )
     }
 }
+
+/** Metros por debajo del kilómetro, kilómetros con un decimal por encima. */
+private fun formatDistance(meters: Double): String =
+    if (meters < 1000) String.format(Locale.getDefault(), "%.0f m", meters)
+    else String.format(Locale.getDefault(), "%.1f km", meters / 1000)

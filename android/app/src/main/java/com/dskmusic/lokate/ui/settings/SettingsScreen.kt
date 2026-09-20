@@ -62,6 +62,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dskmusic.lokate.BuildConfig
 import com.dskmusic.lokate.R
+import com.dskmusic.lokate.data.offline.OfflineMaps
 import com.dskmusic.lokate.data.prefs.SettingsDataStore
 import com.dskmusic.lokate.data.remote.absoluteAvatarUrl
 import com.dskmusic.lokate.data.remote.absoluteMediaUrl
@@ -74,13 +75,20 @@ import com.dskmusic.lokate.location.LocationServiceController
 import com.dskmusic.lokate.ui.common.AvatarPicker
 import com.dskmusic.lokate.ui.theme.AccentPresets
 import com.dskmusic.lokate.util.LocationFrequency
+import com.dskmusic.lokate.util.MapStyle
 import com.dskmusic.lokate.util.PermissionUtils
 import com.dskmusic.lokate.util.ThemeMode
 import com.dskmusic.lokate.util.VibrationPattern
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun SettingsScreen(locator: ServiceLocator, onBack: () -> Unit, onLoggedOut: () -> Unit) {
+fun SettingsScreen(
+    locator: ServiceLocator,
+    onBack: () -> Unit,
+    onOpenOfflineMaps: () -> Unit,
+    onLoggedOut: () -> Unit,
+    onFixPermissions: () -> Unit,
+) {
     val context = LocalContext.current
     val viewModel = remember {
         SettingsViewModel(locator.settings, locator.authRepository, locator.groupRepository, locator.zoneRepository, locator.locationRepository)
@@ -96,6 +104,7 @@ fun SettingsScreen(locator: ServiceLocator, onBack: () -> Unit, onLoggedOut: () 
     val ringSoundUri by locator.settings.ringSoundUri.collectAsStateWithLifecycle(initialValue = null)
     val vibrationPattern by locator.settings.vibrationPattern.collectAsStateWithLifecycle(initialValue = VibrationPattern.SOFT)
     val mapZoom by locator.settings.mapInitialZoom.collectAsStateWithLifecycle(initialValue = Constants.MAP_DEFAULT_ZOOM)
+    val mapStyle by locator.settings.mapStyle.collectAsStateWithLifecycle(initialValue = MapStyle.STANDARD)
     val appLanguage by locator.settings.appLanguage.collectAsStateWithLifecycle(initialValue = "auto")
     val mapCacheClearedBytes by viewModel.mapCacheClearedBytes.collectAsStateWithLifecycle()
     val updateFlagEnabled by viewModel.updateFlagEnabled.collectAsStateWithLifecycle()
@@ -315,6 +324,44 @@ fun SettingsScreen(locator: ServiceLocator, onBack: () -> Unit, onLoggedOut: () 
             }
 
             item { HorizontalDivider() }
+            item { SectionTitle(stringResource(R.string.offline_maps_title)) }
+            item {
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.offline_maps_use)) },
+                    supportingContent = { Text(stringResource(R.string.offline_maps_use_desc)) },
+                    trailingContent = {
+                        Switch(
+                            checked = mapStyle.isOffline,
+                            onCheckedChange = { enabled ->
+                                scope.launch {
+                                    // Se respeta si el mapa estaba en oscuro: el modo sin
+                                    // conexión también lo tiene.
+                                    locator.settings.setMapStyle(
+                                        when {
+                                            !enabled -> mapStyle.online
+                                            mapStyle == MapStyle.DARK -> MapStyle.OFFLINE_DARK
+                                            else -> MapStyle.OFFLINE
+                                        },
+                                    )
+                                }
+                                // Encenderlo sin nada descargado no sirve de nada: se va directo a
+                                // elegir zona en vez de dejar que el aviso salte luego en el mapa.
+                                if (enabled && OfflineMaps.files(context).isEmpty()) onOpenOfflineMaps()
+                            },
+                        )
+                    },
+                )
+            }
+            item {
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.offline_maps_manage)) },
+                    supportingContent = { Text(stringResource(R.string.offline_maps_manage_desc)) },
+                    modifier = Modifier.clickable { onOpenOfflineMaps() },
+                )
+            }
+            item { Spacer(Modifier.height(20.dp)) }
+
+            item { HorizontalDivider() }
             item { SectionTitle(stringResource(R.string.settings_notifications)) }
             item {
                 ListItem(
@@ -336,6 +383,13 @@ fun SettingsScreen(locator: ServiceLocator, onBack: () -> Unit, onLoggedOut: () 
                 ListItem(
                     headlineContent = { Text(stringResource(R.string.settings_permissions)) },
                     modifier = Modifier.clickable { context.startActivity(PermissionUtils.appSettingsIntent(context)) },
+                )
+            }
+            item {
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.settings_permissions_fix)) },
+                    supportingContent = { Text(stringResource(R.string.settings_permissions_fix_desc)) },
+                    modifier = Modifier.clickable { onFixPermissions() },
                 )
             }
 
@@ -688,7 +742,7 @@ fun SettingsScreen(locator: ServiceLocator, onBack: () -> Unit, onLoggedOut: () 
 }
 
 @Composable
-private fun SectionTitle(text: String) {
+internal fun SectionTitle(text: String) {
     Text(
         text,
         style = MaterialTheme.typography.titleMedium,

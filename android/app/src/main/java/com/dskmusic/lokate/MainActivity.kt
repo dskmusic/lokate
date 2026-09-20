@@ -14,6 +14,7 @@ import androidx.compose.ui.graphics.Color
 import androidx.core.app.NotificationManagerCompat
 import com.dskmusic.lokate.push.NotificationHelper
 import com.dskmusic.lokate.push.RING_NOTIFICATION_ID
+import com.dskmusic.lokate.util.ConfigCheck
 import com.dskmusic.lokate.util.Constants
 import com.dskmusic.lokate.di.ServiceLocator
 import com.dskmusic.lokate.location.LocationServiceController
@@ -45,6 +46,13 @@ class MainActivity : ComponentActivity() {
         var startDestination = runBlocking {
             when {
                 !locator.settings.onboardingCompleted.first() -> Routes.ONBOARDING
+                // Onboarding ya hecho, pero falta algo que nunca se le llegó a pedir: pasa al
+                // actualizar la app a una versión con un permiso nuevo. Sin esto, la única
+                // forma de que lo pidiera era borrar los datos de la app.
+                ConfigCheck.pendingOnboarding(
+                    applicationContext,
+                    locator.settings.onboardingAskedIssues.first(),
+                ).isNotEmpty() -> Routes.ONBOARDING
                 !locator.authRepository.isLoggedIn() -> Routes.LOGIN
                 else -> Routes.MAP
             }
@@ -65,6 +73,25 @@ class MainActivity : ComponentActivity() {
             )
         }
 
+        // Toque en una notificación de zona ("X ha llegado a Y"): se abre la ficha de esa
+        // persona. Solo desde el mapa: si toca onboarding o login, primero lo suyo.
+        val memberFromPush = intent.getStringExtra(Constants.EXTRA_PUSH_USER_ID)
+            ?.takeIf { it.isNotBlank() && startDestination == Routes.MAP }
+        // Se consume al leerlo: si la actividad se recrea por otra cosa (cambiar el idioma en
+        // Ajustes, por ejemplo), el intent sigue siendo el mismo y volvería a saltar la ficha.
+        intent.removeExtra(Constants.EXTRA_PUSH_USER_ID)
+
+        // Acceso directo del icono de la app: se abre el mapa y encima la sección elegida, para
+        // que "atrás" lleve al mapa en vez de cerrar la app. Se consume igual que el extra de
+        // arriba, si no una rotación volvería a abrir la sección.
+        val sectionFromShortcut = when (intent.action) {
+            Constants.ACTION_OPEN_PEOPLE -> Routes.PEOPLE
+            Constants.ACTION_OPEN_ZONES -> Routes.ZONES
+            Constants.ACTION_OPEN_HISTORY -> Routes.history()
+            else -> null
+        }?.takeIf { startDestination == Routes.MAP }
+        intent.action = Intent.ACTION_MAIN
+
         // Cubre a quien ya tenía sesión iniciada antes de este arreglo: sin esto, ni su token FCM
         // se había mandado al backend, ni el servicio de ubicación llegó a arrancar nunca
         // (antes solo arrancaba desde el onboarding, que ocurre ANTES de tener cuenta).
@@ -84,7 +111,12 @@ class MainActivity : ComponentActivity() {
 
             LokateTheme(themeMode = themeMode, accentColor = Color(accentArgb)) {
                 Surface(modifier = Modifier.fillMaxSize()) {
-                    LokateNavHost(locator = locator, startDestination = startDestination)
+                    LokateNavHost(
+                        locator = locator,
+                        startDestination = startDestination,
+                        openMemberUserId = memberFromPush,
+                        openSection = sectionFromShortcut,
+                    )
                 }
             }
         }

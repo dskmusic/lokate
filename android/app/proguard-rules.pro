@@ -4,3 +4,12 @@
 # fallaba solo en release ("no se ha podido buscar").
 -keep class com.dskmusic.lokate.data.remote.** { *; }
 -keepattributes Signature, InnerClasses, EnclosingMethod, Exceptions
+
+# Mapas sin conexión: mapsforge instancia por nombre las clases del tema de render (XML) y
+# arrastra clases de AWT/desktop que en Android no existen. Sin esto, el mapa offline
+# revienta solo en release, que es justo la compilación que se instala.
+-keep class org.mapsforge.** { *; }
+-keep class org.osmdroid.mapsforge.** { *; }
+-dontwarn org.mapsforge.**
+-dontwarn java.awt.**
+-dontwarn javax.imageio.**

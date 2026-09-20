@@ -8,6 +8,7 @@ import android.content.Intent
 import android.graphics.Bitmap
 import android.graphics.drawable.BitmapDrawable
 import android.media.AudioAttributes
+import android.media.AudioManager
 import android.media.Ringtone
 import android.media.RingtoneManager
 import android.net.Uri
@@ -56,6 +57,20 @@ object NotificationHelper {
     @Volatile
     private var activeRingtone: Ringtone? = null
 
+    /** Volumen de alarma y filtro de No molestar que tenía el móvil antes de que [boostAlarmVolume]
+     * los tocase. Null = no los hemos tocado, no hay nada que restaurar. @Volatile por lo mismo
+     * que [activeRingtone]: quien los restaura suele ser un hilo distinto del que los guardó.
+     *
+     * ponytail: si el proceso muere con la alarma sonando no se restauran, y el móvil se queda
+     * con la alarma al máximo (y sin No molestar) hasta el siguiente "hacer sonar". Si molesta,
+     * guardarlos en el DataStore y restaurarlos al arrancar la app.
+     */
+    @Volatile
+    private var savedAlarmVolume: Int? = null
+
+    @Volatile
+    private var savedInterruptionFilter: Int? = null
+
     // Con el bucle de vibración en marcha, quien lo para puede ser otro hilo (el push de parada
     // remota llega en el hilo de FCM, no en el principal): la bandera corta el ciclo que ya
     // estuviera a medio programarse en el Handler.
@@ -87,6 +102,10 @@ object NotificationHelper {
      */
     fun playRingAlarm(context: Context, soundUri: String?, pattern: VibrationPattern, forcePriority: Boolean = true) {
         stopRingAlarm(context)
+        // Solo los avisos prioritarios ("hacer sonar" y mensajes de emergencia) se saltan el
+        // volumen y el silencio que tenga puesto el móvil: las notificaciones de zona son
+        // rutina y despertar a nadie a las 3 de la mañana por una no está justificado.
+        if (forcePriority) boostAlarmVolume(context)
 
         val usage = if (forcePriority) AudioAttributes.USAGE_ALARM else AudioAttributes.USAGE_NOTIFICATION_RINGTONE
         val audioAttributes = AudioAttributes.Builder()
@@ -154,6 +173,54 @@ object NotificationHelper {
         activeRingtone?.let { if (it.isPlaying) it.stop() }
         activeRingtone = null
         cancelVibration(context)
+        restoreAlarmVolume(context)
+    }
+
+    /** Sube la alarma al máximo para que un móvil perdido se oiga aunque lo hubieran dejado en
+     * silencio, y aparta el No molestar si el usuario nos dio acceso (ajuste "Acceso a No
+     * molestar", ver [PermissionUtils.hasDndAccess]). Sin ese permiso, setStreamVolume lanza
+     * SecurityException cuando hay un DND activo que silencia la alarma: ahí no se puede hacer
+     * nada salvo no reventar — de eso avisa [ConfigCheck.DND] en la ficha del miembro.
+     */
+    private fun boostAlarmVolume(context: Context) {
+        val manager = context.getSystemService(NotificationManager::class.java)
+        if (manager != null && manager.isNotificationPolicyAccessGranted) {
+            val filter = manager.currentInterruptionFilter
+            if (filter != NotificationManager.INTERRUPTION_FILTER_ALL) {
+                savedInterruptionFilter = filter
+                runCatching { manager.setInterruptionFilter(NotificationManager.INTERRUPTION_FILTER_ALL) }
+            }
+        }
+        val audio = context.getSystemService(AudioManager::class.java) ?: return
+        runCatching {
+            val max = audio.getStreamMaxVolume(AudioManager.STREAM_ALARM)
+            val current = audio.getStreamVolume(AudioManager.STREAM_ALARM)
+            if (current < max) {
+                savedAlarmVolume = current
+                audio.setStreamVolume(AudioManager.STREAM_ALARM, max, 0)
+            }
+        }
+    }
+
+    /** Deja el móvil como estaba. El volumen se restaura ANTES que el No molestar a propósito:
+     * al revés, con el DND ya puesto, setStreamVolume volvería a lanzar SecurityException y el
+     * volumen se quedaría al máximo.
+     */
+    private fun restoreAlarmVolume(context: Context) {
+        savedAlarmVolume?.let { volume ->
+            savedAlarmVolume = null
+            runCatching {
+                context.getSystemService(AudioManager::class.java)
+                    ?.setStreamVolume(AudioManager.STREAM_ALARM, volume, 0)
+            }
+        }
+        savedInterruptionFilter?.let { filter ->
+            savedInterruptionFilter = null
+            val manager = context.getSystemService(NotificationManager::class.java) ?: return
+            if (manager.isNotificationPolicyAccessGranted) {
+                runCatching { manager.setInterruptionFilter(filter) }
+            }
+        }
     }
 
     /** Llama a las DOS APIs de cancelar vibración, no solo la "correcta" según la versión de
@@ -283,16 +350,34 @@ object NotificationHelper {
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
 
-    fun showZoneNotification(context: Context, channelId: String, title: String, body: String) {
-        val notification = NotificationCompat.Builder(context, channelId)
+    fun showZoneNotification(context: Context, channelId: String, title: String, body: String, memberUserId: String?) {
+        val notificationId = nextNotificationId()
+        val builder = NotificationCompat.Builder(context, channelId)
             .setContentTitle(title)
             .setContentText(body)
             .setStyle(NotificationCompat.BigTextStyle().bigText(body))
             .setSmallIcon(R.drawable.ic_notification)
             .setGroup(ZONE_GROUP)
             .setAutoCancel(true)
-            .build()
-        NotificationManagerCompat.from(context).notify(nextNotificationId(), notification)
+        memberPendingIntent(context, notificationId, memberUserId)?.let { builder.setContentIntent(it) }
+        NotificationManagerCompat.from(context).notify(notificationId, builder.build())
+    }
+
+    /** Abre la app en la ficha de esa persona. Solo hace falta para las notificaciones que
+     * pinta la propia app (la de zona con la app en primer plano): con la app fuera la pinta el
+     * sistema desde el push y el toque ya llega a MainActivity con los datos puestos. */
+    private fun memberPendingIntent(context: Context, notificationId: Int, memberUserId: String?): PendingIntent? {
+        if (memberUserId.isNullOrBlank()) return null
+        val intent = Intent(context, com.dskmusic.lokate.MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            putExtra(Constants.EXTRA_PUSH_USER_ID, memberUserId)
+        }
+        return PendingIntent.getActivity(
+            context,
+            notificationId,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
     }
 
     fun showSystemNotification(context: Context, title: String, body: String) {

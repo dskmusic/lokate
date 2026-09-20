@@ -28,9 +28,10 @@ object ConfigCheck {
     const val NOTIFICATION_CHANNEL = "notif_channel"
     const val BATTERY = "battery"
     const val GPS_OFF = "gps_off"
+    const val DND = "dnd"
 
     /** Orden fijo (de más grave a menos) para que la lista se lea igual siempre. */
-    val ALL = listOf(LOCATION, BACKGROUND_LOCATION, NOTIFICATIONS, NOTIFICATION_CHANNEL, BATTERY, GPS_OFF)
+    val ALL = listOf(LOCATION, BACKGROUND_LOCATION, NOTIFICATIONS, NOTIFICATION_CHANNEL, BATTERY, GPS_OFF, DND)
 
     fun issues(context: Context): List<String> = buildList {
         if (!PermissionUtils.hasForegroundLocationPermission(context)) add(LOCATION)
@@ -49,6 +50,28 @@ object ConfigCheck {
         }
         if (!PermissionUtils.isIgnoringBatteryOptimizations(context)) add(BATTERY)
         if (!isLocationEnabled(context)) add(GPS_OFF)
+        // El último de la lista por ser el menos grave: solo estorba si además el móvil está en
+        // silencio total, y el resto de la app funciona igual sin él.
+        if (!PermissionUtils.hasDndAccess(context)) add(DND)
+    }
+
+    /** Los que el onboarding sabe pedir. [NOTIFICATION_CHANNEL] y [GPS_OFF] no son permisos
+     * sino interruptores que el usuario enciende y apaga cuando quiere (el GPS, sin ir más
+     * lejos, se apaga a diario): sacarle el onboarding por ellos no arreglaría nada. */
+    val ONBOARDABLE = listOf(LOCATION, BACKGROUND_LOCATION, NOTIFICATIONS, BATTERY, DND)
+
+    fun onboardableIssues(context: Context): List<String> = issues(context).filter { it in ONBOARDABLE }
+
+    /** Lo que le falta a este móvil y ADEMÁS nunca se le llegó a pedir en el onboarding. Cuando
+     * una actualización añade un permiso nuevo cae aquí solo, sin números de versión que
+     * mantener. Vacío = no hay que sacar el onboarding.
+     *
+     * [asked] es lo ya preguntado (ver SettingsDataStore.onboardingAskedIssues): lo que el
+     * usuario decidió saltarse queda ahí y no se le vuelve a insistir en cada apertura — para
+     * eso está el aviso permanente de [issues] en su ficha. */
+    fun pendingOnboarding(context: Context, asked: String?): List<String> {
+        val alreadyAsked = parse(asked).orEmpty()
+        return onboardableIssues(context).filterNot { it in alreadyAsked }
     }
 
     /** Cadena lista para mandar al servidor. */

@@ -32,7 +32,30 @@ company sees your family's location history.
 - **People** tab: avatar, battery %, charging state, connected Wi-Fi network, and last-update time
   for every group member — tap to center the map, tap the avatar for a full-size preview, or jump
   straight to their detail screen.
-- Location history per day, with the route drawn on the map and a synced list of points.
+- Location history per day, with the route drawn on the map, a synced list of points, the total
+  distance covered, and copy-coordinates / open-in-Google-Maps on any point.
+- Map styles right on the map (layers button): standard, satellite, dark, offline, and offline dark.
+- **Follow live**: the map jumps to any group member at the default zoom from Settings and keeps
+  re-centering on them with every update.
+- Configurable initial zoom, and the map remembers where you left it when switching tabs.
+- Address and coordinate search when creating or editing zones.
+- **Test mode** for admins: drag a marker in or out of a zone to check enter/exit alerts without
+  leaving the house.
+
+**Offline maps**
+- Vector maps rendered on the phone with **Mapsforge**: the map keeps working with no coverage and
+  no data, with real labels, streets and zoom (not screenshots).
+- The full official catalogue — 400+ areas covering continents, countries and subdivisions of the
+  big ones — plus each Spanish region and the Canary Islands separately.
+- On-demand downloads from Settings, with search (accent-insensitive, by localized name, English
+  name or continent), the **exact size fetched from the server before you confirm**, a progress bar
+  and cancel. The first time it suggests the area you are in.
+- Manage what you downloaded: which areas, how much each one takes, and delete with confirmation.
+- **Automatic switching**: look at an area you have not downloaded (a relative in another country)
+  and the map falls back to the online map with a heads-up toast; come back to a downloaded area and
+  it switches back, again with a toast.
+- Files are downloaded straight from Mapsforge's public catalogue — your Lokate server is not
+  involved and stores nothing.
 
 **Zones & alerts**
 - Saved zones (geofences) with a live map preview that auto-fits to the radius as you adjust it.
@@ -51,7 +74,12 @@ company sees your family's location history.
 **Polish**
 - Light / dark / AMOLED (true black) / automatic theming, with a custom accent color.
 - Spanish / English, automatic or manually chosen in Settings.
+- Permission checker in Settings: tells you what this phone is missing (background location,
+  notifications, Do Not Disturb access so it can ring while silenced…) and asks again, even if you
+  skipped it at install time.
 - In-app updater — checks and installs the latest APK straight from your own server.
+- In-app admin panel: users, groups, dashboard, and a **server storage manager** (database,
+  avatars, attachments, APK and backups) with file preview and deletion.
 - A full web **admin panel** (users, groups, zones, location history by day, and a visual dashboard)
   with its own light/dark theme and Spanish/English UI, auto-detected and switchable.
 
@@ -66,7 +94,7 @@ Lokate by DSK/
 
 | | |
 |---|---|
-| **Android** | Kotlin, Jetpack Compose, Material 3, Room, DataStore, Retrofit + OkHttp, Coil, osmdroid, WorkManager, EncryptedSharedPreferences |
+| **Android** | Kotlin, Jetpack Compose, Material 3, Room, DataStore, Retrofit + OkHttp, Coil, osmdroid + Mapsforge (offline maps), WorkManager, EncryptedSharedPreferences |
 | **Backend** | Python, FastAPI, SQLAlchemy, Pydantic, SQLite, PyJWT, bcrypt, SQLAdmin, Firebase Admin SDK, Docker |
 
 Key design calls — and why — are documented in [`docs/ANDROID.md`](docs/ANDROID.md) and
@@ -90,16 +118,13 @@ and more.
 ## 🗺️ Possible map improvements
 
 A short list of things the current OpenStreetMap/osmdroid setup *could* grow into, if ever needed —
-none of these are implemented today:
+none of these are implemented today (satellite view, the dark map and offline maps are, see
+[Features](#-features)):
 
 - **Traffic layer** — needs a tile provider that offers live traffic (osmdroid's default OSM tiles
   don't include it); services like TomTom or Mapbox offer this, at a cost/API-key.
-- **Satellite/hybrid view** — swappable tile source (e.g. Esri World Imagery, free with attribution)
-  as an alternate `TileSourceFactory` alongside the current street map.
-- **Offline map tiles** — osmdroid supports pre-downloaded `.mbtiles` packs for areas with poor
-  connectivity.
-- **Custom dark map tiles** — a dedicated dark-styled tile source (e.g. CartoDB Dark Matter) instead
-  of just darkening the app chrome around a light map.
+- **Resumable map downloads** — an interrupted download currently restarts from scratch; HTTP range
+  requests could pick up where it left off (only worth it for multi-GB countries).
 - **Turn-by-turn navigation** — out of scope for a family-location app, but osmdroid can integrate
   with routing engines like GraphHopper or OSRM if ever wanted.
 

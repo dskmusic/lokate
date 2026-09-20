@@ -53,7 +53,7 @@ class LokateFirebaseMessagingService : FirebaseMessagingService() {
                 val channelId = runBlocking {
                     NotificationHelper.currentZoneChannelId(this@LokateFirebaseMessagingService, locator.settings)
                 }
-                NotificationHelper.showZoneNotification(this, channelId, title, body)
+                NotificationHelper.showZoneNotification(this, channelId, title, body, message.data["user_id"])
             }
             // "Hacer sonar" y mensajes de emergencia: SIEMPRE con el sonido de alarma del
             // sistema y vibración fuerte, ignorando silencio/no molestar — no son

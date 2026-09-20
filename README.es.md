@@ -32,7 +32,31 @@ servidor. Ninguna empresa externa ve el historial de ubicaciones de tu familia.
 - Pestaña **Gente**: foto, batería, estado de carga, red WiFi conectada y última actualización de
   cada miembro del grupo — toca la fila para centrar el mapa, la foto para verla en grande, o el
   icono de flecha para ir directamente a su ficha de detalle.
-- Historial de ubicaciones por día, con la ruta pintada en el mapa y una lista de puntos sincronizada.
+- Historial de ubicaciones por día, con la ruta pintada en el mapa y una lista de puntos
+  sincronizada, distancia total recorrida, y copiar coordenadas o abrir cualquier punto en Google Maps.
+- Estilos de mapa en el propio mapa (botón de capas): estándar, satélite, oscuro, sin conexión y
+  sin conexión oscuro.
+- **Seguir en vivo** a cualquier miembro del grupo: el mapa salta a esa persona con el zoom por
+  defecto de Ajustes y se queda centrado en ella en cada actualización.
+- Zoom inicial configurable, y el mapa recuerda dónde lo dejaste al cambiar de pestaña.
+- Buscador de direcciones y coordenadas al crear o editar zonas.
+- **Modo prueba** para administradores: arrastra un marcador dentro o fuera de una zona para
+  comprobar los avisos de entrada/salida sin moverte de casa.
+
+**Mapas sin conexión**
+- Mapas vectoriales de **Mapsforge** dibujados en el propio móvil: el mapa sigue funcionando sin
+  cobertura ni datos, con etiquetas, calles y zoom de verdad (no capturas de pantalla).
+- Catálogo oficial completo con más de 400 zonas — continentes, países y subdivisiones de los
+  países grandes — más las comunidades autónomas españolas y Canarias por separado.
+- Descarga bajo demanda desde Ajustes, con buscador (sin tildes, por nombre en tu idioma, en
+  inglés o por continente), **tamaño exacto consultado al servidor antes de confirmar**, barra de
+  progreso y cancelación. La primera vez te sugiere la zona donde estás.
+- Gestión de lo descargado: qué zonas hay, cuánto ocupa cada una y borrado con confirmación.
+- **Cambio automático**: si miras una zona que no tienes descargada (un familiar en otro país), el
+  mapa pasa solo al mapa de internet y avisa; al volver a una zona descargada, vuelve al mapa sin
+  conexión y avisa igual.
+- Los archivos se bajan directamente del catálogo público de Mapsforge: tu servidor de Lokate no
+  interviene ni almacena nada.
 
 **Zonas y avisos**
 - Zonas guardadas (geovallas) con vista previa en el mapa que se ajusta sola al radio mientras lo
@@ -54,7 +78,13 @@ servidor. Ninguna empresa externa ve el historial de ubicaciones de tu familia.
 **Acabado**
 - Tema claro / oscuro / AMOLED (negro puro) / automático, con color de acento personalizable.
 - Español / inglés, automático o elegido a mano en Ajustes.
+- Comprobador de permisos en Ajustes: dice qué le falta a ese móvil (ubicación en segundo plano,
+  notificaciones, acceso a No molestar para poder sonar en silencio…) y lo vuelve a pedir aunque lo
+  hubieras omitido al instalar.
 - Actualizador integrado — busca e instala el último APK directamente desde tu propio servidor.
+- Panel de administración en la app: usuarios, grupos, dashboard y un **gestor de almacenamiento
+  del servidor** (base de datos, avatares, adjuntos, APK y copias de seguridad) con vista previa y
+  borrado de archivos.
 - Panel de administración web completo (usuarios, grupos, zonas, historial de ubicaciones por día, y
   un dashboard visual) con su propio tema claro/oscuro e interfaz en español/inglés, detectado
   automáticamente y cambiable a mano.
@@ -70,7 +100,7 @@ Lokate by DSK/
 
 | | |
 |---|---|
-| **Android** | Kotlin, Jetpack Compose, Material 3, Room, DataStore, Retrofit + OkHttp, Coil, osmdroid, WorkManager, EncryptedSharedPreferences |
+| **Android** | Kotlin, Jetpack Compose, Material 3, Room, DataStore, Retrofit + OkHttp, Coil, osmdroid + Mapsforge (mapas sin conexión), WorkManager, EncryptedSharedPreferences |
 | **Backend** | Python, FastAPI, SQLAlchemy, Pydantic, SQLite, PyJWT, bcrypt, SQLAdmin, Firebase Admin SDK, Docker |
 
 Las decisiones de diseño clave — y su porqué — están documentadas en [`docs/ANDROID.md`](docs/ANDROID.md)
@@ -94,16 +124,13 @@ siempre en vez de la notificación por defecto del sistema), y más.
 ## 🗺️ Posibles mejoras del mapa
 
 Un listado breve de cosas a las que podría crecer el mapa OpenStreetMap/osmdroid actual, si algún día
-hiciera falta — nada de esto está implementado hoy:
+hiciera falta — nada de esto está implementado hoy (la vista satélite, el mapa oscuro y los mapas sin
+conexión sí lo están, ver [Funcionalidades](#-funcionalidades)):
 
 - **Capa de tráfico** — hace falta un proveedor de teselas con tráfico en vivo (las teselas OSM por
   defecto de osmdroid no lo traen); servicios como TomTom o Mapbox lo ofrecen, con coste/clave de API.
-- **Vista satélite/híbrida** — una fuente de teselas alternativa (p. ej. Esri World Imagery, gratis
-  con atribución) como `TileSourceFactory` alterno junto al mapa de calles actual.
-- **Teselas de mapa sin conexión** — osmdroid soporta paquetes `.mbtiles` predescargados para zonas
-  con mala cobertura.
-- **Teselas de mapa oscuro personalizadas** — una fuente de teselas con estilo oscuro propio (p. ej.
-  CartoDB Dark Matter) en vez de solo oscurecer la interfaz de la app alrededor de un mapa claro.
+- **Reanudar descargas de mapas** — ahora una descarga cortada empieza de cero; con peticiones por
+  rangos HTTP podría continuar donde se quedó (solo merece la pena para países de varios GB).
 - **Navegación paso a paso** — fuera del alcance de una app de localización familiar, pero osmdroid
   puede integrarse con motores de rutas como GraphHopper u OSRM si algún día se quisiera.
 

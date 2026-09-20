@@ -19,6 +19,8 @@
     <string name="onboarding_background_location_desc">To keep sharing your location even when the app isn\'t open, Android will ask you to choose \"Allow all the time\".</string>
     <string name="onboarding_notifications_title">Notifications</string>
     <string name="onboarding_notifications_desc">We\'ll notify you when someone in your family enters or leaves a saved zone.</string>
+    <string name="onboarding_dnd_title">Ring even when silenced</string>
+    <string name="onboarding_dnd_desc">To find this phone when it gets lost, the app needs permission to turn the alarm volume up and bypass Do Not Disturb. It only does this for “ring device” and emergency messages, and puts the volume back afterwards.</string>
     <string name="onboarding_battery_title">Ignore battery optimization</string>
     <string name="onboarding_battery_desc">Some systems close background apps to save battery. Without this permission, Lokate might stop sharing your location.</string>
     <string name="onboarding_manufacturer_title">Extra setting for your manufacturer</string>
@@ -60,6 +62,7 @@
     <string name="retry">Retry</string>
     <string name="connection_error_body">Couldn\'t connect to the server. Check your connection and try again.</string>
     <string name="confirm">Confirm</string>
+    <string name="delete">Delete</string>
     <string name="exit_app_confirm_title">Exit Lokate?</string>
     <string name="exit_app_confirm_body">The app will keep sharing your location in the background even if you close it.</string>
     <string name="exit_app_confirm_button">Exit</string>
@@ -104,12 +107,15 @@
     <string name="config_status_ok">Correctly set up</string>
     <string name="config_status_unknown">Setup unknown (app not updated)</string>
     <string name="config_status_issues">Still to set up:</string>
+    <string name="config_status_fix_hint">Tap to grant the missing permissions</string>
     <string name="config_issue_location">Location permission denied</string>
     <string name="config_issue_bg_location">Background location denied: only visible while the app is open</string>
     <string name="config_issue_notifications">Notifications turned off: receives no alerts at all</string>
     <string name="config_issue_notif_channel">Some notification type is blocked in the phone settings</string>
     <string name="config_issue_battery">Battery optimisation on: Android may close the app</string>
     <string name="config_issue_gps_off">System location (GPS) turned off</string>
+    <string name="config_issue_dnd">No Do Not Disturb access: it may not ring when located if silenced</string>
+    <string name="permissions_all_ok">All good: no permissions missing</string>
     <string name="test_notification_confirm_title">Send a test notification?</string>
     <string name="test_notification_confirm_body">A test notification will be sent to %1$s\'s device.</string>
     <string name="ring_device_button">Ring the device</string>
@@ -191,6 +197,10 @@
     <string name="history_today">Today</string>
     <string name="history_pick_date">Pick a date</string>
     <string name="history_no_points">No locations recorded in this period</string>
+    <string name="history_coords_copy">Copy coordinates</string>
+    <string name="history_coords_copied">Coordinates copied</string>
+    <string name="history_open_maps">Open in Google Maps</string>
+    <string name="history_distance">Distance travelled: %1$s</string>
     <string name="history_choose_person">Choose person</string>
 
     <!-- Settings -->
@@ -214,6 +224,8 @@
     <string name="settings_map_cache_clear">Clear map cache</string>
     <string name="settings_map_cache_cleared">Cache cleared: %1$.1f MB freed</string>
     <string name="settings_permissions">Permissions</string>
+    <string name="settings_permissions_fix">Check and fix permissions</string>
+    <string name="settings_permissions_fix_desc">Checks what this phone is missing and asks for it again, even if you skipped it before</string>
     <string name="settings_zones">Saved zones</string>
     <string name="settings_notifications">Notifications</string>
     <string name="settings_notifications_zone">Zone alerts</string>
@@ -340,4 +352,32 @@
     <string name="people_sort_name">Name</string>
     <string name="people_sort_distance">Distance</string>
     <string name="people_sort_recent">Recent</string>
+    <!-- Offline maps -->
+    <string name="map_style_offline">Offline</string>
+    <string name="map_style_offline_dark">Offline (dark)</string>
+    <string name="offline_maps_title">Offline maps</string>
+    <string name="offline_maps_use">Use offline map</string>
+    <string name="offline_maps_use_desc">Draws the map from the downloaded areas, without using data</string>
+    <string name="offline_maps_manage">Downloaded areas</string>
+    <string name="offline_maps_manage_desc">Download maps, check their size or delete them</string>
+    <string name="offline_maps_downloaded">Downloaded</string>
+    <string name="offline_maps_empty">You haven\'t downloaded any area yet</string>
+    <string name="offline_maps_available">Available areas</string>
+    <string name="offline_maps_search">Search area</string>
+    <string name="offline_maps_search_empty">No area with that name</string>
+    <string name="offline_maps_suggested">Your area: %1$s</string>
+    <string name="offline_maps_suggested_desc">It covers where you are now, about %1$s</string>
+    <string name="offline_maps_download">Download</string>
+    <string name="offline_maps_downloading">Downloading %1$s</string>
+    <string name="offline_maps_download_title">Download %1$s?</string>
+    <string name="offline_maps_download_body">A %1$s file will be downloaded and stored on your phone. Better on Wi-Fi: over mobile data it may cost you money.</string>
+    <string name="offline_maps_download_body_approx">A file of about %1$s will be downloaded and stored on your phone. Better on Wi-Fi: over mobile data it may cost you money.</string>
+    <string name="offline_maps_delete_title">Delete %1$s?</string>
+    <string name="offline_maps_delete_body">You will free up %1$s. You can download it again whenever you want.</string>
+    <string name="offline_maps_error">Download failed: %1$s</string>
+    <string name="offline_maps_missing_title">No map downloaded</string>
+    <string name="offline_maps_out_of_area">No downloaded map for this area: showing the online map</string>
+    <string name="offline_maps_back_in_area">Back in a downloaded area: offline map</string>
+    <string name="offline_maps_missing_body">You picked the offline map, but there is no area stored on your phone. Download one or keep using the online map.</string>
+    <string name="offline_maps_missing_live">Use the online map</string>
 </resources>

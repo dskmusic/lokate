@@ -11,6 +11,7 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -82,6 +83,7 @@ fun MemberDetailScreen(
     onBack: () -> Unit,
     onOpenHistory: (String, String) -> Unit,
     onOpenMap: (String) -> Unit,
+    onFixPermissions: () -> Unit,
 ) {
     val context = LocalContext.current
     val viewModel = remember(userId) {
@@ -247,7 +249,12 @@ fun MemberDetailScreen(
                 )
             }
             Spacer(Modifier.height(12.dp))
-            ConfigStatusRow(location.config_issues)
+            // Arreglar permisos solo tiene sentido en la ficha de uno mismo: en la de otro
+            // miembro, lo que hay que tocar es SU móvil, no este.
+            ConfigStatusRow(
+                raw = location.config_issues,
+                onFix = if (location.user_id == locator.session.userId) onFixPermissions else null,
+            )
 
             Spacer(Modifier.height(32.dp))
 
@@ -521,7 +528,7 @@ fun MemberDetailScreen(
  * [raw] null = su app es anterior a esta versión y no lo manda; cadena vacía = todo correcto.
  */
 @Composable
-private fun ConfigStatusRow(raw: String?) {
+private fun ConfigStatusRow(raw: String?, onFix: (() -> Unit)? = null) {
     val issues = ConfigCheck.parse(raw)
     val icon = when {
         issues == null -> Icons.Filled.HelpOutline
@@ -533,7 +540,13 @@ private fun ConfigStatusRow(raw: String?) {
         else -> MaterialTheme.colorScheme.error
     }
 
-    Row(verticalAlignment = Alignment.Top) {
+    // Lo de abajo es lo que mandó su móvil en el último ping, así que puede estar desfasado:
+    // al tocar, el onboarding vuelve a comprobar de verdad lo que falta en ESTE momento.
+    val fixable = onFix != null && !issues.isNullOrEmpty()
+    Row(
+        verticalAlignment = Alignment.Top,
+        modifier = if (fixable) Modifier.fillMaxWidth().clickable(onClick = onFix!!) else Modifier,
+    ) {
         Icon(icon, contentDescription = null, tint = tint)
         Spacer(Modifier.width(8.dp))
         Column {
@@ -556,11 +569,19 @@ private fun ConfigStatusRow(raw: String?) {
                             ConfigCheck.NOTIFICATIONS -> R.string.config_issue_notifications
                             ConfigCheck.NOTIFICATION_CHANNEL -> R.string.config_issue_notif_channel
                             ConfigCheck.BATTERY -> R.string.config_issue_battery
+                            ConfigCheck.DND -> R.string.config_issue_dnd
                             else -> R.string.config_issue_gps_off
                         },
                     ),
                     style = MaterialTheme.typography.bodySmall,
                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                )
+            }
+            if (fixable) {
+                Text(
+                    stringResource(R.string.config_status_fix_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.primary,
                 )
             }
         }

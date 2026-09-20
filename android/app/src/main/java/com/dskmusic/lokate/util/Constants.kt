@@ -17,6 +17,16 @@ object Constants {
 
     const val LOCATION_WORKER_TAG = "lokate_location_backup_worker"
 
+    /** Accesos directos del icono de la app (ver res/xml/shortcuts.xml). La sección va como
+     * acción del intent y no como extra porque el XML de shortcuts no admite extras. */
+    const val ACTION_OPEN_PEOPLE = "com.dskmusic.lokate.action.OPEN_PEOPLE"
+    const val ACTION_OPEN_ZONES = "com.dskmusic.lokate.action.OPEN_ZONES"
+    const val ACTION_OPEN_HISTORY = "com.dskmusic.lokate.action.OPEN_HISTORY"
+
+    /** Catálogo oficial de mapas de Mapsforge. Se descarga directo de ahí, el servidor de
+     * Lokate no interviene: son archivos públicos generados de OpenStreetMap. */
+    const val MAPSFORGE_BASE_URL = "https://download.mapsforge.org/maps/v5/"
+
     const val DEFAULT_HISTORY_HOURS = 24
 
     /** Cada cuántos días se vacía sola la caché de teselas del mapa al arrancar la app (ver
@@ -39,6 +49,13 @@ object Constants {
      * sin pasarse del último nivel con teselas reales (ver [MAP_DEFAULT_ZOOM]). */
     const val MAP_SEARCH_RESULT_ZOOM = 17.0
 
+    /** A partir de cuántos metros el mapa salta al destino en vez de animar el viaje (ver
+     * [com.dskmusic.lokate.ui.map.moveTo]). animateTo recorre el camino intermedio al zoom
+     * actual, así que un salto largo obliga a descargar las teselas de todo el trayecto y el
+     * mapa se queda en gris un buen rato. Subirlo si se prefiere ver el recorrido, bajarlo si
+     * aún así tarda en cargar. */
+    const val MAP_ANIMATE_MAX_DISTANCE_METERS = 400.0
+
     /** Valor guardado en [com.dskmusic.lokate.data.prefs.SettingsDataStore.ringSoundUri] cuando el
      * usuario elige explícitamente "Alarma" — distinto de `null` (nunca tocado), que ahora usa el
      * sonido de notificación por defecto en vez de alarma. Sin este distintivo, elegir "Alarma" y
@@ -54,6 +71,13 @@ object Constants {
     /** Id de la notificación concreta que lanzó el intent — cada mensaje de emergencia tiene
      * el suyo, para que descartar uno no borre los demás. */
     const val EXTRA_NOTIFICATION_ID = "extra_notification_id"
+
+    /** Persona a la que se refiere la notificación de zona; al tocarla se abre su ficha. El
+     * nombre NO lleva el prefijo "extra_" de los de arriba a propósito: tiene que ser idéntico
+     * a la clave del payload del push (ver geofence.py), porque con la app cerrada la
+     * notificación la pinta el sistema y Android entrega los "data" tal cual como extras. Así
+     * el mismo código sirve venga de donde venga el toque. */
+    const val EXTRA_PUSH_USER_ID = "user_id"
 }
 
 enum class LocationFrequency(val intervalMs: Long) {
@@ -74,7 +98,28 @@ enum class ThemeMode {
 }
 
 enum class MapStyle {
-    STANDARD, SATELLITE, DARK
+    STANDARD, SATELLITE, DARK,
+
+    /** Mapa vectorial dibujado en el móvil desde los archivos .map descargados
+     * (ver [com.dskmusic.lokate.data.offline.OfflineMaps]). Sin mapa descargado de la zona que se
+     * está mirando no hay nada que dibujar, así que se cae al mapa de internet. */
+    OFFLINE,
+
+    /** Igual que [OFFLINE] pero con el mismo filtro de colores invertidos que [DARK]. */
+    OFFLINE_DARK,
+    ;
+
+    val isOffline: Boolean get() = this == OFFLINE || this == OFFLINE_DARK
+    val isDark: Boolean get() = this == DARK || this == OFFLINE_DARK
+
+    /** El equivalente con teselas de internet, para cuando no hay mapa descargado de la zona
+     * que se está mirando: el oscuro sigue oscuro. */
+    val online: MapStyle
+        get() = when (this) {
+            OFFLINE -> STANDARD
+            OFFLINE_DARK -> DARK
+            else -> this
+        }
 }
 
 /** Patrones de vibración para notificaciones/"hacer sonar el dispositivo" (timings en ms:

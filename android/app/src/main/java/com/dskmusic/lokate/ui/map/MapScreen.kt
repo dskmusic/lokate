@@ -21,13 +21,11 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.CloudOff
-import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.GpsFixed
 import androidx.compose.material.icons.filled.GpsOff
 import androidx.compose.material.icons.filled.Group
 import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.History
-import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Lock
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MyLocation
@@ -35,7 +33,6 @@ import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Place
-import androidx.compose.material.icons.filled.Satellite
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
@@ -108,6 +105,7 @@ fun MapScreen(
     onOpenPeople: () -> Unit,
     onOpenHistory: () -> Unit,
     onOpenSettings: () -> Unit,
+    onOpenOfflineMaps: () -> Unit,
     onOpenGroup: () -> Unit,
     onOpenMember: (String) -> Unit,
     onOpenAdmin: () -> Unit = {},
@@ -126,10 +124,10 @@ fun MapScreen(
     val initialZoom by locator.settings.mapInitialZoom.collectAsStateWithLifecycle(initialValue = Constants.MAP_DEFAULT_ZOOM)
     val mapStyle by locator.settings.mapStyle.collectAsStateWithLifecycle(initialValue = MapStyle.STANDARD)
     val scope = rememberCoroutineScope()
+    val offlineMapFiles = rememberOfflineMapFiles()
 
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
     var showHelp by remember { mutableStateOf(false) }
-    var showMapStyleMenu by remember { mutableStateOf(false) }
     var showFollowMenu by remember { mutableStateOf(false) }
     // Leído de MapCameraMemory (no arranca siempre en null): si ya estabas siguiendo a alguien
     // y cambias de pestaña, al volver el seguimiento sigue activo tal cual lo dejaste.
@@ -142,7 +140,7 @@ fun MapScreen(
         val uid = followUserId ?: return@LaunchedEffect
         val map = mapViewRef ?: return@LaunchedEffect
         val followed = state.members.find { it.user_id == uid } ?: return@LaunchedEffect
-        map.controller.animateTo(GeoPoint(followed.lat, followed.lng))
+        map.moveTo(GeoPoint(followed.lat, followed.lng))
     }
 
     // Modo prueba (solo admins): se guarda fuera de la composición porque cambiar de pestaña
@@ -178,7 +176,7 @@ fun MapScreen(
     LaunchedEffect(focusUserId, state.members, mapViewRef) {
         val id = focusUserId ?: return@LaunchedEffect
         val member = state.members.find { it.user_id == id } ?: return@LaunchedEffect
-        mapViewRef?.controller?.animateTo(GeoPoint(member.lat, member.lng))
+        mapViewRef?.moveTo(GeoPoint(member.lat, member.lng))
         onFocusUserIdConsumed()
     }
 
@@ -230,37 +228,7 @@ fun MapScreen(
                     }
                 },
                 actions = {
-                    Box {
-                        IconButton(onClick = { showMapStyleMenu = true }) {
-                            Icon(Icons.Filled.Layers, contentDescription = stringResource(R.string.map_style_button))
-                        }
-                        DropdownMenu(expanded = showMapStyleMenu, onDismissRequest = { showMapStyleMenu = false }) {
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.map_style_standard)) },
-                                leadingIcon = { Icon(Icons.Filled.Map, contentDescription = null) },
-                                onClick = {
-                                    scope.launch { locator.settings.setMapStyle(MapStyle.STANDARD) }
-                                    showMapStyleMenu = false
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.map_style_satellite)) },
-                                leadingIcon = { Icon(Icons.Filled.Satellite, contentDescription = null) },
-                                onClick = {
-                                    scope.launch { locator.settings.setMapStyle(MapStyle.SATELLITE) }
-                                    showMapStyleMenu = false
-                                },
-                            )
-                            DropdownMenuItem(
-                                text = { Text(stringResource(R.string.map_style_dark)) },
-                                leadingIcon = { Icon(Icons.Filled.DarkMode, contentDescription = null) },
-                                onClick = {
-                                    scope.launch { locator.settings.setMapStyle(MapStyle.DARK) }
-                                    showMapStyleMenu = false
-                                },
-                            )
-                        }
-                    }
+                    MapStyleMenuButton { scope.launch { locator.settings.setMapStyle(it) } }
                     IconButton(onClick = { showHelp = true }) {
                         Icon(Icons.Filled.HelpOutline, contentDescription = stringResource(R.string.help_title))
                     }
@@ -531,6 +499,10 @@ fun MapScreen(
                                 onClick = {
                                     followUserId = member.user_id
                                     MapCameraMemory.followUserId = member.user_id
+                                    // Solo al elegir a quién seguir: el recentrado de cada
+                                    // sondeo no toca el zoom, para no pelearse con el usuario
+                                    // si se aleja a mirar algo mientras sigue a alguien.
+                                    mapViewRef?.controller?.setZoom(initialZoom.toDouble())
                                     showFollowMenu = false
                                 },
                             )
@@ -539,7 +511,7 @@ fun MapScreen(
                 }
                 FloatingActionButton(
                     onClick = {
-                        lastKnownLocation(context) { mapViewRef?.controller?.animateTo(GeoPoint(it.latitude, it.longitude)) }
+                        lastKnownLocation(context) { mapViewRef?.moveTo(GeoPoint(it.latitude, it.longitude)) }
                     },
                 ) {
                     Icon(Icons.Filled.MyLocation, contentDescription = stringResource(R.string.locate_me))
@@ -562,6 +534,26 @@ fun MapScreen(
                 }
             }
         }
+    }
+
+    // Modo sin conexión elegido pero sin ninguna zona descargada: el mapa que se ve debajo es
+    // el de internet (ver applyMapStyle), así que solo hay que decidir qué hacer.
+    if (mapStyle.isOffline && offlineMapFiles.isEmpty()) {
+        AlertDialog(
+            onDismissRequest = { scope.launch { locator.settings.setMapStyle(mapStyle.online) } },
+            title = { Text(stringResource(R.string.offline_maps_missing_title)) },
+            text = { Text(stringResource(R.string.offline_maps_missing_body)) },
+            confirmButton = {
+                TextButton(onClick = onOpenOfflineMaps) {
+                    Text(stringResource(R.string.offline_maps_download))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { scope.launch { locator.settings.setMapStyle(mapStyle.online) } }) {
+                    Text(stringResource(R.string.offline_maps_missing_live))
+                }
+            },
+        )
     }
 
     if (showExitConfirm) {

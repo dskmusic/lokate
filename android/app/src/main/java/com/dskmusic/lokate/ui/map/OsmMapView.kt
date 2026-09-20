@@ -1,8 +1,6 @@
 package com.dskmusic.lokate.ui.map
 
 import android.graphics.Bitmap
-import android.graphics.ColorMatrix
-import android.graphics.ColorMatrixColorFilter
 import android.graphics.drawable.BitmapDrawable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -22,7 +20,6 @@ import org.osmdroid.events.MapEventsReceiver
 import org.osmdroid.events.MapListener
 import org.osmdroid.events.ScrollEvent
 import org.osmdroid.events.ZoomEvent
-import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.MapEventsOverlay
@@ -67,27 +64,6 @@ object MapCameraMemory {
     }
 }
 
-/** Modo oscuro del mapa: en vez de depender de un proveedor de teselas oscuras de terceros
- * (CARTO exige clave y, aun con clave válida, su CDN sirve teselas cacheadas de otros
- * usuarios/claves para coordenadas populares, ignorando la propia — nada fiable), se invierten
- * los colores de las mismas teselas estándar de OSM que ya funcionan. Escala de grises primero
- * para que no queden colores raros (verde/azul invertidos a magenta/naranja), luego invertido. */
-private val DARK_MODE_FILTER = ColorMatrixColorFilter(
-    ColorMatrix().apply {
-        setSaturation(0f)
-        postConcat(
-            ColorMatrix(
-                floatArrayOf(
-                    -1f, 0f, 0f, 0f, 255f,
-                    0f, -1f, 0f, 0f, 255f,
-                    0f, 0f, -1f, 0f, 255f,
-                    0f, 0f, 0f, 1f, 0f,
-                ),
-            ),
-        )
-    },
-)
-
 @Composable
 fun OsmMapView(
     members: List<LocationDto>,
@@ -113,6 +89,7 @@ fun OsmMapView(
     rememberCamera: Boolean = false,
 ) {
     val context = LocalContext.current
+    val offlineFiles = rememberOfflineMapFiles()
     // Si hay cámara recordada manda ella y el zoom del ajuste no se toca (se calcula una sola
     // vez, antes de crear el MapView: en cuanto el usuario mueve el mapa MapCameraMemory ya
     // tiene valores y esto pasaría a ser true por accidente).
@@ -190,19 +167,14 @@ fun OsmMapView(
     // recomposición.
     val drawnSignature = remember { arrayOfNulls<String>(1) }
 
+    // Sin conexión pero mirando una zona sin descargar -> mapa de internet, con aviso.
+    val effectiveStyle = rememberEffectiveMapStyle(mapView, mapStyle, offlineFiles)
+
     AndroidView(
         factory = { mapView },
         modifier = modifier,
         update = { view ->
-            val tileSource = when (mapStyle) {
-                MapStyle.SATELLITE -> SatelliteTileSource
-                MapStyle.DARK, MapStyle.STANDARD -> TileSourceFactory.MAPNIK
-            }
-            // setTileSource vacía la caché de teselas en memoria de osmdroid: llamarlo en cada
-            // recomposición (una por sondeo, ~15s) obligaba a releer de disco o volver a
-            // descargar todo lo visible una y otra vez. Solo se toca si el estilo ha cambiado.
-            if (view.tileProvider.tileSource != tileSource) view.setTileSource(tileSource)
-            view.mapOverlay?.setColorFilter(if (mapStyle == MapStyle.DARK) DARK_MODE_FILTER else null)
+            view.applyMapStyle(effectiveStyle, offlineFiles)
 
             if (drawnSignature[0] != overlaySignature) {
                 drawnSignature[0] = overlaySignature

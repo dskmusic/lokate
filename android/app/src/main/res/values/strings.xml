@@ -19,6 +19,8 @@
     <string name="onboarding_background_location_desc">Para seguir compartiendo tu ubicación aunque no tengas la app abierta, Android pedirá que elijas \"Permitir todo el tiempo\".</string>
     <string name="onboarding_notifications_title">Notificaciones</string>
     <string name="onboarding_notifications_desc">Te avisaremos cuando alguien de tu familia entre o salga de una zona guardada.</string>
+    <string name="onboarding_dnd_title">Sonar aunque esté en silencio</string>
+    <string name="onboarding_dnd_desc">Para poder encontrar este móvil cuando se pierda, la app necesita permiso para subir el volumen de la alarma y saltarse el modo No molestar. Solo lo usa al “hacer sonar” y con los mensajes de emergencia; el volumen se deja luego como estaba.</string>
     <string name="onboarding_battery_title">Ignorar optimización de batería</string>
     <string name="onboarding_battery_desc">Algunos sistemas cierran la app en segundo plano para ahorrar batería. Sin este permiso, Lokate podría dejar de compartir tu ubicación.</string>
     <string name="onboarding_manufacturer_title">Ajuste extra de tu fabricante</string>
@@ -60,6 +62,7 @@
     <string name="retry">Reintentar</string>
     <string name="connection_error_body">No se pudo conectar con el servidor. Comprueba tu conexión e inténtalo de nuevo.</string>
     <string name="confirm">Confirmar</string>
+    <string name="delete">Eliminar</string>
     <string name="exit_app_confirm_title">¿Salir de Lokate?</string>
     <string name="exit_app_confirm_body">La app seguirá compartiendo tu ubicación en segundo plano aunque la cierres.</string>
     <string name="exit_app_confirm_button">Salir</string>
@@ -104,12 +107,15 @@
     <string name="config_status_ok">Configuración correcta</string>
     <string name="config_status_unknown">Configuración desconocida (app sin actualizar)</string>
     <string name="config_status_issues">Le falta por configurar:</string>
+    <string name="config_status_fix_hint">Toca para pedir los permisos que faltan</string>
     <string name="config_issue_location">Permiso de ubicación denegado</string>
     <string name="config_issue_bg_location">Ubicación en segundo plano denegada: solo se le ve con la app abierta</string>
     <string name="config_issue_notifications">Notificaciones desactivadas: no recibe ningún aviso</string>
     <string name="config_issue_notif_channel">Algún tipo de notificación bloqueado en los ajustes del móvil</string>
     <string name="config_issue_battery">Optimización de batería activa: Android puede cerrar la app</string>
     <string name="config_issue_gps_off">Ubicación del sistema (GPS) apagada</string>
+    <string name="config_issue_dnd">Sin acceso a No molestar: puede que no suene al localizarlo si está en silencio</string>
+    <string name="permissions_all_ok">Todo correcto: no falta ningún permiso</string>
     <string name="test_notification_confirm_title">¿Enviar notificación de prueba?</string>
     <string name="test_notification_confirm_body">Se enviará una notificación de prueba al dispositivo de %1$s.</string>
     <string name="ring_device_button">Hacer sonar el dispositivo</string>
@@ -191,6 +197,10 @@
     <string name="history_today">Hoy</string>
     <string name="history_pick_date">Elegir fecha</string>
     <string name="history_no_points">No hay ubicaciones registradas en este periodo</string>
+    <string name="history_coords_copy">Copiar coordenadas</string>
+    <string name="history_coords_copied">Coordenadas copiadas</string>
+    <string name="history_open_maps">Abrir en Google Maps</string>
+    <string name="history_distance">Recorrido: %1$s</string>
 
     <!-- Ajustes -->
     <string name="settings_title">Ajustes</string>
@@ -213,6 +223,8 @@
     <string name="settings_map_cache_clear">Borrar caché de mapas</string>
     <string name="settings_map_cache_cleared">Caché borrada: %1$.1f MB liberados</string>
     <string name="settings_permissions">Permisos</string>
+    <string name="settings_permissions_fix">Comprobar y arreglar permisos</string>
+    <string name="settings_permissions_fix_desc">Revisa qué le falta a este móvil y vuelve a pedirlo, aunque lo hubieras omitido antes</string>
     <string name="settings_zones">Zonas guardadas</string>
     <string name="settings_notifications">Notificaciones</string>
     <string name="settings_notifications_zone">Alertas de zona</string>
@@ -342,4 +354,32 @@
     <string name="people_sort_name">Nombre</string>
     <string name="people_sort_distance">Cercanía</string>
     <string name="people_sort_recent">Reciente</string>
+    <!-- Mapas sin conexión -->
+    <string name="map_style_offline">Sin conexión</string>
+    <string name="map_style_offline_dark">Sin conexión (oscuro)</string>
+    <string name="offline_maps_title">Mapas sin conexión</string>
+    <string name="offline_maps_use">Usar mapa sin conexión</string>
+    <string name="offline_maps_use_desc">Dibuja el mapa con las zonas descargadas, sin gastar datos</string>
+    <string name="offline_maps_manage">Zonas descargadas</string>
+    <string name="offline_maps_manage_desc">Descargar, ver el tamaño o borrar mapas</string>
+    <string name="offline_maps_downloaded">Descargadas</string>
+    <string name="offline_maps_empty">Todavía no has descargado ninguna zona</string>
+    <string name="offline_maps_available">Zonas disponibles</string>
+    <string name="offline_maps_search">Buscar zona</string>
+    <string name="offline_maps_search_empty">Ninguna zona se llama así</string>
+    <string name="offline_maps_suggested">Tu zona: %1$s</string>
+    <string name="offline_maps_suggested_desc">Es la que cubre donde estás ahora, unos %1$s</string>
+    <string name="offline_maps_download">Descargar</string>
+    <string name="offline_maps_downloading">Descargando %1$s</string>
+    <string name="offline_maps_download_title">¿Descargar %1$s?</string>
+    <string name="offline_maps_download_body">Se bajará un archivo de %1$s y se guardará en el móvil. Mejor con wifi: con datos móviles puede costarte dinero.</string>
+    <string name="offline_maps_download_body_approx">Se bajará un archivo de unos %1$s y se guardará en el móvil. Mejor con wifi: con datos móviles puede costarte dinero.</string>
+    <string name="offline_maps_delete_title">¿Borrar %1$s?</string>
+    <string name="offline_maps_delete_body">Liberarás %1$s. Puedes volver a descargarlo cuando quieras.</string>
+    <string name="offline_maps_error">No se pudo descargar: %1$s</string>
+    <string name="offline_maps_missing_title">No hay ningún mapa descargado</string>
+    <string name="offline_maps_out_of_area">Sin mapa descargado de esta zona: mostrando el mapa de internet</string>
+    <string name="offline_maps_back_in_area">De vuelta en una zona descargada: mapa sin conexión</string>
+    <string name="offline_maps_missing_body">Has elegido el mapa sin conexión, pero no tienes ninguna zona guardada en el móvil. Descarga una o sigue con el mapa de internet.</string>
+    <string name="offline_maps_missing_live">Usar el mapa de internet</string>
 </resources>

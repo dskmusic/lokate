@@ -12,6 +12,7 @@ object Routes {
     const val ZONE_EDIT_WITH_ID = "zone_edit/{zoneId}"
     const val HISTORY = "history?userId={userId}&displayName={displayName}"
     const val SETTINGS = "settings"
+    const val OFFLINE_MAPS = "offline_maps"
     const val ADMIN = "admin"
     const val MEMBER_DETAIL = "member/{userId}"
     const val EMERGENCY_MESSAGE =

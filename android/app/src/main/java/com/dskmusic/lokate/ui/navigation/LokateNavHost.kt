@@ -1,6 +1,9 @@
 package com.dskmusic.lokate.ui.navigation
 
+import android.widget.Toast
 import androidx.compose.runtime.Composable
+import androidx.compose.runtime.LaunchedEffect
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.ui.platform.LocalContext
 import androidx.navigation.NavHostController
 import androidx.navigation.NavType
@@ -8,6 +11,7 @@ import androidx.navigation.compose.NavHost
 import androidx.navigation.compose.composable
 import androidx.navigation.compose.rememberNavController
 import androidx.navigation.navArgument
+import com.dskmusic.lokate.R
 import com.dskmusic.lokate.di.ServiceLocator
 import com.dskmusic.lokate.location.LocationServiceController
 import com.dskmusic.lokate.location.LocationUpdateWorker
@@ -21,25 +25,54 @@ import com.dskmusic.lokate.ui.map.MapScreen
 import com.dskmusic.lokate.ui.member.MemberDetailScreen
 import com.dskmusic.lokate.ui.onboarding.PermissionOnboardingScreen
 import com.dskmusic.lokate.ui.people.PeopleScreen
+import com.dskmusic.lokate.ui.settings.OfflineMapsScreen
 import com.dskmusic.lokate.ui.settings.SettingsScreen
 import com.dskmusic.lokate.ui.zones.ZoneEditScreen
 import com.dskmusic.lokate.ui.zones.ZonesScreen
+import com.dskmusic.lokate.util.ConfigCheck
+import kotlinx.coroutines.launch
 
 @Composable
-fun LokateNavHost(locator: ServiceLocator, startDestination: String) {
+fun LokateNavHost(
+    locator: ServiceLocator,
+    startDestination: String,
+    openMemberUserId: String? = null,
+    /** Sección a abrir encima del mapa al entrar desde un acceso directo del icono de la app. */
+    openSection: String? = null,
+) {
     val navController: NavHostController = rememberNavController()
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
 
     fun ensureLocationSharingStarted() {
         LocationServiceController.ensureStarted(context)
         LocationUpdateWorker.schedule(context)
     }
 
+    /** "Comprobar y arreglar permisos": vuelve a ofrecer los que falten pasando por el
+     * onboarding, que ya sabe pedir cada uno con su explicación. Se borra el registro de lo ya
+     * preguntado a propósito — aquí el usuario está pidiendo justo que se le insista con lo que
+     * saltó en su día. Si no falta nada, no se le mete en el onboarding para nada. */
+    fun fixPermissions() {
+        if (ConfigCheck.onboardableIssues(context).isEmpty()) {
+            Toast.makeText(context, R.string.permissions_all_ok, Toast.LENGTH_SHORT).show()
+            return
+        }
+        scope.launch {
+            locator.settings.setOnboardingAskedIssues("")
+            navController.navigate(Routes.ONBOARDING)
+        }
+    }
+
     NavHost(navController = navController, startDestination = startDestination) {
         composable(Routes.ONBOARDING) {
             PermissionOnboardingScreen(
                 onFinished = {
-                    navController.navigate(Routes.LOGIN) { popUpTo(Routes.ONBOARDING) { inclusive = true } }
+                    // El onboarding también le sale a quien YA tiene sesión cuando una
+                    // actualización trae un permiso nuevo: mandarle al login le haría escribir
+                    // la contraseña otra vez sin motivo.
+                    val next = if (locator.authRepository.isLoggedIn()) Routes.MAP else Routes.LOGIN
+                    navController.navigate(next) { popUpTo(Routes.ONBOARDING) { inclusive = true } }
                 },
             )
         }
@@ -67,12 +100,20 @@ fun LokateNavHost(locator: ServiceLocator, startDestination: String) {
             GroupScreen(locator = locator, onDone = { navController.popBackStack() })
         }
         composable(Routes.MAP) { backStackEntry ->
+            // Toque en una notificación de zona: el mapa se centra en esa persona, por el mismo
+            // camino que usa la lista de personas al elegir a alguien. Una sola vez al entrar
+            // (el propio mapa lo consume en cuanto tiene cargadas las posiciones frescas).
+            LaunchedEffect(Unit) {
+                if (openMemberUserId != null) backStackEntry.savedStateHandle["focus_user_id"] = openMemberUserId
+                if (openSection != null) navController.navigate(openSection)
+            }
             MapScreen(
                 locator = locator,
                 onOpenZones = { navController.navigate(Routes.ZONES) },
                 onOpenPeople = { navController.navigate(Routes.PEOPLE) },
                 onOpenHistory = { navController.navigate(Routes.history()) },
                 onOpenSettings = { navController.navigate(Routes.SETTINGS) },
+                onOpenOfflineMaps = { navController.navigate(Routes.OFFLINE_MAPS) },
                 onOpenGroup = { navController.navigate(Routes.GROUP) },
                 onOpenMember = { userId -> navController.navigate(Routes.memberDetail(userId)) },
                 onOpenAdmin = { navController.navigate(Routes.ADMIN) },
@@ -143,13 +184,19 @@ fun LokateNavHost(locator: ServiceLocator, startDestination: String) {
                     navController.getBackStackEntry(Routes.MAP).savedStateHandle["focus_user_id"] = id
                     navController.popBackStack(Routes.MAP, inclusive = false)
                 },
+                onFixPermissions = { fixPermissions() },
             )
+        }
+        composable(Routes.OFFLINE_MAPS) {
+            OfflineMapsScreen(onBack = { navController.popBackStack() })
         }
         composable(Routes.SETTINGS) {
             SettingsScreen(
                 locator = locator,
                 onBack = { navController.popBackStack() },
+                onOpenOfflineMaps = { navController.navigate(Routes.OFFLINE_MAPS) },
                 onLoggedOut = { navController.navigate(Routes.LOGIN) { popUpTo(0) { inclusive = true } } },
+                onFixPermissions = { fixPermissions() },
             )
         }
         composable(

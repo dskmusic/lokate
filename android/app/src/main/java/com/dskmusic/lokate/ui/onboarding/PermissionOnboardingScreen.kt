@@ -29,11 +29,25 @@ import com.dskmusic.lokate.R
 import com.dskmusic.lokate.di.ServiceLocator
 import com.dskmusic.lokate.location.LocationServiceController
 import com.dskmusic.lokate.location.LocationUpdateWorker
+import com.dskmusic.lokate.util.ConfigCheck
 import com.dskmusic.lokate.util.ManufacturerBatteryUtils
 import com.dskmusic.lokate.util.PermissionUtils
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.runBlocking
 
-private enum class OnboardingStep { FOREGROUND_LOCATION, BACKGROUND_LOCATION, NOTIFICATIONS, BATTERY, MANUFACTURER, DONE }
+private enum class OnboardingStep { FOREGROUND_LOCATION, BACKGROUND_LOCATION, NOTIFICATIONS, DND, BATTERY, MANUFACTURER, DONE }
+
+/** Qué pantalla del onboarding arregla cada código de [ConfigCheck]. Null = ninguna (no es un
+ * permiso que se pueda pedir desde aquí). */
+private fun onboardingStepFor(issue: String): OnboardingStep? = when (issue) {
+    ConfigCheck.LOCATION -> OnboardingStep.FOREGROUND_LOCATION
+    ConfigCheck.BACKGROUND_LOCATION -> OnboardingStep.BACKGROUND_LOCATION
+    ConfigCheck.NOTIFICATIONS -> OnboardingStep.NOTIFICATIONS
+    ConfigCheck.DND -> OnboardingStep.DND
+    ConfigCheck.BATTERY -> OnboardingStep.BATTERY
+    else -> null
+}
 
 @Composable
 fun PermissionOnboardingScreen(onFinished: () -> Unit) {
@@ -41,7 +55,20 @@ fun PermissionOnboardingScreen(onFinished: () -> Unit) {
     val locator = remember { ServiceLocator.getInstance(context) }
     val scope = rememberCoroutineScope()
 
-    var step by remember { mutableStateOf(OnboardingStep.FOREGROUND_LOCATION) }
+    // Lo que ya se le preguntó alguna vez. Se lee de una y no como estado: si cambiase a mitad
+    // del onboarding, reiniciaría el paso en el que está el usuario.
+    val askedIssues = remember { runBlocking { locator.settings.onboardingAskedIssues.first() } }
+    // Arranca en el primer paso que de verdad falte, no siempre en el primero de todos: tras
+    // actualizar la app, quien ya lo tenía todo concedido ve solo la pantalla del permiso nuevo
+    // en vez de tener que pasar por las cinco.
+    var step by remember {
+        mutableStateOf(
+            ConfigCheck.pendingOnboarding(context, askedIssues)
+                .mapNotNull { onboardingStepFor(it) }
+                .minByOrNull { it.ordinal }
+                ?: OnboardingStep.FOREGROUND_LOCATION,
+        )
+    }
     // Si el usuario deniega un permiso, no le forzamos a repetir: mostramos el aviso y le dejamos
     // reintentar o continuar sin él (el prompt pide avisar, no bloquear el uso básico).
     var lastPermissionDenied by remember { mutableStateOf(false) }
@@ -68,7 +95,11 @@ fun PermissionOnboardingScreen(onFinished: () -> Unit) {
     }
     val notificationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         lastPermissionDenied = !granted
-        if (granted) goToBatteryOrDone()
+        if (granted) step = OnboardingStep.DND
+    }
+    // El panel de "Acceso a No molestar" no devuelve resultado: al volver se comprueba solo.
+    val dndLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
+        goToBatteryOrDone()
     }
     val batteryLauncher = rememberLauncherForActivityResult(ActivityResultContracts.StartActivityForResult()) {
         step = if (ManufacturerBatteryUtils.hasKnownAggressiveBatteryManagement()) OnboardingStep.MANUFACTURER else OnboardingStep.DONE
@@ -77,6 +108,14 @@ fun PermissionOnboardingScreen(onFinished: () -> Unit) {
     fun finish() {
         scope.launch {
             locator.settings.setOnboardingCompleted(true)
+            // Lo que SIGA faltando al salir queda marcado como preguntado: quien lo saltó a
+            // propósito no se lo vuelve a encontrar en cada apertura. Lo concedido no se apunta,
+            // así que si algún día lo revoca se le vuelve a ofrecer.
+            locator.settings.setOnboardingAskedIssues(
+                (ConfigCheck.parse(askedIssues).orEmpty() + ConfigCheck.onboardableIssues(context))
+                    .distinct()
+                    .joinToString(","),
+            )
             if (locator.authRepository.isLoggedIn()) {
                 LocationServiceController.ensureStarted(context)
                 LocationUpdateWorker.schedule(context)
@@ -126,12 +165,28 @@ fun PermissionOnboardingScreen(onFinished: () -> Unit) {
                     onContinue = {
                         lastPermissionDenied = false
                         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU || PermissionUtils.hasNotificationPermission(context)) {
-                            goToBatteryOrDone()
+                            step = OnboardingStep.DND
                         } else {
                             notificationLauncher.launch(Manifest.permission.POST_NOTIFICATIONS)
                         }
                     },
-                    onSkip = { lastPermissionDenied = false; goToBatteryOrDone() },
+                    onSkip = { lastPermissionDenied = false; step = OnboardingStep.DND },
+                )
+                OnboardingStep.DND -> OnboardingStepContent(
+                    title = stringResource(R.string.onboarding_dnd_title),
+                    description = stringResource(R.string.onboarding_dnd_desc),
+                    onContinue = {
+                        if (PermissionUtils.hasDndAccess(context)) {
+                            goToBatteryOrDone()
+                        } else {
+                            dndLauncher.launch(PermissionUtils.dndAccessSettingsIntent())
+                        }
+                    },
+                    extraAction = {
+                        TextButton(onClick = { goToBatteryOrDone() }) {
+                            Text(stringResource(R.string.onboarding_skip_step))
+                        }
+                    },
                 )
                 OnboardingStep.BATTERY -> OnboardingStepContent(
                     title = stringResource(R.string.onboarding_battery_title),

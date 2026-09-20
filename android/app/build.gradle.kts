@@ -85,6 +85,8 @@ dependencies {
     implementation(libs.kotlinx.coroutines.android)
 
     implementation(libs.osmdroid.android)
+    // Mapas sin conexión: dibuja las teselas en el móvil a partir de archivos .map de Mapsforge
+    implementation(libs.osmdroid.mapsforge)
     implementation(libs.play.services.location)
 
     implementation(platform(libs.firebase.bom))
