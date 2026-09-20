@@ -5,7 +5,7 @@ from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
 from .. import models, push, schemas
-from ..auth import get_current_user, get_current_user_with_group
+from ..auth import get_current_admin_user, get_current_user, get_current_user_with_group
 from ..database import get_db
 
 router = APIRouter(prefix="/groups", tags=["groups"])
@@ -68,6 +68,42 @@ def join_group(
     return group
 
 
+@router.post("/switch", response_model=schemas.GroupResponse)
+def switch_group(
+    body: schemas.GroupSwitchRequest,
+    user: models.User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Solo administradores: cambiarse a cualquier grupo sin código de invitación. El grupo
+    activo es el único del que llegan avisos, porque los push solo salen a sus miembros."""
+    group = db.query(models.Group).filter(models.Group.id == body.group_id).first()
+    if not group:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Group not found")
+
+    user.group_id = group.id
+    db.commit()
+    return group
+
+
+@router.post("/visibility", response_model=schemas.GroupVisibilityResponse)
+def set_group_visibility(
+    body: schemas.GroupVisibilityRequest,
+    user: models.User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Solo administradores: esconderse (o volver a aparecer) en un grupo. Escondido no sale en
+    la lista de miembros ni en el mapa de los demás, y sus zonas no les avisan de sus movimientos;
+    él sí sigue viéndolo todo. Se guarda por grupo, no por sesión."""
+    hidden = set(user.hidden_groups)
+    if body.visible:
+        hidden.discard(body.group_id)
+    else:
+        hidden.add(body.group_id)
+    user.hidden_group_ids = ",".join(sorted(hidden))
+    db.commit()
+    return schemas.GroupVisibilityResponse(hidden_groups=sorted(hidden))
+
+
 @router.get("/me", response_model=schemas.GroupResponse)
 def my_group(user: models.User = Depends(get_current_user_with_group)):
     return user.group
@@ -78,7 +114,8 @@ def my_group_members(
     user: models.User = Depends(get_current_user_with_group),
     db: Session = Depends(get_db),
 ):
-    return db.query(models.User).filter(models.User.group_id == user.group_id).all()
+    members = db.query(models.User).filter(models.User.group_id == user.group_id).all()
+    return [m for m in members if not m.hidden_from(user)]
 
 
 @router.post("/leave", status_code=status.HTTP_204_NO_CONTENT)

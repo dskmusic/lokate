@@ -7,6 +7,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -14,7 +15,9 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.foundation.clickable
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -67,7 +70,7 @@ fun ZoneEditScreen(locator: ServiceLocator, zoneId: String?, onDone: () -> Unit)
 private fun ZoneEditContent(locator: ServiceLocator, existingZone: ZoneDto?, onDone: () -> Unit) {
     val context = LocalContext.current
     val viewModel = remember(existingZone?.id) {
-        ZoneEditViewModel(locator.zoneRepository, existingZone)
+        ZoneEditViewModel(locator.zoneRepository, locator.groupRepository, existingZone)
     }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
@@ -187,6 +190,33 @@ private fun ZoneEditContent(locator: ServiceLocator, existingZone: ZoneDto?, onD
                 )
             }
 
+            Spacer(Modifier.height(16.dp))
+            Text(stringResource(R.string.zone_watch_title), style = MaterialTheme.typography.titleSmall)
+            Text(
+                stringResource(R.string.zone_watch_hint),
+                style = MaterialTheme.typography.bodySmall,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+            state.members.forEach { member ->
+                Row(
+                    modifier = Modifier.fillMaxWidth().clickable { viewModel.toggleWatched(member.id) },
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Checkbox(
+                        checked = member.id in state.watchedIds,
+                        onCheckedChange = { viewModel.toggleWatched(member.id) },
+                    )
+                    Text(member.display_name)
+                }
+            }
+            if (state.members.isNotEmpty() && state.watchedIds.isEmpty()) {
+                Text(
+                    stringResource(R.string.zone_watch_empty),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.error,
+                )
+            }
+
             state.error?.let {
                 Spacer(Modifier.height(8.dp))
                 Text(it, color = MaterialTheme.colorScheme.error)
@@ -195,7 +225,10 @@ private fun ZoneEditContent(locator: ServiceLocator, existingZone: ZoneDto?, onD
             Spacer(Modifier.height(16.dp))
             Button(
                 onClick = viewModel::save,
-                enabled = state.name.isNotBlank() && state.lat != null && state.lng != null && !state.saving,
+                enabled = state.name.isNotBlank() && state.lat != null && state.lng != null &&
+                    // Sin lista de miembros (por ejemplo sin conexion) no se bloquea: se guarda
+                    // como "todos", que es el valor por defecto del servidor.
+                    (state.watchedIds.isNotEmpty() || state.members.isEmpty()) && !state.saving,
                 modifier = Modifier.fillMaxWidth(),
             ) {
                 Text(stringResource(R.string.zone_save))

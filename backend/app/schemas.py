@@ -42,6 +42,8 @@ class UserResponse(BaseModel):
     avatar_url: str | None
     group_id: str | None
     is_admin: bool
+    # Grupos en los que se esconde (solo lo usa su propia app, para pintar las casillas).
+    hidden_groups: list[str] = []
 
     model_config = {"from_attributes": True}
 
@@ -53,6 +55,19 @@ class GroupCreateRequest(BaseModel):
 
 class GroupJoinRequest(BaseModel):
     invite_code: str
+
+
+class GroupSwitchRequest(BaseModel):
+    group_id: str
+
+
+class GroupVisibilityRequest(BaseModel):
+    group_id: str
+    visible: bool
+
+
+class GroupVisibilityResponse(BaseModel):
+    hidden_groups: list[str]
 
 
 class GroupResponse(BaseModel):
@@ -124,6 +139,8 @@ class ZoneCreateRequest(BaseModel):
     lat: float = Field(ge=-90, le=90)
     lng: float = Field(ge=-180, le=180)
     radius_m: float = Field(gt=0, le=50000)
+    # Miembros cuyos movimientos avisan en esta zona. Lista vacía = todo el grupo.
+    watched_user_ids: list[str] = []
 
 
 class ZoneResponse(BaseModel):
@@ -132,6 +149,7 @@ class ZoneResponse(BaseModel):
     lat: float
     lng: float
     radius_m: float
+    watched_user_ids: list[str] = []
 
     model_config = {"from_attributes": True}
 

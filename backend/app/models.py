@@ -63,9 +63,25 @@ class User(Base):
     # NULL o vacío = no quiere avisos de zona, o su app es anterior: se le manda "solo data".
     zone_channel_id = Column(String, nullable=True)
     is_admin = Column(Boolean, nullable=False, default=False)
+    # Grupos (ids separados por comas) en los que este usuario NO quiere que le vean: no sale en
+    # la lista de miembros ni en el mapa de los demás, y sus entradas y salidas de zona no avisan.
+    # Es para que un administrador pueda entrar a mirar un grupo sin aparecer en él.
+    # ponytail: CSV como watched_ids de las zonas, son un puñado de ids y siempre se leen enteros.
+    hidden_group_ids = Column(String, nullable=True)
     created_at = Column(DateTime, default=utcnow)
 
     group = relationship("Group", back_populates="users")
+
+    @property
+    def hidden_groups(self) -> list[str]:
+        return [gid for gid in (self.hidden_group_ids or "").split(",") if gid]
+
+    def is_hidden_in(self, group_id: str | None) -> bool:
+        return bool(group_id) and group_id in self.hidden_groups
+
+    def hidden_from(self, viewer: "User") -> bool:
+        """¿Se esconde de quien mira? Uno nunca se esconde de sí mismo."""
+        return self.id != viewer.id and self.is_hidden_in(viewer.group_id)
 
     def __str__(self) -> str:  # legible en el panel admin
         return self.display_name or self.username
@@ -93,8 +109,17 @@ class Zone(Base):
     radius_m = Column(Float, nullable=False)
     created_by = Column(String, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=utcnow)
+    # Quién dispara los avisos de esta zona, separados por comas. Vacío o NULL = todo el grupo,
+    # que es lo que quiere casi siempre y lo único que puede valer para los miembros que entren
+    # en el grupo después de crear la zona.
+    # ponytail: CSV en vez de tabla puente — son cuatro ids por zona y siempre se leen enteros.
+    watched_ids = Column(String, nullable=True)
 
     group = relationship("Group", back_populates="zones")
+
+    @property
+    def watched_user_ids(self) -> list[str]:
+        return [uid for uid in (self.watched_ids or "").split(",") if uid]
 
     def __str__(self) -> str:  # legible en el panel admin
         return self.name

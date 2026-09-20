@@ -32,8 +32,13 @@ company sees your family's location history.
 - **People** tab: avatar, battery %, charging state, connected Wi-Fi network, and last-update time
   for every group member — tap to center the map, tap the avatar for a full-size preview, or jump
   straight to their detail screen.
-- Location history per day, with the route drawn on the map, a synced list of points, the total
-  distance covered, and copy-coordinates / open-in-Google-Maps on any point.
+- Location history **per day and per hour** (the whole day by default, or the time range you pick),
+  with the route full screen, total distance and distance of what is currently on screen, and
+  copy-coordinates / open-in-Google-Maps on any point.
+- **Save or share the route image** straight from the history screen — to Downloads or through the
+  system share sheet — with the name, the date (and the hours, if you narrowed them) and the
+  distance covered in a caption; plus a button to toggle between the map and the list of points,
+  newest first.
 - Map styles right on the map (layers button): standard, satellite, dark, offline, and offline dark.
 - **Follow live**: the map jumps to any group member at the default zoom from Settings and keeps
   re-centering on them with every update.
@@ -63,6 +68,9 @@ company sees your family's location history.
   mercy of Android's per-OS geofencing limits or aggressive battery managers killing background
   services (a real problem on Xiaomi/Samsung/Huawei).
 - Per-zone, per-member enter/exit notification preferences.
+- **Watched members per zone**: when creating or editing a zone you pick who it should alert you
+  about (everyone by default) — so one zone can report just one person and another zone someone
+  else. In the zone list, the avatars along the bottom edge show at a glance who each zone watches.
 
 **Safety features**
 - **Ring device** and **priority (emergency) messages** — text plus an optional photo, video, or
@@ -72,12 +80,17 @@ company sees your family's location history.
 - Built-in media viewer for received priority messages, with save (always to Downloads) and share.
 
 **Polish**
-- Light / dark / AMOLED (true black) / automatic theming, with a custom accent color.
+- Light / dark / AMOLED (true black) / automatic theming, with a custom accent color; Android's
+  status and navigation bars follow the theme you choose.
 - Spanish / English, automatic or manually chosen in Settings.
 - Permission checker in Settings: tells you what this phone is missing (background location,
   notifications, Do Not Disturb access so it can ring while silenced…) and asks again, even if you
   skipped it at install time.
 - In-app updater — checks and installs the latest APK straight from your own server.
+- **Active group switching (admin)**: admins can jump to any group on the server from a picker,
+  no invite code needed; alerts only arrive from the active group. Each group also has a
+  **Visible** checkbox: unticked, the admin joins without showing up in the member list or on
+  anyone's map, and their zone enter/exit events don't alert the others.
 - In-app admin panel: users, groups, dashboard, and a **server storage manager** (database,
   avatars, attachments, APK and backups) with file preview and deletion.
 - A full web **admin panel** (users, groups, zones, location history by day, and a visual dashboard)

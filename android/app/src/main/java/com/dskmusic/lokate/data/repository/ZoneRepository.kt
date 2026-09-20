@@ -17,29 +17,38 @@ class ZoneRepository(
     private val dao: ZoneDao,
 ) {
     /** Zonas cacheadas localmente (disponibles sin conexión); se refrescan con [refresh]. */
-    fun observeZones(): Flow<List<ZoneDto>> = dao.observeAll().map { entities ->
-        entities.map { ZoneDto(it.id, it.name, it.lat, it.lng, it.radiusM) }
-    }
+    fun observeZones(): Flow<List<ZoneDto>> = dao.observeAll().map { entities -> entities.map { it.toDto() } }
 
     suspend fun refresh() = withContext(Dispatchers.IO) {
         val zones = api.listZones()
-        dao.upsertAll(zones.map { ZoneEntity(it.id, it.name, it.lat, it.lng, it.radius_m) })
+        dao.upsertAll(zones.map { it.toEntity() })
         dao.deleteMissing(zones.map { it.id })
     }
 
-    suspend fun createZone(name: String, lat: Double, lng: Double, radiusM: Double): ZoneDto =
-        withContext(Dispatchers.IO) {
-            val zone = api.createZone(ZoneCreateRequestDto(name, lat, lng, radiusM))
-            dao.upsertAll(listOf(ZoneEntity(zone.id, zone.name, zone.lat, zone.lng, zone.radius_m)))
-            zone
-        }
+    suspend fun createZone(
+        name: String,
+        lat: Double,
+        lng: Double,
+        radiusM: Double,
+        watchedUserIds: List<String> = emptyList(),
+    ): ZoneDto = withContext(Dispatchers.IO) {
+        val zone = api.createZone(ZoneCreateRequestDto(name, lat, lng, radiusM, watchedUserIds))
+        dao.upsertAll(listOf(zone.toEntity()))
+        zone
+    }
 
-    suspend fun updateZone(id: String, name: String, lat: Double, lng: Double, radiusM: Double): ZoneDto =
-        withContext(Dispatchers.IO) {
-            val zone = api.updateZone(id, ZoneCreateRequestDto(name, lat, lng, radiusM))
-            dao.upsertAll(listOf(ZoneEntity(zone.id, zone.name, zone.lat, zone.lng, zone.radius_m)))
-            zone
-        }
+    suspend fun updateZone(
+        id: String,
+        name: String,
+        lat: Double,
+        lng: Double,
+        radiusM: Double,
+        watchedUserIds: List<String> = emptyList(),
+    ): ZoneDto = withContext(Dispatchers.IO) {
+        val zone = api.updateZone(id, ZoneCreateRequestDto(name, lat, lng, radiusM, watchedUserIds))
+        dao.upsertAll(listOf(zone.toEntity()))
+        zone
+    }
 
     suspend fun deleteZone(id: String) = withContext(Dispatchers.IO) {
         api.deleteZone(id)
@@ -57,3 +66,13 @@ class ZoneRepository(
             api.updateZoneNotificationPref(zoneId, ZoneNotificationPrefUpdateRequestDto(notifyOnEnter, notifyOnExit))
         }
 }
+
+private fun ZoneEntity.toDto() = ZoneDto(
+    id, name, lat, lng, radiusM,
+    watchedIds.split(",").filter { it.isNotBlank() },
+)
+
+private fun ZoneDto.toEntity() = ZoneEntity(
+    id, name, lat, lng, radius_m,
+    watched_user_ids.joinToString(","),
+)

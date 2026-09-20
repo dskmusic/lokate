@@ -15,16 +15,22 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.flatMapLatest
 import kotlinx.coroutines.launch
 import java.time.LocalDate
+import java.time.LocalTime
 import java.time.ZoneId
 import java.time.format.DateTimeFormatter
 
 data class HistoryUiState(
     val selectedDate: LocalDate = LocalDate.now(),
+    val startTime: LocalTime = LocalTime.MIN,
+    val endTime: LocalTime = LocalTime.MAX,
     val loading: Boolean = true,
     val members: List<GroupMemberDto> = emptyList(),
     val selectedUserId: String? = null,
     val selectedDisplayName: String? = null,
-)
+) {
+    /** Sin acotar: el día entero, que es lo que quiere casi siempre quien abre el historial. */
+    val isFullDay: Boolean get() = startTime == LocalTime.MIN && endTime == LocalTime.MAX
+}
 
 @OptIn(ExperimentalCoroutinesApi::class)
 class HistoryViewModel(
@@ -75,13 +81,29 @@ class HistoryViewModel(
 
     fun setDate(date: LocalDate) {
         _uiState.value = _uiState.value.copy(selectedDate = date, loading = true)
-        val uid = _uiState.value.selectedUserId ?: return
+        val state = _uiState.value
+        val uid = state.selectedUserId ?: return
         viewModelScope.launch {
+            // El tramo pedido es el que se guarda en la caché local (refreshHistoryRange borra lo
+            // anterior de esa persona), así que acotar la hora aquí acota también lo que se pinta.
             val zone = ZoneId.systemDefault()
-            val fromIso = DateTimeFormatter.ISO_INSTANT.format(date.atStartOfDay(zone).toInstant())
-            val toIso = DateTimeFormatter.ISO_INSTANT.format(date.plusDays(1).atStartOfDay(zone).toInstant())
-            runCatching { locationRepository.refreshHistoryRange(uid, fromIso, toIso) }
+            val fromIso = DateTimeFormatter.ISO_INSTANT.format(date.atTime(state.startTime).atZone(zone).toInstant())
+            val to = if (state.isFullDay) {
+                date.plusDays(1).atStartOfDay(zone).toInstant()
+            } else {
+                date.atTime(state.endTime).atZone(zone).toInstant()
+            }
+            runCatching { locationRepository.refreshHistoryRange(uid, fromIso, DateTimeFormatter.ISO_INSTANT.format(to)) }
             _uiState.value = _uiState.value.copy(loading = false)
         }
     }
+
+    /** Horas del día elegido. Al revés (22:00 → 06:00) se entiende de la menor a la mayor: el
+     * historial va de un día, no cruza la medianoche. */
+    fun setTimeRange(a: LocalTime, b: LocalTime) {
+        _uiState.value = _uiState.value.copy(startTime = minOf(a, b), endTime = maxOf(a, b))
+        setDate(_uiState.value.selectedDate)
+    }
+
+    fun clearTimeRange() = setTimeRange(LocalTime.MIN, LocalTime.MAX)
 }

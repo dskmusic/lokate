@@ -512,9 +512,13 @@ class UserAdmin(ModelView, model=models.User):
 
 
 class ZoneAdmin(ModelView, model=models.Zone):
-    column_list = [models.Zone.name, models.Zone.group_id, models.Zone.radius_m]
+    # El grupo por la relación y no por group_id: en la lista salía el UUID crudo y no había
+    # manera de saber de qué grupo era cada zona. Ordenar sigue siendo por columnas de verdad.
+    column_list = [models.Zone.name, models.Zone.group, models.Zone.radius_m]
+    column_sortable_list = [models.Zone.name, models.Zone.radius_m]
     column_labels = {
         models.Zone.name: "Nombre",
+        models.Zone.group: "Grupo",
         models.Zone.group_id: "Grupo",
         models.Zone.radius_m: "Radio (m)",
     }

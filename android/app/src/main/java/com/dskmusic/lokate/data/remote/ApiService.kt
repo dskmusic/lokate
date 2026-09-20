@@ -20,6 +20,9 @@ import com.dskmusic.lokate.data.remote.dto.AvatarResponseDto
 import com.dskmusic.lokate.data.remote.dto.GroupCreateRequestDto
 import com.dskmusic.lokate.data.remote.dto.GroupDto
 import com.dskmusic.lokate.data.remote.dto.GroupJoinRequestDto
+import com.dskmusic.lokate.data.remote.dto.GroupSwitchRequestDto
+import com.dskmusic.lokate.data.remote.dto.GroupVisibilityDto
+import com.dskmusic.lokate.data.remote.dto.GroupVisibilityRequestDto
 import com.dskmusic.lokate.data.remote.dto.GroupMemberDto
 import com.dskmusic.lokate.data.remote.dto.LocationDto
 import com.dskmusic.lokate.data.remote.dto.LocationHistoryPointDto
@@ -77,6 +80,12 @@ interface ApiService {
 
     @POST("groups/join")
     suspend fun joinGroup(@Body body: GroupJoinRequestDto): GroupDto
+
+    @POST("groups/switch")
+    suspend fun switchGroup(@Body body: GroupSwitchRequestDto): GroupDto
+
+    @POST("groups/visibility")
+    suspend fun setGroupVisibility(@Body body: GroupVisibilityRequestDto): GroupVisibilityDto
 
     @GET("groups/me")
     suspend fun myGroup(): GroupDto

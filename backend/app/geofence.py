@@ -71,6 +71,13 @@ def distance_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return 2 * EARTH_RADIUS_M * atan2(sqrt(a), sqrt(1 - a))
 
 
+def watches(zone: models.Zone, user_id: str) -> bool:
+    """¿Los movimientos de este usuario avisan en esta zona? Zona sin lista = avisa de todos,
+    incluidos los que entren en el grupo después de crearla."""
+    watched = zone.watched_user_ids
+    return not watched or user_id in watched
+
+
 def _notification_recipients(db: Session, group_id: str, exclude_user_id: str, zone_id: str, is_inside: bool) -> list[str]:
     """Miembros del grupo (menos quien se ha movido) que quieren avisos de esta zona en esta dirección.
     Sin fila de preferencia guardada para un usuario+zona, se asume que NO quiere avisos — el
@@ -137,6 +144,13 @@ def check_zone_transitions(
         body = f"{user.display_name} {verb} {zone.name}"
         if recipients_override is not None:
             recipients = [uid for uid in recipients_override if uid != user.id]
+        elif user.is_hidden_in(user.group_id):
+            # Escondido en este grupo: sus idas y venidas no avisan a nadie.
+            recipients = []
+        elif not watches(zone, user.id):
+            # La zona solo vigila a otros: se guarda el estado (para no soltar el aviso atrasado
+            # si luego se le añade a la lista) pero no se avisa a nadie.
+            recipients = []
         else:
             recipients = _notification_recipients(db, user.group_id, user.id, zone.id, is_inside)
         report.append((body, len(recipients)))

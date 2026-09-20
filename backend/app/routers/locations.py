@@ -13,6 +13,15 @@ router = APIRouter(prefix="/location", tags=["location"])
 RETENTION_DAYS = int(os.getenv("LOCATION_RETENTION_DAYS", "30"))
 
 
+def _group_member(db: Session, user: models.User, user_id: str) -> models.User | None:
+    """El miembro del grupo de quien pregunta, o None. Quien se esconde en ese grupo no existe
+    para los demás: ni ubicación, ni historial, ni hacer sonar su móvil."""
+    target = db.query(models.User).filter(
+        models.User.id == user_id, models.User.group_id == user.group_id
+    ).first()
+    return None if target is None or target.hidden_from(user) else target
+
+
 @router.post("/ping", status_code=status.HTTP_204_NO_CONTENT)
 def ping(
     body: schemas.LocationPingRequest,
@@ -59,6 +68,8 @@ def group_latest(
     members = db.query(models.User).filter(models.User.group_id == user.group_id).all()
     results = []
     for member in members:
+        if member.hidden_from(user):
+            continue
         latest = (
             db.query(models.LocationPing)
             .filter(models.LocationPing.user_id == member.id)
@@ -98,12 +109,8 @@ def history(
     """[from_ts, to_ts): rango exacto (para "ayer"/"hoy"/fecha elegida en la app, calculado
     en el cliente con su huso horario). Sin ellos: ventana relativa de [hours]."""
     target_id = user_id or user.id
-    if target_id != user.id:
-        member = db.query(models.User).filter(
-            models.User.id == target_id, models.User.group_id == user.group_id
-        ).first()
-        if not member:
-            return []
+    if target_id != user.id and _group_member(db, user, target_id) is None:
+        return []
 
     query = db.query(models.LocationPing).filter(models.LocationPing.user_id == target_id)
     if from_ts is not None and to_ts is not None:
@@ -120,9 +127,7 @@ def ring_device(
     user: models.User = Depends(get_current_user_with_group),
     db: Session = Depends(get_db),
 ):
-    target = db.query(models.User).filter(
-        models.User.id == user_id, models.User.group_id == user.group_id
-    ).first()
+    target = _group_member(db, user, user_id)
     if not target:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Member not found in your group")
 
@@ -143,9 +148,7 @@ def stop_ring_device(
 ):
     """Push silencioso que para la alarma que /ring dejó sonando en ese dispositivo — lo manda
     quien pulsa "Detener" en el diálogo de "hacer sonar"."""
-    target = db.query(models.User).filter(
-        models.User.id == user_id, models.User.group_id == user.group_id
-    ).first()
+    target = _group_member(db, user, user_id)
     if not target:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Member not found in your group")
 
@@ -166,9 +169,7 @@ def request_location(
 ):
     """Push silencioso (sin sonido/notificación) que pide a ese dispositivo una ubicación
     puntual fresca — a diferencia de /ring, que solo hace sonar la alarma."""
-    target = db.query(models.User).filter(
-        models.User.id == user_id, models.User.group_id == user.group_id
-    ).first()
+    target = _group_member(db, user, user_id)
     if not target:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Member not found in your group")
 

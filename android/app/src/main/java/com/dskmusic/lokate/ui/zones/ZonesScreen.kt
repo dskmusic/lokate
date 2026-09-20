@@ -2,6 +2,7 @@ package com.dskmusic.lokate.ui.zones
 
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
@@ -41,7 +42,9 @@ import androidx.compose.ui.graphics.vector.ImageVector
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import coil.compose.AsyncImage
 import com.dskmusic.lokate.R
+import com.dskmusic.lokate.data.remote.absoluteAvatarUrl
 import com.dskmusic.lokate.data.remote.dto.ZoneDto
 import com.dskmusic.lokate.di.ServiceLocator
 
@@ -53,9 +56,10 @@ fun ZonesScreen(
     onEditZone: (String) -> Unit,
     onBack: () -> Unit,
 ) {
-    val viewModel = remember { ZonesViewModel(locator.zoneRepository) }
+    val viewModel = remember { ZonesViewModel(locator.zoneRepository, locator.groupRepository) }
     val zones by viewModel.zones.collectAsStateWithLifecycle(initialValue = emptyList())
     val prefs by viewModel.prefs.collectAsStateWithLifecycle()
+    val members by viewModel.members.collectAsStateWithLifecycle()
     var zoneToDelete by remember { mutableStateOf<ZoneDto?>(null) }
 
     Scaffold(
@@ -76,49 +80,70 @@ fun ZonesScreen(
         LazyColumn(modifier = Modifier.fillMaxSize().padding(padding)) {
             items(zones, key = { it.id }) { zone ->
                 val pref = prefs[zone.id]
+                // Lista vacía en el servidor = la zona avisa de todo el grupo.
+                val watched = remember(zone.watched_user_ids, members) {
+                    if (zone.watched_user_ids.isEmpty()) members
+                    else members.filter { it.id in zone.watched_user_ids }
+                }
                 Card(
                     modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
                 ) {
-                    Row(
-                        modifier = Modifier.fillMaxWidth().clickable { onEditZone(zone.id) }
-                            .padding(horizontal = 12.dp, vertical = 10.dp),
-                        verticalAlignment = Alignment.CenterVertically,
-                    ) {
-                        Box(
-                            modifier = Modifier.size(40.dp).clip(CircleShape)
-                                .background(MaterialTheme.colorScheme.primaryContainer),
-                            contentAlignment = Alignment.Center,
+                    Box(Modifier.fillMaxWidth()) {
+                        Row(
+                            modifier = Modifier.fillMaxWidth().clickable { onEditZone(zone.id) }
+                                .padding(start = 12.dp, end = 12.dp, top = 10.dp, bottom = 16.dp),
+                            verticalAlignment = Alignment.CenterVertically,
                         ) {
-                            Icon(
-                                Icons.Filled.LocationOn,
-                                contentDescription = null,
-                                tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                            Box(
+                                modifier = Modifier.size(40.dp).clip(CircleShape)
+                                    .background(MaterialTheme.colorScheme.primaryContainer),
+                                contentAlignment = Alignment.Center,
+                            ) {
+                                Icon(
+                                    Icons.Filled.LocationOn,
+                                    contentDescription = null,
+                                    tint = MaterialTheme.colorScheme.onPrimaryContainer,
+                                )
+                            }
+                            Column(
+                                modifier = Modifier.weight(1f).padding(start = 12.dp),
+                            ) {
+                                Text(zone.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
+                                Text(
+                                    "${zone.radius_m.toInt()} m",
+                                    style = MaterialTheme.typography.bodySmall,
+                                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                )
+                            }
+                            ZoneNotifyToggle(
+                                icon = Icons.Filled.Login,
+                                enabled = pref?.notify_on_enter ?: false,
+                                contentDescription = stringResource(R.string.zone_notify_enter),
+                                onClick = { viewModel.setNotifyOnEnter(zone.id, !(pref?.notify_on_enter ?: false)) },
                             )
+                            ZoneNotifyToggle(
+                                icon = Icons.Filled.Logout,
+                                enabled = pref?.notify_on_exit ?: false,
+                                contentDescription = stringResource(R.string.zone_notify_exit),
+                                onClick = { viewModel.setNotifyOnExit(zone.id, !(pref?.notify_on_exit ?: false)) },
+                            )
+                            IconButton(onClick = { zoneToDelete = zone }) {
+                                Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.zone_delete))
+                            }
                         }
-                        Column(
-                            modifier = Modifier.weight(1f).padding(start = 12.dp),
+                        // De un vistazo, de quién avisa cada zona: las caras, pegadas al borde de abajo.
+                        Row(
+                            modifier = Modifier.align(Alignment.BottomEnd).padding(end = 10.dp, bottom = 3.dp),
+                            horizontalArrangement = Arrangement.spacedBy(2.dp),
                         ) {
-                            Text(zone.name, style = MaterialTheme.typography.titleMedium, maxLines = 1)
-                            Text(
-                                "${zone.radius_m.toInt()} m",
-                                style = MaterialTheme.typography.bodySmall,
-                                color = MaterialTheme.colorScheme.onSurfaceVariant,
-                            )
-                        }
-                        ZoneNotifyToggle(
-                            icon = Icons.Filled.Login,
-                            enabled = pref?.notify_on_enter ?: false,
-                            contentDescription = stringResource(R.string.zone_notify_enter),
-                            onClick = { viewModel.setNotifyOnEnter(zone.id, !(pref?.notify_on_enter ?: false)) },
-                        )
-                        ZoneNotifyToggle(
-                            icon = Icons.Filled.Logout,
-                            enabled = pref?.notify_on_exit ?: false,
-                            contentDescription = stringResource(R.string.zone_notify_exit),
-                            onClick = { viewModel.setNotifyOnExit(zone.id, !(pref?.notify_on_exit ?: false)) },
-                        )
-                        IconButton(onClick = { zoneToDelete = zone }) {
-                            Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.zone_delete))
+                            watched.forEach { member ->
+                                AsyncImage(
+                                    model = absoluteAvatarUrl(member.avatar_url),
+                                    contentDescription = member.display_name,
+                                    modifier = Modifier.size(16.dp).clip(CircleShape)
+                                        .background(MaterialTheme.colorScheme.surfaceVariant),
+                                )
+                            }
                         }
                     }
                 }

@@ -5,6 +5,8 @@ import com.dskmusic.lokate.data.remote.dto.GroupCreateRequestDto
 import com.dskmusic.lokate.data.remote.dto.GroupDto
 import com.dskmusic.lokate.data.remote.dto.GroupJoinRequestDto
 import com.dskmusic.lokate.data.remote.dto.GroupMemberDto
+import com.dskmusic.lokate.data.remote.dto.GroupSwitchRequestDto
+import com.dskmusic.lokate.data.remote.dto.GroupVisibilityRequestDto
 import com.dskmusic.lokate.data.remote.dto.TestNotificationRequestDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -19,6 +21,17 @@ class GroupRepository(private val api: ApiService) {
     suspend fun joinGroup(inviteCode: String): GroupDto = withContext(Dispatchers.IO) {
         api.joinGroup(GroupJoinRequestDto(inviteCode))
     }
+
+    /** Solo admin: saltar a otro grupo sin código de invitación. */
+    suspend fun switchGroup(groupId: String): GroupDto = withContext(Dispatchers.IO) {
+        api.switchGroup(GroupSwitchRequestDto(groupId))
+    }
+
+    /** Solo admin: aparecer o no en un grupo. Devuelve los grupos en los que sigue escondido. */
+    suspend fun setGroupVisibility(groupId: String, visible: Boolean): List<String> =
+        withContext(Dispatchers.IO) {
+            api.setGroupVisibility(GroupVisibilityRequestDto(groupId, visible)).hidden_groups
+        }
 
     suspend fun myGroup(): GroupDto = withContext(Dispatchers.IO) { api.myGroup() }
 

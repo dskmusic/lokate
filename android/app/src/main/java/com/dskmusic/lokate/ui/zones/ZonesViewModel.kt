@@ -2,21 +2,33 @@ package com.dskmusic.lokate.ui.zones
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dskmusic.lokate.data.remote.dto.GroupMemberDto
 import com.dskmusic.lokate.data.remote.dto.ZoneNotificationPrefDto
+import com.dskmusic.lokate.data.repository.GroupRepository
 import com.dskmusic.lokate.data.repository.ZoneRepository
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
 
-class ZonesViewModel(private val zoneRepository: ZoneRepository) : ViewModel() {
+class ZonesViewModel(
+    private val zoneRepository: ZoneRepository,
+    private val groupRepository: GroupRepository,
+) : ViewModel() {
 
     val zones = zoneRepository.observeZones()
 
     private val _prefs = MutableStateFlow<Map<String, ZoneNotificationPrefDto>>(emptyMap())
     val prefs: StateFlow<Map<String, ZoneNotificationPrefDto>> = _prefs
 
+    /** Para poner cara a los miembros que vigila cada zona. */
+    private val _members = MutableStateFlow<List<GroupMemberDto>>(emptyList())
+    val members: StateFlow<List<GroupMemberDto>> = _members
+
     init {
         viewModelScope.launch { runCatching { zoneRepository.refresh() } }
+        viewModelScope.launch {
+            _members.value = runCatching { groupRepository.members() }.getOrDefault(emptyList())
+        }
         refreshPrefs()
     }
 

@@ -54,6 +54,10 @@
     <string name="group_leave_confirm_title">Leave the group?</string>
     <string name="group_leave_confirm_body">You\'ll stop seeing and sharing location with this family group.</string>
     <string name="group_members_title">Members</string>
+    <string name="group_switch_title">Active group</string>
+    <string name="group_switch_hint">You only get alerts from the selected group.</string>
+    <string name="group_visible">Visible</string>
+    <string name="group_visible_hint">Untick a group to join it without its members seeing you.</string>
     <string name="group_admin_only_create">Only admins can create a new group. Ask an admin for the invite code to join.</string>
     <string name="map_no_group_prompt">You don\'t belong to a family group yet. Create one or join with a code.</string>
     <string name="map_go_to_group">Go to family group</string>
@@ -195,12 +199,24 @@
     <string name="history_title">History</string>
     <string name="history_yesterday">Yesterday</string>
     <string name="history_today">Today</string>
-    <string name="history_pick_date">Pick a date</string>
+    <string name="history_pick_date">Date</string>
     <string name="history_no_points">No locations recorded in this period</string>
     <string name="history_coords_copy">Copy coordinates</string>
     <string name="history_coords_copied">Coordinates copied</string>
     <string name="history_open_maps">Open in Google Maps</string>
     <string name="history_distance">Distance travelled: %1$s</string>
+    <string name="history_distance_visible">On screen: %1$s</string>
+    <string name="history_snapshot_distance">Distance travelled: %1$s</string>
+    <string name="history_all_day">All day</string>
+    <string name="history_time_from">From what time</string>
+    <string name="history_time_to">Until what time</string>
+    <string name="history_snapshot">Save map image</string>
+    <string name="history_snapshot_save">Save to Downloads</string>
+    <string name="history_snapshot_share">Share</string>
+    <string name="history_snapshot_saved">Image saved to Downloads</string>
+    <string name="history_snapshot_failed">Could not save the image</string>
+    <string name="history_view_list">Show point list</string>
+    <string name="history_view_map">Show map</string>
     <string name="history_choose_person">Choose person</string>
 
     <!-- Settings -->
@@ -344,6 +360,9 @@
     <string name="place_search_not_found">Nothing found</string>
     <string name="place_search_failed">Couldn\'t search. Check your connection.</string>
     <string name="zone_map_hint">Tap the map to pick the zone centre, or search for it above</string>
+    <string name="zone_watch_title">Notify about these members</string>
+    <string name="zone_watch_hint">With everyone ticked, the zone reports anyone in the group, including members who join later.</string>
+    <string name="zone_watch_empty">Tick at least one member</string>
 
     <!-- Distance and people list sorting -->
     <string name="distance_from_you">%1$s from you</string>

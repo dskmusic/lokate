@@ -1,8 +1,10 @@
 package com.dskmusic.lokate.ui.group
 
+import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
 import androidx.compose.foundation.layout.Column
+import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
@@ -17,6 +19,7 @@ import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.Share
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
+import androidx.compose.material3.Checkbox
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
@@ -25,6 +28,7 @@ import androidx.compose.material3.ListItem
 import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.RadioButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
@@ -48,7 +52,14 @@ import com.dskmusic.lokate.util.LocationSharing
 @Composable
 fun GroupScreen(locator: ServiceLocator, onDone: () -> Unit) {
     val context = LocalContext.current
-    val viewModel = remember { GroupViewModel(locator.groupRepository, locator.authRepository) }
+    val viewModel = remember {
+        GroupViewModel(
+            locator.groupRepository,
+            locator.authRepository,
+            locator.adminRepository,
+            locator.zoneRepository,
+        )
+    }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
     var groupName by remember { mutableStateOf("") }
@@ -111,6 +122,55 @@ fun GroupScreen(locator: ServiceLocator, onDone: () -> Unit) {
                     }
                 }
                 item { HorizontalDivider() }
+                // Los admin pueden saltar entre grupos; el activo manda: solo llegan sus avisos.
+                if (state.currentUser?.is_admin == true && state.availableGroups.size > 1) {
+                    item {
+                        Text(
+                            stringResource(R.string.group_switch_title),
+                            style = MaterialTheme.typography.titleMedium,
+                            modifier = Modifier.padding(start = 16.dp, end = 16.dp, top = 16.dp),
+                        )
+                    }
+                    item {
+                        Text(
+                            stringResource(R.string.group_switch_hint) + "\n" +
+                                stringResource(R.string.group_visible_hint),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant,
+                            modifier = Modifier.padding(horizontal = 16.dp, vertical = 4.dp),
+                        )
+                    }
+                    items(state.availableGroups, key = { it.id }) { other ->
+                        ListItem(
+                            headlineContent = { Text(other.name) },
+                            supportingContent = { Text(other.invite_code) },
+                            leadingContent = {
+                                RadioButton(
+                                    selected = other.id == group.id,
+                                    onClick = { viewModel.switchGroup(other.id) },
+                                    enabled = !state.loading,
+                                )
+                            },
+                            // Desmarcado = entra en ese grupo sin que sus miembros le vean.
+                            trailingContent = {
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(
+                                        stringResource(R.string.group_visible),
+                                        style = MaterialTheme.typography.bodySmall,
+                                    )
+                                    Checkbox(
+                                        checked = other.id !in state.hiddenGroups,
+                                        onCheckedChange = { viewModel.setGroupVisible(other.id, it) },
+                                    )
+                                }
+                            },
+                            modifier = Modifier.clickable(enabled = !state.loading && other.id != group.id) {
+                                viewModel.switchGroup(other.id)
+                            },
+                        )
+                    }
+                    item { HorizontalDivider() }
+                }
                 item {
                     Text(
                         stringResource(R.string.group_members_title),

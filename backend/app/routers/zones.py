@@ -28,6 +28,7 @@ def create_zone(
         lat=body.lat,
         lng=body.lng,
         radius_m=body.radius_m,
+        watched_ids=",".join(body.watched_user_ids),
         created_by=user.id,
     )
     db.add(zone)
@@ -54,6 +55,7 @@ def update_zone(
 ):
     zone = _get_owned_zone(zone_id, user, db)
     zone.name, zone.lat, zone.lng, zone.radius_m = body.name, body.lat, body.lng, body.radius_m
+    zone.watched_ids = ",".join(body.watched_user_ids)
     db.commit()
     db.refresh(zone)
     return zone

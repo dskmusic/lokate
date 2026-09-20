@@ -32,8 +32,13 @@ servidor. Ninguna empresa externa ve el historial de ubicaciones de tu familia.
 - Pestaña **Gente**: foto, batería, estado de carga, red WiFi conectada y última actualización de
   cada miembro del grupo — toca la fila para centrar el mapa, la foto para verla en grande, o el
   icono de flecha para ir directamente a su ficha de detalle.
-- Historial de ubicaciones por día, con la ruta pintada en el mapa y una lista de puntos
-  sincronizada, distancia total recorrida, y copiar coordenadas o abrir cualquier punto en Google Maps.
+- Historial de ubicaciones **por día y por horas** (el día entero por defecto, o el tramo horario
+  que elijas), con la ruta a pantalla completa, distancia total y distancia de lo que se ve en
+  pantalla, y copiar coordenadas o abrir cualquier punto en Google Maps.
+- **Guardar o compartir la imagen del recorrido** desde el propio historial — a Descargas o por el
+  diálogo del sistema — con el nombre, la fecha (y las horas, si las acotaste) y la distancia
+  recorrida al pie; y un botón para alternar entre el mapa y la lista de puntos, de la más reciente
+  a la más antigua.
 - Estilos de mapa en el propio mapa (botón de capas): estándar, satélite, oscuro, sin conexión y
   sin conexión oscuro.
 - **Seguir en vivo** a cualquier miembro del grupo: el mapa salta a esa persona con el zoom por
@@ -66,6 +71,9 @@ servidor. Ninguna empresa externa ve el historial de ubicaciones de tu familia.
   algún gestor de batería agresivo mate el servicio en segundo plano (un problema real en
   Xiaomi/Samsung/Huawei).
 - Preferencias de aviso de entrada/salida por zona y por miembro.
+- **Miembros vigilados por zona**: al crear o editar una zona eliges de quién quieres que te avise
+  (por defecto, de todo el grupo) — así una zona puede avisarte solo de una persona y otra de otra.
+  En la lista de zonas, los avatares del borde inferior enseñan de un vistazo a quién vigila cada una.
 
 **Funciones de seguridad**
 - **Hacer sonar el dispositivo** y **mensajes prioritarios (de emergencia)** — texto más una foto,
@@ -76,12 +84,17 @@ servidor. Ninguna empresa externa ve el historial de ubicaciones de tu familia.
   en Descargas) o compartir.
 
 **Acabado**
-- Tema claro / oscuro / AMOLED (negro puro) / automático, con color de acento personalizable.
+- Tema claro / oscuro / AMOLED (negro puro) / automático, con color de acento personalizable; las
+  barras de estado y de navegación de Android se tiñen con el tema elegido.
 - Español / inglés, automático o elegido a mano en Ajustes.
 - Comprobador de permisos en Ajustes: dice qué le falta a ese móvil (ubicación en segundo plano,
   notificaciones, acceso a No molestar para poder sonar en silencio…) y lo vuelve a pedir aunque lo
   hubieras omitido al instalar.
 - Actualizador integrado — busca e instala el último APK directamente desde tu propio servidor.
+- **Cambio de grupo activo (admin)**: los administradores pueden saltar a cualquier grupo del
+  servidor desde un selector, sin código de invitación; solo llegan los avisos del grupo activo.
+  Cada grupo lleva además una casilla **Visible**: desmarcada, el administrador entra sin aparecer
+  en la lista de miembros ni en el mapa de los demás, y sus entradas y salidas de zona no les avisan.
 - Panel de administración en la app: usuarios, grupos, dashboard y un **gestor de almacenamiento
   del servidor** (base de datos, avatares, adjuntos, APK y copias de seguridad) con vista previa y
   borrado de archivos.

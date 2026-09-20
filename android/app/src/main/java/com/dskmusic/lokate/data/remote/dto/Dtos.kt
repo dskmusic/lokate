@@ -24,6 +24,8 @@ data class UserDto(
     val avatar_url: String?,
     val group_id: String?,
     val is_admin: Boolean,
+    /** Grupos en los que este usuario se esconde (solo admin). */
+    val hidden_groups: List<String> = emptyList(),
 )
 
 data class AvatarResponseDto(
@@ -32,6 +34,12 @@ data class AvatarResponseDto(
 
 data class GroupCreateRequestDto(val name: String)
 data class GroupJoinRequestDto(val invite_code: String)
+
+data class GroupSwitchRequestDto(val group_id: String)
+
+data class GroupVisibilityRequestDto(val group_id: String, val visible: Boolean)
+
+data class GroupVisibilityDto(val hidden_groups: List<String>)
 
 data class GroupDto(
     val id: String,
@@ -94,6 +102,8 @@ data class ZoneCreateRequestDto(
     val lat: Double,
     val lng: Double,
     val radius_m: Double,
+    /** Miembros cuyos movimientos avisan en esta zona. Vacía = todo el grupo. */
+    val watched_user_ids: List<String> = emptyList(),
 )
 
 data class ZoneDto(
@@ -102,6 +112,7 @@ data class ZoneDto(
     val lat: Double,
     val lng: Double,
     val radius_m: Double,
+    val watched_user_ids: List<String> = emptyList(),
 )
 
 data class ZoneNotificationPrefDto(

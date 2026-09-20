@@ -10,6 +10,8 @@ data class ZoneEntity(
     val lat: Double,
     val lng: Double,
     val radiusM: Double,
+    /** Ids separados por comas, como los guarda el servidor. Vacío = todo el grupo. */
+    val watchedIds: String = "",
 )
 
 @Entity(tableName = "location_history")

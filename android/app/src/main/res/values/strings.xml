@@ -54,6 +54,10 @@
     <string name="group_leave_confirm_title">¿Salir del grupo?</string>
     <string name="group_leave_confirm_body">Dejarás de ver y compartir ubicación con este grupo familiar.</string>
     <string name="group_members_title">Miembros</string>
+    <string name="group_switch_title">Grupo activo</string>
+    <string name="group_switch_hint">Solo recibes avisos del grupo seleccionado.</string>
+    <string name="group_visible">Visible</string>
+    <string name="group_visible_hint">Desmarca un grupo para entrar en él sin que sus miembros te vean.</string>
     <string name="group_admin_only_create">Solo los administradores pueden crear un grupo nuevo. Pídele a un admin el código de invitación para unirte.</string>
     <string name="map_no_group_prompt">Todavía no perteneces a ningún grupo familiar. Crea uno o únete con un código.</string>
     <string name="map_go_to_group">Ir a grupo familiar</string>
@@ -195,12 +199,24 @@
     <string name="history_title">Historial</string>
     <string name="history_yesterday">Ayer</string>
     <string name="history_today">Hoy</string>
-    <string name="history_pick_date">Elegir fecha</string>
+    <string name="history_pick_date">Fecha</string>
     <string name="history_no_points">No hay ubicaciones registradas en este periodo</string>
     <string name="history_coords_copy">Copiar coordenadas</string>
     <string name="history_coords_copied">Coordenadas copiadas</string>
     <string name="history_open_maps">Abrir en Google Maps</string>
     <string name="history_distance">Recorrido: %1$s</string>
+    <string name="history_distance_visible">En pantalla: %1$s</string>
+    <string name="history_snapshot_distance">Distancia recorrida: %1$s</string>
+    <string name="history_all_day">Todo el día</string>
+    <string name="history_time_from">Desde qué hora</string>
+    <string name="history_time_to">Hasta qué hora</string>
+    <string name="history_snapshot">Guardar imagen del mapa</string>
+    <string name="history_snapshot_save">Guardar en Descargas</string>
+    <string name="history_snapshot_share">Compartir</string>
+    <string name="history_snapshot_saved">Imagen guardada en Descargas</string>
+    <string name="history_snapshot_failed">No se ha podido guardar la imagen</string>
+    <string name="history_view_list">Ver lista de puntos</string>
+    <string name="history_view_map">Ver mapa</string>
 
     <!-- Ajustes -->
     <string name="settings_title">Ajustes</string>
@@ -346,6 +362,9 @@
     <string name="place_search_not_found">No se ha encontrado nada</string>
     <string name="place_search_failed">No se ha podido buscar. Comprueba la conexión.</string>
     <string name="zone_map_hint">Toca el mapa para elegir el centro de la zona, o búscalo arriba</string>
+    <string name="zone_watch_title">Avisar de estos miembros</string>
+    <string name="zone_watch_hint">Con todos marcados, la zona avisa de cualquiera del grupo, incluido quien entre más adelante.</string>
+    <string name="zone_watch_empty">Marca al menos un miembro</string>
 
     <!-- Distancia y orden de la lista de gente -->
     <string name="distance_from_you">a %1$s de ti</string>

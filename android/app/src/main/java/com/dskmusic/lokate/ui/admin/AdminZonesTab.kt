@@ -58,9 +58,13 @@ internal fun AdminZonesTab(state: AdminUiState, viewModel: AdminViewModel) {
         } else {
             LazyColumn(Modifier.fillMaxSize()) {
                 items(state.zones, key = { it.id }) { zone ->
+                    // Sin el grupo, dos zonas con el mismo nombre en grupos distintos son iguales.
+                    val groupName = state.groups.firstOrNull { it.id == zone.group_id }?.name
                     ListItem(
                         headlineContent = { Text(zone.name) },
-                        supportingContent = { Text("${zone.radius_m.toInt()} m") },
+                        supportingContent = {
+                            Text(listOfNotNull(groupName, "${zone.radius_m.toInt()} m").joinToString(" · "))
+                        },
                         trailingContent = {
                             Row {
                                 IconButton(onClick = { editing = zone }) { Icon(Icons.Filled.Edit, contentDescription = null) }
@@ -80,11 +84,12 @@ internal fun AdminZonesTab(state: AdminUiState, viewModel: AdminViewModel) {
     }
 
     editing?.let { zone ->
+        val groupName = state.groups.firstOrNull { it.id == zone.group_id }?.name
         var name by remember(zone.id) { mutableStateOf(zone.name) }
         var radius by remember(zone.id) { mutableStateOf(zone.radius_m.toInt().toString()) }
         AlertDialog(
             onDismissRequest = { editing = null },
-            title = { Text(zone.name) },
+            title = { Text(listOfNotNull(zone.name, groupName).joinToString(" · ")) },
             text = {
                 Column {
                     OutlinedTextField(

@@ -12,6 +12,7 @@ import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.viewinterop.AndroidView
 import com.dskmusic.lokate.data.local.LocationHistoryEntity
 import com.dskmusic.lokate.util.MapStyle
+import org.osmdroid.util.BoundingBox
 import org.osmdroid.util.GeoPoint
 import org.osmdroid.views.MapView
 import org.osmdroid.views.overlay.Marker
@@ -126,15 +127,21 @@ private fun simplify(points: List<LocationHistoryEntity>): List<LocationHistoryE
     return result
 }
 
-/** Metros recorridos ese día: suma de los tramos de la ruta ya dibujada, no la distancia en
+/** Metros recorridos: suma de los tramos de la ruta ya dibujada, no la distancia en
  * línea recta entre extremos. Se mide sobre los puntos simplificados a propósito: con las
- * posiciones en bruto, el baile del GPS con el móvil quieto sumaría kilómetros que nadie anduvo. */
-fun routeDistanceMeters(points: List<LocationHistoryEntity>): Double {
+ * posiciones en bruto, el baile del GPS con el móvil quieto sumaría kilómetros que nadie anduvo.
+ * Con [visible] solo cuenta lo que cae dentro de ese trozo de mapa. */
+fun routeDistanceMeters(points: List<LocationHistoryEntity>, visible: BoundingBox? = null): Double {
     val route = simplify(points)
     var total = 0.0
     for (i in 1 until route.size) {
-        total += GeoPoint(route[i - 1].lat, route[i - 1].lng)
-            .distanceToAsDouble(GeoPoint(route[i].lat, route[i].lng))
+        val from = GeoPoint(route[i - 1].lat, route[i - 1].lng)
+        val to = GeoPoint(route[i].lat, route[i].lng)
+        // ponytail: un tramo cuenta entero si se le ve alguna punta, sin recortarlo por el borde
+        // de la pantalla. Recortar de verdad (Cohen-Sutherland y compañía) es mucho código para
+        // una cifra informativa; con puntos cada pocos minutos el error es de un tramo por borde.
+        if (visible != null && !visible.contains(from) && !visible.contains(to)) continue
+        total += from.distanceToAsDouble(to)
     }
     return total
 }
