@@ -112,6 +112,7 @@ fun SettingsScreen(
     val vibrationPattern by locator.settings.vibrationPattern.collectAsStateWithLifecycle(initialValue = VibrationPattern.SOFT)
     val mapZoom by locator.settings.mapInitialZoom.collectAsStateWithLifecycle(initialValue = Constants.MAP_DEFAULT_ZOOM)
     val mapStyle by locator.settings.mapStyle.collectAsStateWithLifecycle(initialValue = MapStyle.STANDARD)
+    val mapShowAccuracy by locator.settings.mapShowAccuracy.collectAsStateWithLifecycle(initialValue = false)
     val appLanguage by locator.settings.appLanguage.collectAsStateWithLifecycle(initialValue = "auto")
     val mapCacheClearedBytes by viewModel.mapCacheClearedBytes.collectAsStateWithLifecycle()
     val updateFlagEnabled by viewModel.updateFlagEnabled.collectAsStateWithLifecycle()
@@ -379,6 +380,18 @@ fun SettingsScreen(
                         Text(stringResource(R.string.settings_map_zoom_reset))
                     }
                 }
+            }
+            item {
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.settings_map_accuracy)) },
+                    supportingContent = { Text(stringResource(R.string.settings_map_accuracy_desc)) },
+                    trailingContent = {
+                        Switch(
+                            checked = mapShowAccuracy,
+                            onCheckedChange = { scope.launch { locator.settings.setMapShowAccuracy(it) } },
+                        )
+                    },
+                )
             }
             item {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {

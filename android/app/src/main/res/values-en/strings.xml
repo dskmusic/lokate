@@ -293,6 +293,8 @@
     <string name="settings_map_zoom_value">Level %1$d</string>
     <string name="settings_map_zoom_reset">Reset</string>
     <string name="settings_map_zoom_reset_confirm">The initial zoom goes back to the default (level %1$d) and the map forgets its current position and zoom: next time it will open centred on your location.</string>
+    <string name="settings_map_accuracy">Show accuracy radius</string>
+    <string name="settings_map_accuracy_desc">Draws a grey circle around each person with the accuracy of their last position. It explains why someone sometimes shows up across the street.</string>
     <string name="settings_map_cache_desc">Map tiles are stored on the device to load faster, and refresh themselves every %1$d days. You can clear them right now if the map looks out of date.</string>
     <string name="settings_map_cache_clear">Clear map cache</string>
     <string name="settings_map_cache_cleared">Cache cleared: %1$.1f MB freed</string>

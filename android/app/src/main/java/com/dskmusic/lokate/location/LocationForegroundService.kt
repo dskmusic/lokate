@@ -11,6 +11,7 @@ import android.location.Location
 import android.os.IBinder
 import androidx.core.app.ServiceCompat
 import androidx.core.content.ContextCompat
+import com.dskmusic.lokate.data.remote.dto.ZoneDto
 import com.dskmusic.lokate.di.ServiceLocator
 import com.dskmusic.lokate.push.NotificationHelper
 import com.dskmusic.lokate.util.Constants
@@ -66,6 +67,18 @@ class LocationForegroundService : Service() {
      * filtro de precisión: ver [tooVague]. */
     private var lastSentAt = 0L
 
+    /** El último fix que llegó, se haya mandado o no: lo usan el ritmo por velocidad y la
+     * cercanía a zonas, que quieren saber dónde está el móvil aunque ese punto no valga la pena
+     * mandarlo. */
+    private var lastFix: Location? = null
+
+    /** Velocidad del último fix en m/s (0 si el chip no la da). Ver [movingIntervalMs]. */
+    private var lastSpeed = 0f
+
+    /** Zonas del grupo, cacheadas en Room. Solo se usan para decidir el ritmo: quien decide de
+     * verdad si se entra o se sale sigue siendo el servidor. */
+    private var zones: List<ZoneDto> = emptyList()
+
     /** Señales de que aquí no está pasando nada: el móvil lleva un rato sin moverse y/o está en
      * un wifi que el usuario marcó como sitio fijo. */
     private var isStill = false
@@ -86,6 +99,10 @@ class LocationForegroundService : Service() {
             // Con entrega en bloque (setMaxUpdateDelayMillis) aquí llegan varios fixes de golpe:
             // se mandan todos los que aporten algo, no solo el último, para no dejar huecos en el
             // historial. El filtrado va en el hilo del callback para que no se pisen dos tandas.
+            result.locations.lastOrNull()?.let {
+                lastFix = it
+                lastSpeed = if (it.hasSpeed()) it.speed else 0f
+            }
             val toSend = result.locations.filter(::worthSending)
             // Momento barato para enterarse de que se ha entrado o salido de un wifi conocido:
             // si nada ha cambiado, applyLocationRequest no hace nada.
@@ -149,6 +166,17 @@ class LocationForegroundService : Service() {
         serviceScope.launch {
             locator.settings.knownWifiSsids.collect {
                 knownWifiSsids = it
+                applyLocationRequest()
+            }
+        }
+        serviceScope.launch {
+            // Crear o borrar una zona cambia el ritmo al instante: si no, quien acaba de crear
+            // una zona en el colegio seguiría con el ritmo de antes hasta el siguiente fix.
+            locator.zoneRepository.observeZones().collect {
+                zones = it
+                // Mismo momento para refrescar las geocercas del sistema: es la lista que
+                // acaba de cambiar y mandarla de más no cuesta nada (ver ZoneGeofencing).
+                ZoneGeofencing.refresh(applicationContext, it)
                 applyLocationRequest()
             }
         }
@@ -227,7 +255,66 @@ class LocationForegroundService : Service() {
         val onKnownWifi = currentSsid?.let { it in knownWifiSsids } == true
         idle = isStill || onKnownWifi
         UpdateMode.setIdle(still = isStill, homeWifi = onKnownWifi)
-        startLocationUpdates(if (idle) maxOf(configuredIntervalMs, IDLE_INTERVAL_MS) else configuredIntervalMs)
+        startLocationUpdates(if (idle) maxOf(configuredIntervalMs, IDLE_INTERVAL_MS) else movingIntervalMs())
+    }
+
+    /**
+     * El ritmo de un móvil que se está moviendo, corregido por dos cosas que el reloj solo no
+     * sabe: a qué velocidad va y si anda cerca del borde de una zona.
+     *
+     * Velocidad: pedir posición "cada 2 minutos" son 4 m andando y 2,5 km en coche. Lo que se
+     * quiere de verdad es un punto cada tantos metros, así que el intervalo sale de dividir
+     * [POINT_EVERY_METERS] entre la velocidad. Andando se estira, en coche se acorta, y el gasto
+     * del día sale parecido porque en coche se pasa poco rato.
+     *
+     * Zonas: el GPS fino solo hace falta donde una posición mala cambia el resultado, que es el
+     * borde de una zona (entrar/salir). Lejos de cualquier zona da igual fallar 100 m.
+     */
+    private fun movingIntervalMs(): Long {
+        var interval = configuredIntervalMs
+        // Nada de esto puede ir MÁS LENTO de lo que el usuario pidió en los ritmos rápidos
+        // ("tiempo real", "cada 30 s"): ahí lo que se espera es ver el punto moverse, y
+        // estirarlo sería desobedecer el ajuste. Solo se relaja de medio minuto en adelante.
+        val relaxable = configuredIntervalMs >= MIN_MOVE_FROM_INTERVAL_MS
+        if (relaxable && lastSpeed > MIN_SPEED_MPS) {
+            val bySpeed = (POINT_EVERY_METERS / lastSpeed * 1000f).toLong()
+            // El tope de arriba nunca pasa del reposo: por lento que vayas, el grupo ve hora
+            // fresca cada cuarto de hora como mucho.
+            interval = bySpeed.coerceIn(MIN_SPEED_INTERVAL_MS, minOf(configuredIntervalMs * 2, IDLE_INTERVAL_MS))
+        }
+        val toEdge = metersToNearestZoneEdge()
+        if (toEdge != null) {
+            // Por debajo de MIN_MOVE_FROM_INTERVAL_MS el sistema pasa solo a GPS fino y deja de
+            // agrupar entregas: no hace falta tocar la prioridad a mano.
+            if (toEdge <= NEAR_ZONE_METERS) {
+                interval = minOf(interval, NEAR_ZONE_INTERVAL_MS)
+            } else if (relaxable && toEdge >= FAR_ZONE_METERS) {
+                // Lejos de todo se estira, pero nunca a más del doble de lo elegido: quien puso
+                // "cada minuto" no espera enterarse cinco minutos después por estar en el campo.
+                interval = maxOf(interval, minOf(FAR_ZONE_INTERVAL_MS, configuredIntervalMs * 2))
+            }
+        }
+        return interval
+    }
+
+    /**
+     * Distancia al BORDE de zona más cercano, en valor absoluto: da igual estar 50 m fuera que
+     * 50 m dentro, en los dos casos el siguiente paso puede ser una entrada o una salida. Estar
+     * en el centro de una zona enorme cuenta como lejos, que es lo que es.
+     *
+     * null = este grupo no tiene zonas, o aún no ha llegado ningún fix.
+     */
+    private fun metersToNearestZoneEdge(): Float? {
+        val from = lastFix ?: return null
+        if (zones.isEmpty()) return null
+        val out = FloatArray(1)
+        var best = Float.MAX_VALUE
+        zones.forEach { zone ->
+            Location.distanceBetween(from.latitude, from.longitude, zone.lat, zone.lng, out)
+            val toEdge = kotlin.math.abs(out[0] - zone.radius_m.toFloat())
+            if (toEdge < best) best = toEdge
+        }
+        return best
     }
 
     /**
@@ -249,6 +336,7 @@ class LocationForegroundService : Service() {
             location.time - previous.time >= IDLE_INTERVAL_MS
         if (!worth) return false
         if (tooVague(location)) return false
+        if (implausibleJump(location)) return false
         lastSent = location
         lastSentAt = System.currentTimeMillis()
         // En los ritmos rápidos, entre un fix y el siguiente hay cuatro metros yendo
@@ -275,6 +363,24 @@ class LocationForegroundService : Service() {
         return System.currentTimeMillis() - lastSentAt < IDLE_INTERVAL_MS
     }
 
+    /**
+     * Un fix de wifi mal resuelto puede plantar a alguien a kilómetros de donde está (un router
+     * que cambió de ciudad, una antena mal ubicada en la base de datos) y encima declarar buena
+     * precisión, así que [tooVague] no lo pilla. Lo que sí lo delata es que para llegar ahí
+     * habría hecho falta ir a 300 km/h.
+     *
+     * No se puede quedar atascado: si el salto fuera real, el siguiente fix vendrá con más
+     * segundos de diferencia y la velocidad que sale de la cuenta ya será normal.
+     */
+    private fun implausibleJump(location: Location): Boolean {
+        val previous = lastSent ?: return false
+        val seconds = (location.time - previous.time) / 1000.0
+        if (seconds <= 0) return false
+        val distance = location.distanceTo(previous)
+        if (distance < MIN_JUMP_METERS) return false
+        return distance / seconds > MAX_PLAUSIBLE_SPEED_MPS
+    }
+
     private fun startLocationUpdates(intervalMs: Long) {
         if (currentIntervalMs == intervalMs) return
         currentIntervalMs = intervalMs
@@ -288,7 +394,22 @@ class LocationForegroundService : Service() {
             Priority.PRIORITY_BALANCED_POWER_ACCURACY
         }
 
+        // Cuanto se ha tenido que mover el móvil para que el sistema nos entregue un fix. Es el
+        // mismo listón que aplica [worthSending] a mano, pero puesto donde de verdad ahorra: así
+        // el proceso ni se despierta para los fixes que iba a tirar. El latido de "sigo aquí"
+        // no se pierde por esto: lo manda LocationUpdateWorker cada 15 min.
+        val minDistance = if (intervalMs >= MIN_MOVE_FROM_INTERVAL_MS) {
+            if (idle) IDLE_MIN_MOVE_METERS else MIN_MOVE_METERS
+        } else {
+            0f
+        }
+
         val request = LocationRequest.Builder(priority, intervalMs)
+            // Si otra app (Maps, el navegador del coche) ya tiene el GPS encendido, el sistema
+            // está calculando posiciones de todas formas: esto dice "si las hay hechas, dámelas",
+            // y sale gratis porque el gasto ya lo está pagando la otra app. Sin esto se tiran.
+            .setMinUpdateIntervalMillis(intervalMs / 3)
+            .setMinUpdateDistanceMeters(minDistance)
             // El sistema acumula los fixes y los entrega en bloque: la radio móvil despierta una
             // vez en lugar de tres. El tope es fijo y corto ([MAX_BATCH_DELAY_MS]) y nunca pasa
             // de lo que falta para completar [IDLE_INTERVAL_MS] — en reposo, donde el intervalo
@@ -390,6 +511,27 @@ class LocationForegroundService : Service() {
         /** Margen de error a partir del cual un fix no se manda (ver [tooVague]). */
         const val MAX_ACCURACY_METERS = 200f
         const val MAX_ACCURACY_IDLE_METERS = 500f
+
+        /** Velocidad por encima de la cual un salto entre dos fixes es imposible, y el salto
+         * mínimo para molestarse en mirarlo (ver [implausibleJump]). 83 m/s = 300 km/h: por
+         * encima de eso o es un fix falso o vas en avión, y en avión da igual. */
+        const val MAX_PLAUSIBLE_SPEED_MPS = 83f
+        const val MIN_JUMP_METERS = 1_000f
+
+        /** Cada cuántos metros se quiere un punto cuando el móvil se mueve, y la velocidad por
+         * debajo de la cual no merece la pena hacer la cuenta (0,8 m/s = paso muy lento). */
+        const val POINT_EVERY_METERS = 100f
+        const val MIN_SPEED_MPS = 0.8f
+
+        /** Lo más rápido que el ritmo por velocidad puede pedir posición. */
+        const val MIN_SPEED_INTERVAL_MS = 20_000L
+
+        /** Cerca del borde de una zona: ritmo corto (y con él, GPS fino). Lejos de todas:
+         * ritmo largo, porque ahí fallar cien metros no cambia nada. */
+        const val NEAR_ZONE_METERS = 300f
+        const val NEAR_ZONE_INTERVAL_MS = 20_000L
+        const val FAR_ZONE_METERS = 1_000f
+        const val FAR_ZONE_INTERVAL_MS = 5 * 60_000L
 
         /** El ritmo de "aquí no pasa nada", que vale para tres cosas a la vez: cada cuánto se
          * pide ubicación con el móvil quieto o en casa, cada cuánto se manda un ping aunque no se

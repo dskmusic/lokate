@@ -85,6 +85,8 @@ fun OsmMapView(
     onMapReady: (MapView) -> Unit = {},
     initialZoom: Double = Constants.MAP_DEFAULT_ZOOM.toDouble(),
     mapStyle: MapStyle = MapStyle.STANDARD,
+    /** Pinta el margen de error de cada posición (ajuste "mostrar precisión"). */
+    showAccuracy: Boolean = false,
     /** true en el mapa principal: al volver de otra pestaña, restaura la posición/zoom donde
      * se dejó el mapa en vez de recentrar solo. false (por defecto) en el resto de mapas de la
      * app (crear/editar zona, ...), que ya se centran a su manera. */
@@ -179,7 +181,7 @@ fun OsmMapView(
     // (recortando de nuevo el bitmap de cada avatar) y se repintaba el mapa para nada.
     val overlaySignature = buildString {
         append(mapStyle).append('#').append(onMapTap != null).append('#')
-        append(spreadZoom.value).append('#')
+        append(spreadZoom.value).append('#').append(showAccuracy).append('#')
         // La batería entra en la firma porque el anillo del marcador la pinta: si no, el
         // marcador se quedaría con el anillo del primer sondeo para siempre.
         members.forEach {
@@ -228,6 +230,13 @@ fun OsmMapView(
                 }
 
                 fun addMemberMarker(member: LocationDto, position: GeoPoint) {
+                    // Va antes que el marcador para que quede por debajo. Se dibuja en la
+                    // posición ya separada y no en la real: si no, el círculo se vería
+                    // despegado del marcador al que pertenece (ver [spreadOverlapping]).
+                    val accuracy = member.accuracy?.toDouble() ?: 0.0
+                    if (showAccuracy && accuracy > 0.0) {
+                        view.overlays.add(buildAccuracyPolygon(position, accuracy))
+                    }
                     val marker = Marker(view)
                     marker.position = position
                     marker.title = member.display_name
@@ -306,6 +315,16 @@ private fun spreadOverlapping(
             }
         }
     }
+}
+
+/** El margen de error de una posición: gris y sin relleno fuerte, para que no compita con las
+ * zonas, que son azules y sí significan algo que el usuario ha creado. */
+private fun buildAccuracyPolygon(center: GeoPoint, radiusMeters: Double): Polygon {
+    val polygon = buildCirclePolygon(center, radiusMeters, points = 32)
+    polygon.fillColor = 0x1A9E9E9E
+    polygon.strokeColor = 0x669E9E9E
+    polygon.strokeWidth = 1f
+    return polygon
 }
 
 private fun buildCirclePolygon(center: GeoPoint, radiusMeters: Double, points: Int = 64): Polygon {

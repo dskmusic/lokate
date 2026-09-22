@@ -296,6 +296,8 @@
     <string name="settings_map_zoom_value">Nivel %1$d</string>
     <string name="settings_map_zoom_reset">Restablecer</string>
     <string name="settings_map_zoom_reset_confirm">Se volverá al zoom inicial por defecto (nivel %1$d) y el mapa dejará de recordar la posición y el zoom actuales: la próxima vez se abrirá centrado en tu ubicación.</string>
+    <string name="settings_map_accuracy">Mostrar el margen de error</string>
+    <string name="settings_map_accuracy_desc">Dibuja un círculo gris alrededor de cada persona con la precisión que trae su última posición. Explica por qué a veces alguien aparece en la acera de enfrente.</string>
     <string name="settings_map_cache_desc">Las teselas del mapa se guardan en el dispositivo para cargar más rápido, y se refrescan solas cada %1$d días. Puedes borrarlas ya mismo si ves el mapa desactualizado.</string>
     <string name="settings_map_cache_clear">Borrar caché de mapas</string>
     <string name="settings_map_cache_cleared">Caché borrada: %1$.1f MB liberados</string>

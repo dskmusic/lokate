@@ -41,6 +41,7 @@ class SettingsDataStore(private val context: Context) {
         val APP_LANGUAGE = stringPreferencesKey("app_language")
         val LAST_HISTORY_USER_ID = stringPreferencesKey("last_history_user_id")
         val MAP_STYLE = stringPreferencesKey("map_style")
+        val MAP_SHOW_ACCURACY = booleanPreferencesKey("map_show_accuracy")
         val TEST_MODE_RECIPIENTS = stringPreferencesKey("test_mode_recipients")
         val MAP_CACHE_CLEARED_AT = longPreferencesKey("map_cache_cleared_at")
         val KNOWN_WIFI_SSIDS = stringSetPreferencesKey("known_wifi_ssids")
@@ -264,6 +265,14 @@ class SettingsDataStore(private val context: Context) {
 
     suspend fun setKnownWifiSsids(ssids: Set<String>) {
         context.dataStore.edit { it[Keys.KNOWN_WIFI_SSIDS] = ssids }
+    }
+
+    /** Pintar en el mapa el margen de error de cada posición. Apagado por defecto: llena el
+     * mapa de círculos y la mayoría del tiempo no aporta nada, pero explica de golpe por qué
+     * alguien aparece "en la otra acera". */
+    val mapShowAccuracy: Flow<Boolean> = context.dataStore.data.map { it[Keys.MAP_SHOW_ACCURACY] ?: false }
+    suspend fun setMapShowAccuracy(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.MAP_SHOW_ACCURACY] = enabled }
     }
 
     val notifyZoneEnabled: Flow<Boolean> = context.dataStore.data.map { it[Keys.NOTIFY_ZONE] ?: true }

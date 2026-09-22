@@ -5,7 +5,7 @@ from time import monotonic
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from .. import geofence, models, push, schemas
+from .. import geofence, models, push, schemas, smoothing
 from ..auth import get_current_user_with_group
 from ..database import get_db
 
@@ -134,7 +134,9 @@ def ping(
     # modo, este primer ping real recoloca su estado de zonas en silencio.
     simulation = geofence.simulation_status(user.id)
     if simulation != "active":
-        geofence.check_zone_transitions(db, user, body.lat, body.lng, notify=simulation is None, tasks=tasks)
+        geofence.check_zone_transitions(
+            db, user, body.lat, body.lng, accuracy=body.accuracy, notify=simulation is None, tasks=tasks
+        )
     return schemas.LocationPingResponse(live_seconds=_live_seconds(user.id))
 
 
@@ -185,7 +187,7 @@ def ping_batch(
         simulation = geofence.simulation_status(user.id)
         if simulation != "active":
             geofence.check_zone_transitions(
-                db, user, newest.lat, newest.lng, notify=simulation is None, tasks=tasks
+                db, user, newest.lat, newest.lng, accuracy=newest.accuracy, notify=simulation is None, tasks=tasks
             )
     return schemas.LocationPingResponse(live_seconds=_live_seconds(user.id))
 
@@ -252,7 +254,9 @@ def history(
     else:
         cutoff = datetime.now(timezone.utc) - timedelta(hours=hours)
         query = query.filter(models.LocationPing.timestamp >= cutoff)
-    return query.order_by(models.LocationPing.timestamp.asc()).all()
+    points = query.order_by(models.LocationPing.timestamp.asc()).all()
+    # Los picos se quitan al pintar, no al guardar: lo guardado es lo que el móvil dijo.
+    return smoothing.drop_outliers(points)
 
 
 @router.post("/ring/{user_id}", status_code=status.HTTP_204_NO_CONTENT)

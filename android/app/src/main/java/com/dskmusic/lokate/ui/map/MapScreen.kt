@@ -131,6 +131,7 @@ fun MapScreen(
     val avatarBitmaps = rememberAvatarBitmaps(state.members)
     val initialZoom by locator.settings.mapInitialZoom.collectAsStateWithLifecycle(initialValue = Constants.MAP_DEFAULT_ZOOM)
     val mapStyle by locator.settings.mapStyle.collectAsStateWithLifecycle(initialValue = MapStyle.STANDARD)
+    val mapShowAccuracy by locator.settings.mapShowAccuracy.collectAsStateWithLifecycle(initialValue = false)
     val scope = rememberCoroutineScope()
     val offlineMapFiles = rememberOfflineMapFiles()
 
@@ -398,6 +399,7 @@ fun MapScreen(
                 avatarBitmaps = avatarBitmaps,
                 initialZoom = initialZoom.toDouble(),
                 mapStyle = mapStyle,
+                showAccuracy = mapShowAccuracy,
                 rememberCamera = true,
                 onMemberClick = { member -> onOpenMember(member.user_id) },
                 // Solo los demás: arrastrarse a uno mismo no probaría nada (los avisos de zona

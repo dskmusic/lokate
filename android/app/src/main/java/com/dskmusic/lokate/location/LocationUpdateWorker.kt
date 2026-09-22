@@ -1,6 +1,7 @@
 package com.dskmusic.lokate.location
 
 import android.content.Context
+import android.os.SystemClock
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
@@ -13,7 +14,13 @@ import com.dskmusic.lokate.di.ServiceLocator
 import com.dskmusic.lokate.push.NotificationHelper
 import com.dskmusic.lokate.R
 import com.dskmusic.lokate.util.Constants
+import com.dskmusic.lokate.util.DeviceStatusUtils
+import com.dskmusic.lokate.util.PermissionUtils
+import com.google.android.gms.location.LocationServices
+import com.google.android.gms.tasks.Tasks
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
+import kotlinx.coroutines.withContext
 import java.util.concurrent.TimeUnit
 
 /**
@@ -41,6 +48,12 @@ class LocationUpdateWorker(context: Context, params: WorkerParameters) : Corouti
         // tiene alarma propia a propósito.
         runCatching { locator.locationRepository.flushPending() }
 
+        // Las geocercas del sistema, por si el fabricante las tiró al matar la app o han
+        // cambiado desde otro móvil del grupo. Es idempotente y no cuesta red.
+        runCatching { ZoneGeofencing.refresh(applicationContext) }
+
+        runCatching { heartbeat(locator) }
+
         runCatching { warnIfStalled(locator) }
 
         // Con el envío desactivado no hay nada que arrancar (el servicio se pararía solo al
@@ -50,6 +63,47 @@ class LocationUpdateWorker(context: Context, params: WorkerParameters) : Corouti
             runCatching { LocationServiceController.ensureStarted(applicationContext) }
         }
         return Result.success()
+    }
+
+    /**
+     * Latido de posición: si hace un buen rato que no sale nada, manda la última ubicación que
+     * el sistema ya tiene guardada.
+     *
+     * Hace falta porque el filtro de distancia vive ahora dentro del sistema
+     * (setMinUpdateDistanceMeters): un móvil parado deja de recibir fixes, así que el servicio
+     * no tiene qué mandar y en el grupo esa persona se congelaría. Aquí no se enciende nada —
+     * lastLocation es la posición que el sistema ya calculó para otro—, así que el latido es
+     * gratis en batería.
+     */
+    private suspend fun heartbeat(locator: ServiceLocator) {
+        val frequency = locator.settings.locationFrequency.first()
+        if (!frequency.sendsPeriodicUpdates) return
+        val lastOk = locator.settings.lastPingOkAt.first()
+        if (lastOk != 0L && System.currentTimeMillis() - lastOk < HEARTBEAT_AFTER_MS) return
+        if (!PermissionUtils.hasForegroundLocationPermission(applicationContext)) return
+
+        val fix = withContext(Dispatchers.IO) {
+            runCatching {
+                Tasks.await(
+                    LocationServices.getFusedLocationProviderClient(applicationContext).lastLocation,
+                    LAST_LOCATION_TIMEOUT_S,
+                    TimeUnit.SECONDS,
+                )
+            }.getOrNull()
+        } ?: return
+
+        // Una posición de hace horas mandada como si fuera de ahora es peor que no mandar nada:
+        // el grupo vería hora fresca en un sitio equivocado. Mejor callar y que salte el
+        // vigilante de abajo, que es lo que de verdad pasa.
+        if (SystemClock.elapsedRealtimeNanos() - fix.elapsedRealtimeNanos > MAX_FIX_AGE_NS) return
+
+        locator.locationRepository.ping(
+            fix.latitude,
+            fix.longitude,
+            fix.accuracy,
+            DeviceStatusUtils.read(applicationContext),
+            frequency,
+        )
     }
 
     /**
@@ -88,6 +142,15 @@ class LocationUpdateWorker(context: Context, params: WorkerParameters) : Corouti
     }
 
     companion object {
+        /** Cuánto tiene que llevar sin salir un ping para que el worker mande el latido. Es el
+         * mismo ritmo de "aquí no pasa nada" del servicio. */
+        private const val HEARTBEAT_AFTER_MS = 15 * 60_000L
+
+        /** Lo más vieja que puede ser la posición guardada del sistema para valer como latido. */
+        private const val MAX_FIX_AGE_NS = 20 * 60_000_000_000L
+
+        private const val LAST_LOCATION_TIMEOUT_S = 10L
+
         /** Lo menos que tiene que llevar callado un móvil para dar por hecho que algo va mal. */
         private const val MIN_STALL_MS = 45 * 60_000L
 

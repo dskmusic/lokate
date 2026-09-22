@@ -13,6 +13,10 @@ EARTH_RADIUS_M = 6_371_000
 # GPS oscila cerca del borde o una carretera roza el límite de la zona.
 ZONE_EXIT_MARGIN_M = 20
 
+# Tope de lo que la precisión del fix puede endurecer el límite de una zona (ver
+# _accuracy_margin). Sin tope, un fix de ±1 km dejaría la zona en nada.
+MAX_ACCURACY_MARGIN_M = 150
+
 # ---- Modo prueba de los administradores ----
 # Mientras un admin arrastra a alguien por el mapa para probar los avisos, la posición REAL de
 # ese alguien se sigue guardando pero deja de evaluar zonas: si no, su siguiente ping (cada
@@ -106,12 +110,28 @@ def _notification_recipients(db: Session, group_id: str, moved_user_id: str, zon
     return recipients
 
 
+def _accuracy_margin(accuracy: float | None, radius_m: float) -> float:
+    """Cuánto hay que apretar el límite de una zona por culpa del margen de error del fix.
+
+    Un ping que dice "estoy aquí, ±300 m" no prueba nada sobre una zona de 100 m de radio: si
+    se acepta tal cual, el grupo recibe entradas y salidas que no han pasado. Exigiendo estar
+    dentro con esa holgura, un fix malo simplemente no decide nada y se espera al siguiente.
+
+    Se acota por dos sitios: nunca más de MAX_ACCURACY_MARGIN_M, y nunca más de la mitad del
+    radio — si no, una zona pequeña se volvería imposible de pisar en un día de GPS regular.
+    """
+    if not accuracy or accuracy <= 0:
+        return 0.0
+    return min(accuracy, MAX_ACCURACY_MARGIN_M, radius_m / 2)
+
+
 def check_zone_transitions(
     db: Session,
     user: models.User,
     lat: float,
     lng: float,
     *,
+    accuracy: float | None = None,
     notify: bool = True,
     recipients_override: list[str] | None = None,
     tasks: BackgroundTasks | None = None,
@@ -134,7 +154,13 @@ def check_zone_transitions(
 
         # Umbral asimétrico: para entrar basta el radio normal, pero para salir hay que superar
         # radio + margen — así una vez dentro, la histéresis absorbe el ruido del GPS en el borde.
-        threshold = zone.radius_m + ZONE_EXIT_MARGIN_M if was_inside else zone.radius_m
+        # Y en los dos sentidos se descuenta el margen de error del propio fix: con una posición
+        # mala, ni se entra ni se sale, se deja el estado como estaba hasta el siguiente ping.
+        margin = _accuracy_margin(accuracy, zone.radius_m)
+        if was_inside:
+            threshold = zone.radius_m + ZONE_EXIT_MARGIN_M + margin
+        else:
+            threshold = zone.radius_m - margin
         is_inside = distance_m(lat, lng, zone.lat, zone.lng) <= threshold
 
         if state is None:

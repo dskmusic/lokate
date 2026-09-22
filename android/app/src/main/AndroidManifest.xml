@@ -94,6 +94,10 @@
 
         <receiver android:name=".push.StopRingReceiver" android:exported="false" />
 
+        <!-- Lo despierta el sistema al cruzar el borde de una zona (ver ZoneGeofencing). No
+             lleva filtro porque el PendingIntent apunta a esta clase directamente. -->
+        <receiver android:name=".location.GeofenceReceiver" android:exported="false" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
