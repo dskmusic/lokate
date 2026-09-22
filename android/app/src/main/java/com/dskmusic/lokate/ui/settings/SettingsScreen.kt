@@ -106,6 +106,7 @@ fun SettingsScreen(
         .collectAsStateWithLifecycle(initialValue = null)
     val notifyZone by locator.settings.notifyZoneEnabled.collectAsStateWithLifecycle(initialValue = true)
     val notifySystem by locator.settings.notifySystemEnabled.collectAsStateWithLifecycle(initialValue = true)
+    val notifySilent by locator.settings.notifySilentEnabled.collectAsStateWithLifecycle(initialValue = false)
     val serverUrlOverride by locator.settings.serverBaseUrlOverride.collectAsStateWithLifecycle(initialValue = null)
     val testNotificationSent by viewModel.testNotificationSent.collectAsStateWithLifecycle()
     val ringSoundUri by locator.settings.ringSoundUri.collectAsStateWithLifecycle(initialValue = null)
@@ -113,6 +114,8 @@ fun SettingsScreen(
     val mapZoom by locator.settings.mapInitialZoom.collectAsStateWithLifecycle(initialValue = Constants.MAP_DEFAULT_ZOOM)
     val mapStyle by locator.settings.mapStyle.collectAsStateWithLifecycle(initialValue = MapStyle.STANDARD)
     val mapShowAccuracy by locator.settings.mapShowAccuracy.collectAsStateWithLifecycle(initialValue = false)
+    val mapAccuracyIntensity by locator.settings.mapAccuracyIntensity
+        .collectAsStateWithLifecycle(initialValue = Constants.MAP_ACCURACY_INTENSITY_DEFAULT)
     val appLanguage by locator.settings.appLanguage.collectAsStateWithLifecycle(initialValue = "auto")
     val mapCacheClearedBytes by viewModel.mapCacheClearedBytes.collectAsStateWithLifecycle()
     val updateFlagEnabled by viewModel.updateFlagEnabled.collectAsStateWithLifecycle()
@@ -396,6 +399,21 @@ fun SettingsScreen(
             item {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
                     Text(
+                        stringResource(R.string.settings_map_accuracy_intensity, mapAccuracyIntensity),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Slider(
+                        value = mapAccuracyIntensity.toFloat(),
+                        onValueChange = { scope.launch { locator.settings.setMapAccuracyIntensity(it.toInt()) } },
+                        valueRange = 10f..100f,
+                        steps = 8,
+                        enabled = mapShowAccuracy,
+                    )
+                }
+            }
+            item {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                    Text(
                         stringResource(R.string.settings_map_cache_desc, Constants.MAP_CACHE_MAX_AGE_DAYS),
                         style = MaterialTheme.typography.bodySmall,
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
@@ -464,6 +482,18 @@ fun SettingsScreen(
                 ListItem(
                     headlineContent = { Text(stringResource(R.string.settings_notifications_system)) },
                     trailingContent = { Switch(checked = notifySystem, onCheckedChange = viewModel::setNotifySystem) },
+                )
+            }
+            item {
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.settings_notifications_silent)) },
+                    supportingContent = { Text(stringResource(R.string.settings_notifications_silent_desc)) },
+                    trailingContent = {
+                        Switch(
+                            checked = notifySilent,
+                            onCheckedChange = { scope.launch { locator.settings.setNotifySilentEnabled(it) } },
+                        )
+                    },
                 )
             }
             item { Spacer(Modifier.height(20.dp)) }

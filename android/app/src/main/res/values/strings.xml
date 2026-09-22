@@ -117,7 +117,7 @@
     <string name="session_expired_title">Sesión caducada</string>
     <string name="session_expired_body">Abre Lokate e inicia sesión otra vez: hasta entonces tu familia no verá tu ubicación.</string>
     <string name="ping_stalled_title">Lokate no está enviando tu ubicación</string>
-    <string name="ping_stalled_body">Llevas un buen rato sin enviar ubicación. Abre la app y revisa los permisos y el ahorro de batería.</string>
+    <string name="ping_stalled_body">Llevas un buen rato sin enviar ubicación. Si tienes internet y batería, abre la app y revisa los permisos y el ahorro de batería.</string>
     <string name="update_frequency_label">Actualiza: %1$s</string>
     <!-- Por qué alguien lleva X minutos sin actualizar: el modo lo manda su propio móvil
          en cada ping (ver UpdateMode.kt) y aquí solo se traduce. -->
@@ -142,7 +142,7 @@
     <string name="update_body_live">Alguien lo tiene en seguimiento en tiempo real: su móvil manda posición cada pocos segundos mientras dure, por encima del ritmo que tenga elegido.</string>
     <string name="update_body_on_demand">Su móvil no manda posición por su cuenta. Solo responde cuando alguien pulsa el botón de actualizar en su ficha, así que la hora que ves es la de la última vez que se la pidieron.</string>
     <string name="update_body_unknown">Su app es anterior a esta versión y todavía no manda este dato, así que no se puede saber por qué tarda.</string>
-    <string name="update_info_overdue">Lleva bastante más de lo esperable sin dar señales. Lo habitual es que sea falta de cobertura (un envío que falla no se reintenta: se espera al siguiente), el ahorro de energía del móvil con la batería baja, o que el sistema haya detenido su app.</string>
+    <string name="update_info_overdue">Lleva bastante más de lo esperable sin dar señales. Lo más probable es que se haya quedado sin internet (sin datos, sin cobertura o fuera del alcance del wifi: un envío que falla no se reintenta, se espera al siguiente) o sin batería. También puede ser el ahorro de energía con la batería baja, el móvil apagado, o que el sistema haya detenido su app.</string>
     <string name="update_info_footer">La hora que se muestra es la de la última posición que llegó al servidor, no la de la última vez que su móvil miró dónde estaba.</string>
     <string name="frequency_short_high">en tiempo real</string>
     <string name="frequency_short_30_sec">cada 30 s</string>
@@ -185,6 +185,8 @@
     <!-- Mensaje de emergencia -->
     <string name="emergency_message_button">Enviar mensaje prioritario</string>
     <string name="emergency_message_sent">Mensaje enviado</string>
+    <string name="member_silent_alert">Avisarme si deja de dar señal</string>
+    <string name="member_silent_alert_desc">Notificación cuando lleve mucho tiempo sin enviar ubicación: normalmente por quedarse sin internet o sin batería.</string>
     <string name="emergency_compose_title">Mensaje prioritario</string>
     <string name="emergency_compose_hint">Escribe tu mensaje…</string>
     <string name="emergency_attach_photo">Foto</string>
@@ -298,6 +300,7 @@
     <string name="settings_map_zoom_reset_confirm">Se volverá al zoom inicial por defecto (nivel %1$d) y el mapa dejará de recordar la posición y el zoom actuales: la próxima vez se abrirá centrado en tu ubicación.</string>
     <string name="settings_map_accuracy">Mostrar el margen de error</string>
     <string name="settings_map_accuracy_desc">Dibuja un círculo gris alrededor de cada persona con la precisión que trae su última posición. Explica por qué a veces alguien aparece en la acera de enfrente.</string>
+    <string name="settings_map_accuracy_intensity">Intensidad del círculo: %1$d %%</string>
     <string name="settings_map_cache_desc">Las teselas del mapa se guardan en el dispositivo para cargar más rápido, y se refrescan solas cada %1$d días. Puedes borrarlas ya mismo si ves el mapa desactualizado.</string>
     <string name="settings_map_cache_clear">Borrar caché de mapas</string>
     <string name="settings_map_cache_cleared">Caché borrada: %1$.1f MB liberados</string>
@@ -308,6 +311,8 @@
     <string name="settings_notifications">Notificaciones</string>
     <string name="settings_notifications_zone">Alertas de zona</string>
     <string name="settings_notifications_system">Mensajes del sistema</string>
+    <string name="settings_notifications_silent">Avisos de «sin señal»</string>
+    <string name="settings_notifications_silent_desc">Avisarme cuando alguien del grupo lleve mucho tiempo sin enviar ubicación. Persona a persona se apaga en su ficha.</string>
     <string name="settings_account">Cuenta</string>
     <string name="settings_logout">Cerrar sesión</string>
     <string name="settings_display_name">Nombre</string>

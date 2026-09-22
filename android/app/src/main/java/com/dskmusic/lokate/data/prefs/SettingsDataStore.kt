@@ -42,6 +42,9 @@ class SettingsDataStore(private val context: Context) {
         val LAST_HISTORY_USER_ID = stringPreferencesKey("last_history_user_id")
         val MAP_STYLE = stringPreferencesKey("map_style")
         val MAP_SHOW_ACCURACY = booleanPreferencesKey("map_show_accuracy")
+        val MAP_ACCURACY_INTENSITY = intPreferencesKey("map_accuracy_intensity")
+        val NOTIFY_SILENT = booleanPreferencesKey("notify_silent")
+        val SILENT_MUTED_USER_IDS = stringSetPreferencesKey("silent_muted_user_ids")
         val TEST_MODE_RECIPIENTS = stringPreferencesKey("test_mode_recipients")
         val MAP_CACHE_CLEARED_AT = longPreferencesKey("map_cache_cleared_at")
         val KNOWN_WIFI_SSIDS = stringSetPreferencesKey("known_wifi_ssids")
@@ -273,6 +276,34 @@ class SettingsDataStore(private val context: Context) {
     val mapShowAccuracy: Flow<Boolean> = context.dataStore.data.map { it[Keys.MAP_SHOW_ACCURACY] ?: false }
     suspend fun setMapShowAccuracy(enabled: Boolean) {
         context.dataStore.edit { it[Keys.MAP_SHOW_ACCURACY] = enabled }
+    }
+
+    /** Lo marcado que se ve ese círculo, 10-100. Hay quien lo quiere de fondo y quien lo quiere
+     * de verdad, y depende mucho del mapa de debajo (el satélite se come un gris flojo). */
+    val mapAccuracyIntensity: Flow<Int> = context.dataStore.data.map {
+        (it[Keys.MAP_ACCURACY_INTENSITY] ?: Constants.MAP_ACCURACY_INTENSITY_DEFAULT).coerceIn(10, 100)
+    }
+    suspend fun setMapAccuracyIntensity(percent: Int) {
+        context.dataStore.edit { it[Keys.MAP_ACCURACY_INTENSITY] = percent.coerceIn(10, 100) }
+    }
+
+    /** Avisos de "lleva X sin dar señal" de los demás. Apagado por defecto: un móvil callado
+     * casi siempre es cobertura mala o batería agotada, así que de serie avisa más veces de las
+     * que hace falta. Quien lo quiera lo enciende, y luego lo afina persona a persona. */
+    val notifySilentEnabled: Flow<Boolean> = context.dataStore.data.map { it[Keys.NOTIFY_SILENT] ?: false }
+    suspend fun setNotifySilentEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.NOTIFY_SILENT] = enabled }
+    }
+
+    /** De quiénes NO se quiere ese aviso. Lista de silenciados y no de permitidos a propósito:
+     * así quien entra nuevo en el grupo avisa desde el primer día sin tocar nada. */
+    val silentMutedUserIds: Flow<Set<String>> =
+        context.dataStore.data.map { it[Keys.SILENT_MUTED_USER_IDS] ?: emptySet() }
+    suspend fun setSilentAlertForUser(userId: String, enabled: Boolean) {
+        context.dataStore.edit {
+            val current = it[Keys.SILENT_MUTED_USER_IDS] ?: emptySet()
+            it[Keys.SILENT_MUTED_USER_IDS] = if (enabled) current - userId else current + userId
+        }
     }
 
     val notifyZoneEnabled: Flow<Boolean> = context.dataStore.data.map { it[Keys.NOTIFY_ZONE] ?: true }

@@ -302,11 +302,15 @@ class LocationForegroundService : Service() {
      * 50 m dentro, en los dos casos el siguiente paso puede ser una entrada o una salida. Estar
      * en el centro de una zona enorme cuenta como lejos, que es lo que es.
      *
-     * null = este grupo no tiene zonas, o aún no ha llegado ningún fix.
+     * Un grupo SIN zonas cuenta como lejos de todo, no como "no se sabe": si no hay ninguna
+     * zona no hay ningún aviso que llegar tarde, así que merece el mismo ritmo relajado que
+     * quien las tiene y está en el campo. Es el caso más común en un grupo recién creado.
+     *
+     * null = aún no ha llegado ningún fix con el que medir.
      */
     private fun metersToNearestZoneEdge(): Float? {
+        if (zones.isEmpty()) return Float.MAX_VALUE
         val from = lastFix ?: return null
-        if (zones.isEmpty()) return null
         val out = FloatArray(1)
         var best = Float.MAX_VALUE
         zones.forEach { zone ->

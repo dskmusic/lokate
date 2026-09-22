@@ -49,6 +49,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -57,6 +58,7 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
@@ -80,6 +82,7 @@ import com.dskmusic.lokate.util.distanceMeters
 import com.dskmusic.lokate.util.formatDistance
 import com.dskmusic.lokate.util.formatRelativeTime
 import com.dskmusic.lokate.util.formatTimestamp
+import kotlinx.coroutines.launch
 
 private enum class AttachmentKind { PHOTO, VIDEO, FILE }
 
@@ -100,6 +103,9 @@ fun MemberDetailScreen(
         )
     }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
+    val scope = rememberCoroutineScope()
+    val notifySilent by locator.settings.notifySilentEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val silentMuted by locator.settings.silentMutedUserIds.collectAsStateWithLifecycle(initialValue = emptySet())
     var showRingConfirm by remember { mutableStateOf(false) }
     var showStopRingConfirm by remember { mutableStateOf(false) }
     /** Wifi pendiente de confirmar para añadir a las "wifis de casa" del miembro; null = ninguna. */
@@ -158,6 +164,25 @@ fun MemberDetailScreen(
                 title = { Text(state.location?.display_name ?: stringResource(R.string.member_detail_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = null) }
+                },
+                actions = {
+                    // Abrir en Google Maps es lo único de esta pantalla que no toca a la otra
+                    // persona (ni le pide nada ni le hace sonar nada), así que va arriba y no
+                    // entre los botones de acción.
+                    state.location?.let { current ->
+                        IconButton(
+                            onClick = {
+                                LocationSharing.openInGoogleMaps(
+                                    context, current.lat, current.lng, current.display_name,
+                                )
+                            },
+                        ) {
+                            Icon(
+                                Icons.Filled.Map,
+                                contentDescription = stringResource(R.string.open_in_google_maps),
+                            )
+                        }
+                    }
                 },
             )
         },
@@ -222,13 +247,6 @@ fun MemberDetailScreen(
                         ),
                         style = MaterialTheme.typography.bodyMedium,
                     )
-                }
-                if (state.requestingLocation) {
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                } else {
-                    IconButton(onClick = { viewModel.requestFreshLocation() }) {
-                        Icon(Icons.Filled.Refresh, contentDescription = stringResource(R.string.refresh_location))
-                    }
                 }
             }
 
@@ -365,7 +383,7 @@ fun MemberDetailScreen(
 
             Spacer(Modifier.height(32.dp))
 
-            // Lo mismo que el icono de arriba, pero donde se busca: con el resto de acciones y
+            // La única forma de pedir una ubicación al momento: está con el resto de acciones y
             // con el color de acento, que es la que más se usa.
             FilledTonalButton(
                 onClick = { viewModel.requestFreshLocation() },
@@ -420,14 +438,28 @@ fun MemberDetailScreen(
                 Text(stringResource(R.string.emergency_message_button))
             }
 
-            Spacer(Modifier.height(12.dp))
-            OutlinedButton(
-                onClick = { LocationSharing.openInGoogleMaps(context, location.lat, location.lng, location.display_name) },
-                modifier = Modifier.fillMaxWidth(),
-            ) {
-                Icon(Icons.Filled.Map, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.open_in_google_maps))
+            Spacer(Modifier.height(20.dp))
+            // Aviso de "lleva X sin dar señal" de ESTA persona. Vive aquí y no en Ajustes porque
+            // depende de quién sea: del móvil del crío que se queda sin batería a diario se
+            // quiere saber, y del que trabaja en un sótano sin cobertura, no.
+            Row(verticalAlignment = Alignment.CenterVertically, modifier = Modifier.fillMaxWidth()) {
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.member_silent_alert), style = MaterialTheme.typography.bodyLarge)
+                    Text(
+                        stringResource(R.string.member_silent_alert_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(
+                    checked = notifySilent && location.user_id !in silentMuted,
+                    // Apagado el ajuste general, esto no decide nada: se enseña apagado y no se
+                    // deja tocar, en vez de mentir con un interruptor encendido que no avisa.
+                    enabled = notifySilent,
+                    onCheckedChange = {
+                        scope.launch { locator.settings.setSilentAlertForUser(location.user_id, it) }
+                    },
+                )
             }
 
             if (state.messageSent) {

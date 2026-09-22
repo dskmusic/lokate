@@ -114,7 +114,13 @@ def _notify_group(db, user: models.User, silent_for: float) -> None:
     recipients = [m.id for m in members if not user.hidden_from(m)]
     if not recipients:
         return
-    body = f"{user.display_name} lleva {humanize(silent_for)} sin dar señal"
+    # Se nombra la causa probable en el propio aviso: quien lo recibe casi siempre puede
+    # descartarla de un vistazo ("si está en casa, es el móvil apagado") y así el aviso sirve
+    # para algo en vez de solo preocupar.
+    body = (
+        f"{user.display_name} lleva {humanize(silent_for)} sin dar señal: "
+        "puede que se haya quedado sin internet o sin batería"
+    )
     logger.info(
         "Sin señal: %s (%s) lleva %ds sin pings, se avisa a %d",
         user.display_name, user.id, int(silent_for), len(recipients),

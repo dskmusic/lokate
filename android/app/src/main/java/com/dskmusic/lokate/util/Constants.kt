@@ -53,6 +53,11 @@ object Constants {
      * [MAP_DEFAULT_ZOOM]), pero se deja elegir hasta 24 para quien quiera abrir muy cerca. */
     const val MAP_MAX_ZOOM = 24
 
+    /** Cuánto se ve el círculo del margen de error en el mapa, en tanto por ciento (ajuste
+     * "mostrar precisión"). Es una opacidad, no un tamaño: el radio siempre son los metros
+     * reales que diga el fix. */
+    const val MAP_ACCURACY_INTENSITY_DEFAULT = 50
+
     /** Zoom al que se salta tras elegir un resultado del buscador: suficiente para ver la calle
      * sin pasarse del último nivel con teselas reales (ver [MAP_DEFAULT_ZOOM]). */
     const val MAP_SEARCH_RESULT_ZOOM = 17.0

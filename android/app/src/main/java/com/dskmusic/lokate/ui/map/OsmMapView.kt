@@ -1,6 +1,7 @@
 package com.dskmusic.lokate.ui.map
 
 import android.graphics.Bitmap
+import android.graphics.Color
 import android.graphics.drawable.BitmapDrawable
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.DisposableEffect
@@ -87,6 +88,8 @@ fun OsmMapView(
     mapStyle: MapStyle = MapStyle.STANDARD,
     /** Pinta el margen de error de cada posición (ajuste "mostrar precisión"). */
     showAccuracy: Boolean = false,
+    /** Lo marcado que se ve ese círculo, 10-100 (ver [buildAccuracyPolygon]). */
+    accuracyIntensity: Int = Constants.MAP_ACCURACY_INTENSITY_DEFAULT,
     /** true en el mapa principal: al volver de otra pestaña, restaura la posición/zoom donde
      * se dejó el mapa en vez de recentrar solo. false (por defecto) en el resto de mapas de la
      * app (crear/editar zona, ...), que ya se centran a su manera. */
@@ -181,7 +184,7 @@ fun OsmMapView(
     // (recortando de nuevo el bitmap de cada avatar) y se repintaba el mapa para nada.
     val overlaySignature = buildString {
         append(mapStyle).append('#').append(onMapTap != null).append('#')
-        append(spreadZoom.value).append('#').append(showAccuracy).append('#')
+        append(spreadZoom.value).append('#').append(showAccuracy).append(accuracyIntensity).append('#')
         // La batería entra en la firma porque el anillo del marcador la pinta: si no, el
         // marcador se quedaría con el anillo del primer sondeo para siempre.
         members.forEach {
@@ -230,13 +233,6 @@ fun OsmMapView(
                 }
 
                 fun addMemberMarker(member: LocationDto, position: GeoPoint) {
-                    // Va antes que el marcador para que quede por debajo. Se dibuja en la
-                    // posición ya separada y no en la real: si no, el círculo se vería
-                    // despegado del marcador al que pertenece (ver [spreadOverlapping]).
-                    val accuracy = member.accuracy?.toDouble() ?: 0.0
-                    if (showAccuracy && accuracy > 0.0) {
-                        view.overlays.add(buildAccuracyPolygon(position, accuracy))
-                    }
                     val marker = Marker(view)
                     marker.position = position
                     marker.title = member.display_name
@@ -265,9 +261,22 @@ fun OsmMapView(
                 // Cuantos metros mide un pixel aqui y ahora: lo sabe la propia proyeccion del
                 // mapa (tiene en cuenta el zoom, la latitud y el tamano de tesela).
                 val metersPerPixel = 1.0 / view.projection.metersToPixels(1f).toDouble().coerceAtLeast(1e-9)
-                spreadOverlapping(members, metersPerPixel).forEach { (member, position) ->
-                    addMemberMarker(member, position)
+                val placed = spreadOverlapping(members, metersPerPixel)
+
+                // TODOS los círculos de precisión antes que CUALQUIER marcador: osmdroid prueba
+                // las capas de arriba a abajo, así que un círculo añadido después de un marcador
+                // queda por encima de él y le roba el toque (el de quien esté al lado, incluso).
+                // Se dibujan en la posición ya separada y no en la real: si no, el círculo se
+                // vería despegado del marcador al que pertenece (ver [spreadOverlapping]).
+                if (showAccuracy) {
+                    placed.forEach { (member, position) ->
+                        val accuracy = member.accuracy?.toDouble() ?: 0.0
+                        if (accuracy > 0.0) {
+                            view.overlays.add(buildAccuracyPolygon(position, accuracy, accuracyIntensity))
+                        }
+                    }
                 }
+                placed.forEach { (member, position) -> addMemberMarker(member, position) }
 
                 view.invalidate()
             }
@@ -317,13 +326,18 @@ private fun spreadOverlapping(
     }
 }
 
-/** El margen de error de una posición: gris y sin relleno fuerte, para que no compita con las
- * zonas, que son azules y sí significan algo que el usuario ha creado. */
-private fun buildAccuracyPolygon(center: GeoPoint, radiusMeters: Double): Polygon {
+/** El margen de error de una posición: gris, para que no compita con las zonas, que son azules
+ * y sí significan algo que el usuario ha creado. [intensity] (10-100) es cuánto se ve: el gris
+ * que se lee bien sobre el mapa estándar desaparece sobre el satélite, así que es un ajuste. */
+private fun buildAccuracyPolygon(center: GeoPoint, radiusMeters: Double, intensity: Int): Polygon {
+    val strength = intensity.coerceIn(10, 100) / 100f
     val polygon = buildCirclePolygon(center, radiusMeters, points = 32)
-    polygon.fillColor = 0x1A9E9E9E
-    polygon.strokeColor = 0x669E9E9E
-    polygon.strokeWidth = 1f
+    polygon.fillColor = Color.argb((90 * strength).toInt(), 0x75, 0x75, 0x75)
+    polygon.strokeColor = Color.argb((255 * strength).toInt(), 0x61, 0x61, 0x61)
+    polygon.strokeWidth = 1f + strength
+    // Sin esto, el círculo se traga el toque destinado al marcador que hay dentro: osmdroid da
+    // por consumido el evento en cuanto un polígono lo acepta, y el suyo lo acepta por defecto.
+    polygon.setOnClickListener { _, _, _ -> false }
     return polygon
 }
 

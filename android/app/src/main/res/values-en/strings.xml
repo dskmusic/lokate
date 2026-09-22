@@ -117,7 +117,7 @@
     <string name="session_expired_title">Session expired</string>
     <string name="session_expired_body">Open Lokate and sign in again: until then your family cannot see your location.</string>
     <string name="ping_stalled_title">Lokate is not sending your location</string>
-    <string name="ping_stalled_body">Your location has not been sent in a while. Open the app and check permissions and battery saver.</string>
+    <string name="ping_stalled_body">Your location has not been sent in a while. If you have internet and battery, open the app and check permissions and battery saver.</string>
     <string name="update_frequency_label">Updates: %1$s</string>
     <string name="update_short_moving">moving</string>
     <string name="update_short_still">not moving</string>
@@ -140,7 +140,7 @@
     <string name="update_body_live">Someone is tracking them live: their phone sends its position every few seconds while it lasts, overriding whatever rate they chose.</string>
     <string name="update_body_on_demand">Their phone does not send its position on its own. It only answers when someone taps the refresh button on their card, so the time you see is the last time it was asked.</string>
     <string name="update_body_unknown">Their app is older than this version and does not send this yet, so there is no way to tell why it is taking so long.</string>
-    <string name="update_info_overdue">It has been far longer than expected without any signal. The usual causes are no coverage (a failed send is not retried, it waits for the next one), power saving with a low battery, or the system having stopped their app.</string>
+    <string name="update_info_overdue">It has been far longer than expected without any signal. The most likely causes are no internet (no data, no coverage or out of wifi range: a failed send is not retried, it waits for the next one) or a flat battery. It can also be power saving with a low battery, the phone being switched off, or the system having stopped their app.</string>
     <string name="update_info_footer">The time shown is when the last position reached the server, not the last time their phone checked where it was.</string>
     <string name="frequency_short_high">in real time</string>
     <string name="frequency_short_30_sec">every 30 s</string>
@@ -181,6 +181,8 @@
     <!-- Emergency message -->
     <string name="emergency_message_button">Send priority message</string>
     <string name="emergency_message_sent">Message sent</string>
+    <string name="member_silent_alert">Tell me if they stop reporting</string>
+    <string name="member_silent_alert_desc">A notification when they have not sent their location for a long time: usually because they ran out of internet or battery.</string>
     <string name="emergency_compose_title">Priority message</string>
     <string name="emergency_compose_hint">Write your message…</string>
     <string name="emergency_attach_photo">Photo</string>
@@ -295,6 +297,7 @@
     <string name="settings_map_zoom_reset_confirm">The initial zoom goes back to the default (level %1$d) and the map forgets its current position and zoom: next time it will open centred on your location.</string>
     <string name="settings_map_accuracy">Show accuracy radius</string>
     <string name="settings_map_accuracy_desc">Draws a grey circle around each person with the accuracy of their last position. It explains why someone sometimes shows up across the street.</string>
+    <string name="settings_map_accuracy_intensity">Circle strength: %1$d %%</string>
     <string name="settings_map_cache_desc">Map tiles are stored on the device to load faster, and refresh themselves every %1$d days. You can clear them right now if the map looks out of date.</string>
     <string name="settings_map_cache_clear">Clear map cache</string>
     <string name="settings_map_cache_cleared">Cache cleared: %1$.1f MB freed</string>
@@ -305,6 +308,8 @@
     <string name="settings_notifications">Notifications</string>
     <string name="settings_notifications_zone">Zone alerts</string>
     <string name="settings_notifications_system">System messages</string>
+    <string name="settings_notifications_silent">“No signal” alerts</string>
+    <string name="settings_notifications_silent_desc">Tell me when someone in the group has not sent their location for a long time. You can turn it off person by person on their card.</string>
     <string name="settings_account">Account</string>
     <string name="settings_logout">Log out</string>
     <string name="settings_display_name">Name</string>

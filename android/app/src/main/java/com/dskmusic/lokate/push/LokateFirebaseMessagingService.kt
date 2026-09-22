@@ -129,6 +129,17 @@ class LokateFirebaseMessagingService : FirebaseMessagingService() {
                 val absoluteAttachmentUrl = attachmentUrl?.let { com.dskmusic.lokate.data.remote.absoluteMediaUrl(it) }
                 NotificationHelper.showEmergencyMessageNotification(this, title, body, absoluteAttachmentUrl, attachmentKind)
             }
+            // "Lleva X sin dar señal": es el único aviso del servidor que se puede silenciar por
+            // persona (ajuste en su ficha) además de por app. El push llega igual y se descarta
+            // aquí: el servidor no sabe —ni tiene por qué— quién quiere saber de quién.
+            "member_silent" -> {
+                val silentUserId = message.data["user_id"].orEmpty()
+                val muted = runBlocking { locator.settings.silentMutedUserIds.first() }
+                val notifySilent = runBlocking { locator.settings.notifySilentEnabled.first() }
+                if (notifySystem && notifySilent && silentUserId !in muted) {
+                    NotificationHelper.showSystemNotification(this, title, body)
+                }
+            }
             else -> if (notifySystem) {
                 NotificationHelper.showSystemNotification(this, title, body)
             }
