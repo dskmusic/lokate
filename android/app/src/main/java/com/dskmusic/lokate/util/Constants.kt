@@ -102,17 +102,21 @@ enum class LocationFrequency(
 
     /** Batería casi cero: no se manda nada por iniciativa propia (el servicio en primer plano
      * se para solo al leer este valor), pero sí se responde a quien pida una ubicación puntual
-     * desde la ficha de miembro. A cambio, los avisos de zona dejan de funcionar: sin pings no
+     * desde la ficha de miembro o nos siga en vivo desde el mapa. A cambio, los avisos de zona dejan de funcionar: sin pings no
      * hay nada que comprobar. El intervalo no se usa. */
     ON_DEMAND(0L, R.string.frequency_on_demand, R.string.frequency_short_on_demand),
 
-    /** No se envía nada: el servicio en primer plano se para solo al leer este valor y las
-     * peticiones de ubicación a distancia tampoco responden. El intervalo no se usa. */
+    /** No se envía nada por iniciativa propia: el servicio en primer plano se para solo al leer
+     * este valor. Lo que sí sigue atendiendo, como [ON_DEMAND], es que alguien del grupo pida la
+     * ubicación puntual o active el seguimiento en vivo — son peticiones a la cara de gente que
+     * ya está en el grupo, y el ajuste está para ahorrar batería, no para esconderse (para eso
+     * está el modo oculto). El intervalo no se usa. */
     DISABLED(0L, R.string.frequency_disabled, R.string.frequency_short_disabled),
     ;
 
     /** Si este modo mantiene vivo el servicio en primer plano. Los dos que no ([ON_DEMAND] y
-     * [DISABLED]) se diferencian en si responden a una petición puntual. */
+     * [DISABLED]) solo se diferencian en el texto: ninguno manda nada solo, los dos responden a
+     * una petición puntual y al seguimiento en vivo. */
     val sendsPeriodicUpdates: Boolean get() = intervalMs > 0L
 }
 

@@ -89,6 +89,8 @@
     <string name="map_style_dark">Oscuro</string>
     <string name="map_follow_me">Seguir a alguien en vivo</string>
     <string name="map_follow_stop">Dejar de seguir</string>
+    <string name="follow_live_confirmed">Tiempo real activado en su móvil</string>
+    <string name="follow_live_unconfirmed">Su móvil aún no responde; se sigue intentando</string>
     <string name="map_follow_you">%1$s (tú)</string>
     <string name="help_title">Ayuda</string>
 
@@ -114,7 +116,7 @@
     <string name="frequency_short_live">en tiempo real (siguiéndolo)</string>
     <string name="frequency_disabled">Deshabilitado</string>
     <string name="frequency_disabled_confirm_title">¿Deshabilitar las actualizaciones?</string>
-    <string name="frequency_disabled_confirm_body">Tu dispositivo dejará de enviar su ubicación y nadie de tu grupo podrá verte ni pedirte una ubicación puntual. Puedes volver a activarlo en cualquier momento desde aquí.</string>
+    <string name="frequency_disabled_confirm_body">Tu dispositivo dejará de enviar su ubicación por su cuenta y nadie de tu grupo podrá verte en el mapa. Sí seguirá respondiendo cuando alguien pida tu ubicación puntual o te siga en vivo desde su mapa. Puedes volver a activarlo en cualquier momento desde aquí.</string>
     <string name="frequency_short_disabled">actualizaciones desactivadas</string>
     <string name="frequency_short_on_demand">solo cuando se la piden</string>
     <!-- Estado de configuración del móvil de un miembro (ficha de miembro) -->

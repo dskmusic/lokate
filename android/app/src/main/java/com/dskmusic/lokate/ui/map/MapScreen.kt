@@ -150,6 +150,18 @@ fun MapScreen(
         map.moveTo(GeoPoint(target.lat, target.lng))
     }
 
+    // Acuse de recibo del "seguir": el "en vivo" solo llega cuando el otro móvil está pingando
+    // de verdad, así que sirve para decir si la orden prendió allí o se quedó por el camino.
+    LaunchedEffect(Unit) {
+        viewModel.followFeedback.collect { confirmed ->
+            Toast.makeText(
+                context,
+                if (confirmed) R.string.follow_live_confirmed else R.string.follow_live_unconfirmed,
+                Toast.LENGTH_SHORT,
+            ).show()
+        }
+    }
+
     // Modo prueba (solo admins): se guarda fuera de la composición porque cambiar de pestaña
     // destruye esta pantalla y su ViewModel - si no, el modo se apagaría en la app pero el
     // servidor seguiría con las posiciones simuladas hasta que caducaran solas.

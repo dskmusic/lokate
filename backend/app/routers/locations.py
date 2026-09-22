@@ -46,6 +46,9 @@ LIVE_MAX_S = 30 * 60
 # el push: un push perdido dejaba el tiempo real sin arrancar hasta su siguiente ping normal,
 # que con el movil en reposo puede tardar 15 minutos.
 LIVE_REPUSH_SILENT_S = 30
+# Cuanto puede llevar callado el seguido antes de que dejemos de decirle a quien sigue que esto
+# esta "en vivo". En vivo se pinga cada 3 s, asi que este margen son seis pings perdidos.
+LIVE_CONFIRM_SILENT_S = 20
 _live_until: dict[str, float] = {}
 _live_started: dict[str, float] = {}
 _last_ping: dict[str, float] = {}
@@ -61,6 +64,16 @@ def _live_seconds(user_id: str) -> int:
         _live_stop(user_id)
         return 0
     return int(remaining)
+
+
+def _live_confirmed_seconds(user_id: str) -> int:
+    """Lo mismo, pero visto por QUIEN SIGUE: solo cuenta cuando el otro movil esta respondiendo
+    de verdad. Mientras la orden no haya prendido alli (push perdido, servicio denegado por el
+    sistema) esto sigue en 0, y asi el boton de seguir no promete algo que no esta pasando."""
+    seconds = _live_seconds(user_id)
+    if seconds and monotonic() - _last_ping.get(user_id, 0.0) > LIVE_CONFIRM_SILENT_S:
+        return 0
+    return seconds
 
 
 def _live_stop(user_id: str) -> None:
@@ -151,7 +164,7 @@ def group_latest(
                     config_issues=member.config_issues,
                     # Para que quien mira el mapa vea si el tiempo real que ha pedido ha
                     # prendido de verdad en el otro movil, y no solo que pulso el boton.
-                    live_seconds=_live_seconds(member.id),
+                    live_seconds=_live_confirmed_seconds(member.id),
                 )
             )
     return results

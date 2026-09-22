@@ -89,6 +89,8 @@
     <string name="map_style_dark">Dark</string>
     <string name="map_follow_me">Follow someone live</string>
     <string name="map_follow_stop">Stop following</string>
+    <string name="follow_live_confirmed">Real time is on for their phone</string>
+    <string name="follow_live_unconfirmed">Their phone has not answered yet; still trying</string>
     <string name="map_follow_you">%1$s (you)</string>
     <string name="help_title">Help</string>
 
@@ -112,7 +114,7 @@
     <string name="frequency_short_live">in real time (being followed)</string>
     <string name="frequency_disabled">Disabled</string>
     <string name="frequency_disabled_confirm_title">Disable updates?</string>
-    <string name="frequency_disabled_confirm_body">Your device will stop sending its location, and nobody in your group will be able to see you or request a one-off location. You can turn it back on here at any time.</string>
+    <string name="frequency_disabled_confirm_body">Your device will stop sending its location on its own, so nobody in your group will see you on the map. It will still answer when someone requests a one-off location or follows you live from their map. You can turn it back on here at any time.</string>
     <string name="frequency_short_disabled">updates disabled</string>
     <string name="frequency_short_on_demand">only when asked</string>
     <!-- Configuration status of a member's phone (member detail) -->

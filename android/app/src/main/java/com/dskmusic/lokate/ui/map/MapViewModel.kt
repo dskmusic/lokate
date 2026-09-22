@@ -10,9 +10,13 @@ import com.dskmusic.lokate.data.repository.LocationRepository
 import com.dskmusic.lokate.data.repository.ZoneRepository
 import kotlinx.coroutines.Job
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
+import kotlinx.coroutines.flow.SharedFlow
 import kotlinx.coroutines.flow.StateFlow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
+import kotlinx.coroutines.withTimeoutOrNull
 
 data class MapUiState(
     val members: List<LocationDto> = emptyList(),
@@ -45,6 +49,11 @@ private const val FOLLOW_POLL_INTERVAL_MS = 3_000L
  * acelera el arranque cuando el primer push se pierde. */
 private const val LIVE_RENEW_MS = 30_000L
 
+/** Lo que esperamos a que el móvil seguido conteste antes de avisar de que no lo ha cogido. Da
+ * de sobra para el push, levantar el servicio y el primer fix; pasado esto, o el push se perdió
+ * o el sistema no dejó arrancar nada. Se sigue intentando igual, solo es el aviso. */
+private const val FOLLOW_CONFIRM_TIMEOUT_MS = 20_000L
+
 class MapViewModel(
     private val locationRepository: LocationRepository,
     private val zoneRepository: ZoneRepository,
@@ -53,6 +62,12 @@ class MapViewModel(
 
     private val _uiState = MutableStateFlow(MapUiState())
     val uiState: StateFlow<MapUiState> = _uiState
+
+    /** true = el seguimiento prendió de verdad en el otro móvil; false = no contesta. Evento de
+     * un solo uso (la pantalla lo pinta como aviso), y por eso la cuenta atrás vive aquí: cambiar
+     * de pestaña mata la pantalla, no el ViewModel, y el aviso llega igual al volver. */
+    private val _followFeedback = MutableSharedFlow<Boolean>(extraBufferCapacity = 1)
+    val followFeedback: SharedFlow<Boolean> = _followFeedback
 
     val zones = zoneRepository.observeZones()
 
@@ -125,6 +140,12 @@ class MapViewModel(
         followJob = viewModelScope.launch {
             if (previous != null) runCatching { locationRepository.setLiveTracking(previous, false) }
             if (userId == null) return@launch
+            launch {
+                val confirmed = withTimeoutOrNull(FOLLOW_CONFIRM_TIMEOUT_MS) {
+                    _uiState.first { it.followUserId == userId && it.followLive }
+                }
+                _followFeedback.tryEmit(confirmed != null)
+            }
             while (true) {
                 runCatching { locationRepository.setLiveTracking(userId, true) }
                 delay(LIVE_RENEW_MS)

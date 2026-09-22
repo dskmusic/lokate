@@ -5,7 +5,6 @@ import com.dskmusic.lokate.di.ServiceLocator
 import com.dskmusic.lokate.location.LiveTracking
 import com.dskmusic.lokate.location.LocationServiceController
 import com.dskmusic.lokate.util.DeviceStatusUtils
-import com.dskmusic.lokate.util.LocationFrequency
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
@@ -32,10 +31,10 @@ class LokateFirebaseMessagingService : FirebaseMessagingService() {
 
     /** Una ubicación puntual y para arriba, sin tocar el ritmo del servicio. La usan tanto la
      * petición puntual desde la ficha de miembro como el arranque del seguimiento en vivo.
-     * Con el envío de ubicación deshabilitado no manda nada. */
+     * Responde con cualquier frecuencia configurada, incluida "deshabilitado": lo que ese ajuste
+     * apaga es mandar ubicación por iniciativa propia, no atender a quien la pide a la cara. */
     private suspend fun pingOneShot(locator: com.dskmusic.lokate.di.ServiceLocator) {
         val frequency = locator.settings.locationFrequency.first()
-        if (frequency == LocationFrequency.DISABLED) return
         val location = fetchOneShotLocation(this) ?: return
         val status = DeviceStatusUtils.read(applicationContext)
         locator.locationRepository.ping(location.latitude, location.longitude, location.accuracy, status, frequency)
@@ -83,15 +82,15 @@ class LokateFirebaseMessagingService : FirebaseMessagingService() {
             // miembro): totalmente silencioso, sin sonido ni notificación — solo se lee la
             // posición una vez y se sube igual que un ping normal en segundo plano.
             "request_location" -> CoroutineScope(Dispatchers.IO).launch {
-                // Con el envío desactivado en Ajustes no se responde ni a las peticiones
-                // puntuales: quien la pidió ve "desactivado" en la ficha del miembro.
                 runCatching { pingOneShot(locator) }
+                    .onFailure { android.util.Log.w("LokatePush", "Petición puntual fallida", it) }
             }
             // Alguien nos ha puesto en seguimiento en vivo desde su mapa: silencioso, va
-            // consentido con la entrada al grupo. Solo la PRIMERA activación llega por push;
-            // las renovaciones y el fin viajan en la respuesta de cada ping.
+            // consentido con la entrada al grupo, y manda por encima de la frecuencia elegida
+            // (también de "deshabilitado") hasta que deje de seguirnos o caduque. Normalmente
+            // solo llega la PRIMERA activación; las renovaciones y el fin viajan en la respuesta
+            // de cada ping, y el servidor repite el push si nos ve callados.
             "live_tracking" -> CoroutineScope(Dispatchers.IO).launch {
-                if (locator.settings.locationFrequency.first() == LocationFrequency.DISABLED) return@launch
                 LiveTracking.update(message.data["seconds"]?.toIntOrNull() ?: 0)
                 // En "solo bajo demanda" no hay servicio corriendo y hay que levantarlo: el
                 // push de alta prioridad da permiso para arrancarlo desde segundo plano. Si

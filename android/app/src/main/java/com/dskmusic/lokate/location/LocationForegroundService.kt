@@ -138,8 +138,9 @@ class LocationForegroundService : Service() {
                 val remaining = until - System.currentTimeMillis()
                 applyLocationRequest()
                 if (remaining <= 0) {
-                    // En "solo bajo demanda" el servicio lo había levantado el propio
-                    // seguimiento: al acabar no tiene nada que hacer aquí.
+                    // En los modos que no mandan nada por su cuenta ("solo bajo demanda" y
+                    // "deshabilitado") el servicio lo había levantado el propio seguimiento: al
+                    // acabar no tiene nada que hacer aquí.
                     if (wasLive && configuredIntervalMs <= 0L) stopSelf()
                     wasLive = false
                     return@collectLatest
