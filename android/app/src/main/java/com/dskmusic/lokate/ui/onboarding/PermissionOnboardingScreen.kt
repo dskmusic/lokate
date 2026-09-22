@@ -36,13 +36,14 @@ import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 import kotlinx.coroutines.runBlocking
 
-private enum class OnboardingStep { FOREGROUND_LOCATION, BACKGROUND_LOCATION, NOTIFICATIONS, DND, BATTERY, MANUFACTURER, DONE }
+private enum class OnboardingStep { FOREGROUND_LOCATION, BACKGROUND_LOCATION, ACTIVITY, NOTIFICATIONS, DND, BATTERY, MANUFACTURER, DONE }
 
 /** Qué pantalla del onboarding arregla cada código de [ConfigCheck]. Null = ninguna (no es un
  * permiso que se pueda pedir desde aquí). */
 private fun onboardingStepFor(issue: String): OnboardingStep? = when (issue) {
     ConfigCheck.LOCATION -> OnboardingStep.FOREGROUND_LOCATION
     ConfigCheck.BACKGROUND_LOCATION -> OnboardingStep.BACKGROUND_LOCATION
+    ConfigCheck.ACTIVITY -> OnboardingStep.ACTIVITY
     ConfigCheck.NOTIFICATIONS -> OnboardingStep.NOTIFICATIONS
     ConfigCheck.DND -> OnboardingStep.DND
     ConfigCheck.BATTERY -> OnboardingStep.BATTERY
@@ -90,6 +91,10 @@ fun PermissionOnboardingScreen(onFinished: () -> Unit) {
         if (granted) step = OnboardingStep.BACKGROUND_LOCATION
     }
     val backgroundLocationLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        lastPermissionDenied = !granted
+        if (granted) step = OnboardingStep.ACTIVITY
+    }
+    val activityLauncher = rememberLauncherForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         lastPermissionDenied = !granted
         if (granted) step = OnboardingStep.NOTIFICATIONS
     }
@@ -151,9 +156,23 @@ fun PermissionOnboardingScreen(onFinished: () -> Unit) {
                     onContinue = {
                         lastPermissionDenied = false
                         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q || PermissionUtils.hasBackgroundLocationPermission(context)) {
-                            step = OnboardingStep.NOTIFICATIONS
+                            step = OnboardingStep.ACTIVITY
                         } else {
                             backgroundLocationLauncher.launch(Manifest.permission.ACCESS_BACKGROUND_LOCATION)
+                        }
+                    },
+                    onSkip = { lastPermissionDenied = false; step = OnboardingStep.ACTIVITY },
+                )
+                OnboardingStep.ACTIVITY -> OnboardingStepContent(
+                    title = stringResource(R.string.onboarding_activity_title),
+                    description = stringResource(R.string.onboarding_activity_desc),
+                    denied = lastPermissionDenied,
+                    onContinue = {
+                        lastPermissionDenied = false
+                        if (PermissionUtils.hasActivityRecognitionPermission(context)) {
+                            step = OnboardingStep.NOTIFICATIONS
+                        } else {
+                            activityLauncher.launch(Manifest.permission.ACTIVITY_RECOGNITION)
                         }
                     },
                     onSkip = { lastPermissionDenied = false; step = OnboardingStep.NOTIFICATIONS },

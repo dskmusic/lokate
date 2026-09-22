@@ -17,7 +17,7 @@ data class ZoneEditUiState(
     val lng: Double? = null,
     val radiusM: Double = 50.0,
     val members: List<GroupMemberDto> = emptyList(),
-    /** Quién dispara los avisos de esta zona. Se marca a todos al crearla. */
+    /** De quién quiero que me avisen en esta zona (solo mío). Se marca a todos al crearla. */
     val watchedIds: Set<String> = emptySet(),
     val saving: Boolean = false,
     val error: String? = null,
@@ -44,11 +44,24 @@ class ZoneEditViewModel(
     )
     val uiState: StateFlow<ZoneEditUiState> = _uiState
 
+    // Las otras dos casillas de MI preferencia de esta zona (avisar al entrar / al salir, que se
+    // tocan en la lista de zonas): se guardan tal cual para no pisarlas al cambiar los vigilados.
+    private var notifyOnEnter = false
+    private var notifyOnExit = false
+
     init {
         viewModelScope.launch {
             val members = runCatching { groupRepository.members() }.getOrDefault(emptyList())
+            val pref = existingZone?.let { zone ->
+                runCatching { zoneRepository.notificationPrefs() }.getOrNull()
+                    ?.firstOrNull { it.zone_id == zone.id }
+            }
+            pref?.let {
+                notifyOnEnter = it.notify_on_enter
+                notifyOnExit = it.notify_on_exit
+            }
             // El servidor guarda "vacío = todo el grupo"; aquí se enseña con todos marcados.
-            val saved = existingZone?.watched_user_ids.orEmpty()
+            val saved = pref?.watched_user_ids.orEmpty()
             _uiState.value = _uiState.value.copy(
                 members = members,
                 watchedIds = if (saved.isEmpty()) members.map { it.id }.toSet() else saved.toSet(),
@@ -81,18 +94,20 @@ class ZoneEditViewModel(
         val lng = s.lng ?: return
         if (s.name.isBlank()) return
 
-        // Todos marcados se guarda como lista vacía: así la zona sigue avisando de quien entre
-        // en el grupo más adelante, en vez de quedarse congelada con los miembros de hoy.
+        // Todos marcados se guarda como lista vacía: así se sigue avisando de quien entre en el
+        // grupo más adelante, en vez de quedarse congelada con los miembros de hoy.
         val watched = if (s.watchedIds.size == s.members.size) emptyList() else s.watchedIds.toList()
 
         _uiState.value = s.copy(saving = true, error = null)
         viewModelScope.launch {
             runCatching {
-                if (existingZone != null) {
-                    zoneRepository.updateZone(existingZone.id, s.name, lat, lng, s.radiusM, watched)
+                val zone = if (existingZone != null) {
+                    zoneRepository.updateZone(existingZone.id, s.name, lat, lng, s.radiusM)
                 } else {
-                    zoneRepository.createZone(s.name, lat, lng, s.radiusM, watched)
+                    zoneRepository.createZone(s.name, lat, lng, s.radiusM)
                 }
+                // La zona (sitio y radio) la ve todo el grupo; a quién vigila, solo este móvil.
+                zoneRepository.updateNotificationPref(zone.id, notifyOnEnter, notifyOnExit, watched)
             }
                 .onSuccess { _uiState.value = _uiState.value.copy(saving = false, saved = true) }
                 .onFailure { _uiState.value = _uiState.value.copy(saving = false, error = it.message) }

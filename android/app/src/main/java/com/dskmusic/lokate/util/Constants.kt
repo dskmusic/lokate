@@ -1,5 +1,8 @@
 package com.dskmusic.lokate.util
 
+import androidx.annotation.StringRes
+import com.dskmusic.lokate.R
+
 object Constants {
     // Nominatim exige un User-Agent identificativo y respetar 1 req/seg.
     const val NOMINATIM_BASE_URL = "https://nominatim.openstreetmap.org/"
@@ -80,17 +83,37 @@ object Constants {
     const val EXTRA_PUSH_USER_ID = "user_id"
 }
 
-enum class LocationFrequency(val intervalMs: Long) {
+/** El orden de los valores es el que se ve en ajustes (de más frecuente a menos), y su nombre
+ * es lo que se guarda en el servidor y muestran las fichas de los demás miembros. */
+enum class LocationFrequency(
+    val intervalMs: Long,
+    @StringRes val labelRes: Int,
+    @StringRes val shortLabelRes: Int,
+) {
     /** Lo más parecido a "Localizar mi dispositivo" de Google/apps similares: pide ubicación al
      * GPS cada pocos segundos en vez de esperar a un sondeo periódico — el límite real de
      * "tiempo real" lo pone la propia frecuencia del chip GPS del teléfono, no este valor. */
-    REAL_TIME(3_000L),
-    BALANCED(120_000L),
-    BATTERY_SAVER(600_000L),
+    REAL_TIME(3_000L, R.string.frequency_high, R.string.frequency_short_high),
+    EVERY_30_SEC(30_000L, R.string.frequency_30_sec, R.string.frequency_short_30_sec),
+    EVERY_1_MIN(60_000L, R.string.frequency_1_min, R.string.frequency_short_1_min),
+    BALANCED(120_000L, R.string.frequency_balanced, R.string.frequency_short_balanced),
+    EVERY_5_MIN(300_000L, R.string.frequency_5_min, R.string.frequency_short_5_min),
+    BATTERY_SAVER(600_000L, R.string.frequency_battery_saver, R.string.frequency_short_battery_saver),
+
+    /** Batería casi cero: no se manda nada por iniciativa propia (el servicio en primer plano
+     * se para solo al leer este valor), pero sí se responde a quien pida una ubicación puntual
+     * desde la ficha de miembro. A cambio, los avisos de zona dejan de funcionar: sin pings no
+     * hay nada que comprobar. El intervalo no se usa. */
+    ON_DEMAND(0L, R.string.frequency_on_demand, R.string.frequency_short_on_demand),
 
     /** No se envía nada: el servicio en primer plano se para solo al leer este valor y las
      * peticiones de ubicación a distancia tampoco responden. El intervalo no se usa. */
-    DISABLED(0L),
+    DISABLED(0L, R.string.frequency_disabled, R.string.frequency_short_disabled),
+    ;
+
+    /** Si este modo mantiene vivo el servicio en primer plano. Los dos que no ([ON_DEMAND] y
+     * [DISABLED]) se diferencian en si responden a una petición puntual. */
+    val sendsPeriodicUpdates: Boolean get() = intervalMs > 0L
 }
 
 enum class ThemeMode {

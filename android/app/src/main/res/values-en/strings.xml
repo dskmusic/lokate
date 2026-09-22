@@ -17,6 +17,8 @@
     <string name="onboarding_location_desc">Lokate needs your location to show you on the map to your family.</string>
     <string name="onboarding_background_location_title">Background location</string>
     <string name="onboarding_background_location_desc">To keep sharing your location even when the app isn\'t open, Android will ask you to choose \"Allow all the time\".</string>
+    <string name="onboarding_activity_title">Smart battery saving</string>
+    <string name="onboarding_activity_desc">With this permission the app notices the phone has been still for a while and stops asking for the location so often, without the group losing sight of you. It only reads the motion sensor: what you are doing is never stored. If you decline, the app still works, it just uses more battery.</string>
     <string name="onboarding_notifications_title">Notifications</string>
     <string name="onboarding_notifications_desc">We\'ll notify you when someone in your family enters or leaves a saved zone.</string>
     <string name="onboarding_dnd_title">Ring even when silenced</string>
@@ -77,7 +79,8 @@
 
     <!-- People -->
     <string name="people_title">People</string>
-    <string name="people_empty">No members with a location yet</string>
+    <string name="people_empty">No members in the group yet</string>
+    <string name="people_no_location">No location yet</string>
     <string name="open_in_google_maps">Open in Google Maps</string>
     <string name="locate_me">Where am I</string>
     <string name="map_style_button">Map style</string>
@@ -100,13 +103,18 @@
     <string name="last_seen_label">Last update:\n%1$s</string>
     <string name="update_frequency_label">Updates: %1$s</string>
     <string name="frequency_short_high">in real time</string>
+    <string name="frequency_short_30_sec">every 30 s</string>
+    <string name="frequency_short_1_min">every minute</string>
     <string name="frequency_short_balanced">every 2 min</string>
+    <string name="frequency_short_5_min">every 5 min</string>
     <string name="frequency_short_battery_saver">every 10 min</string>
     <string name="frequency_short_unknown">unknown frequency</string>
+    <string name="frequency_short_live">in real time (being followed)</string>
     <string name="frequency_disabled">Disabled</string>
     <string name="frequency_disabled_confirm_title">Disable updates?</string>
     <string name="frequency_disabled_confirm_body">Your device will stop sending its location, and nobody in your group will be able to see you or request a one-off location. You can turn it back on here at any time.</string>
     <string name="frequency_short_disabled">updates disabled</string>
+    <string name="frequency_short_on_demand">only when asked</string>
     <!-- Configuration status of a member's phone (member detail) -->
     <string name="config_status_ok">Correctly set up</string>
     <string name="config_status_unknown">Setup unknown (app not updated)</string>
@@ -119,6 +127,7 @@
     <string name="config_issue_battery">Battery optimisation on: Android may close the app</string>
     <string name="config_issue_gps_off">System location (GPS) turned off</string>
     <string name="config_issue_dnd">No Do Not Disturb access: it may not ring when located if silenced</string>
+    <string name="config_issue_activity">No physical activity permission: the app cannot tell when the phone is still, so it uses more battery</string>
     <string name="permissions_all_ok">All good: no permissions missing</string>
     <string name="test_notification_confirm_title">Send a test notification?</string>
     <string name="test_notification_confirm_body">A test notification will be sent to %1$s\'s device.</string>
@@ -232,6 +241,12 @@
     <string name="settings_language_en">English</string>
     <string name="settings_accent_color">Accent color</string>
     <string name="settings_update_frequency">Location update frequency</string>
+    <string name="settings_known_wifi">Home wi-fi</string>
+    <string name="settings_known_wifi_desc">While connected to one of these networks the location is requested every 15 minutes instead of at the chosen rate: if you are at home, there is no need to ask so often. It goes back to normal on its own once you leave and start moving.</string>
+    <string name="settings_known_wifi_add">Add the current wi-fi (%1$s)</string>
+    <string name="settings_known_wifi_none">Connect to a wi-fi network, with system location on, to add it</string>
+    <string name="settings_known_wifi_manual">Or type the network name</string>
+    <string name="settings_known_wifi_manual_add">Add</string>
     <string name="settings_map_zoom">Initial map zoom</string>
     <string name="settings_map_zoom_value">Level %1$d</string>
     <string name="settings_map_zoom_reset">Reset</string>
@@ -273,8 +288,12 @@
     <string name="settings_server_url_reset">Reset to default</string>
 
     <string name="frequency_high">Real time (like Find My Device, more battery)</string>
+    <string name="frequency_30_sec">Every 30 seconds</string>
+    <string name="frequency_1_min">Every minute (recommended)</string>
     <string name="frequency_balanced">Balanced (every 2 min)</string>
+    <string name="frequency_5_min">Every 5 minutes</string>
     <string name="frequency_battery_saver">Battery saver (every 10 min)</string>
+    <string name="frequency_on_demand">On demand only (minimum battery, no zone alerts)</string>
 
     <string name="error_generic">Something went wrong. Please try again.</string>
     <string name="error_network">Couldn\'t connect to the server.</string>
@@ -360,13 +379,15 @@
     <string name="place_search_not_found">Nothing found</string>
     <string name="place_search_failed">Couldn\'t search. Check your connection.</string>
     <string name="zone_map_hint">Tap the map to pick the zone centre, or search for it above</string>
-    <string name="zone_watch_title">Notify about these members</string>
-    <string name="zone_watch_hint">With everyone ticked, the zone reports anyone in the group, including members who join later.</string>
+    <string name="zone_watch_title">Notify me about these members</string>
+    <string name="zone_watch_hint">This device only: each phone picks who it wants to be notified about. With everyone ticked, it reports anyone in the group, including members who join later.</string>
     <string name="zone_watch_empty">Tick at least one member</string>
 
     <!-- Distance and people list sorting -->
     <string name="distance_from_you">%1$s from you</string>
     <string name="distance_unknown">distance unknown</string>
+    <string name="list_search_hint">Search by name</string>
+    <string name="list_search_close">Close search</string>
     <string name="people_sort_label">Sort by</string>
     <string name="people_sort_name">Name</string>
     <string name="people_sort_distance">Distance</string>

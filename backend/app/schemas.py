@@ -106,6 +106,15 @@ class LocationPingRequest(BaseModel):
     config_issues: str | None = None
 
 
+class LocationPingResponse(BaseModel):
+    """Lo unico que el movil necesita saber de vuelta: si alguien lo tiene en seguimiento en
+    vivo y cuantos segundos le quedan. Viaja en la respuesta del ping y no por push a proposito
+    — asi el movil se entera de que el seguimiento ha terminado (o se ha renovado) sin depender
+    de que llegue ningun mensaje: si nadie renueva, el contador se agota solo."""
+
+    live_seconds: int = 0
+
+
 class LocationResponse(BaseModel):
     user_id: str
     display_name: str
@@ -120,6 +129,9 @@ class LocationResponse(BaseModel):
     wifi_ssid: str | None
     location_frequency: str | None
     config_issues: str | None
+    # Segundos que le quedan a ese miembro de seguimiento en vivo (0 = ninguno). Mientras sea
+    # >0 su movil esta en tiempo real, mande lo que mande location_frequency.
+    live_seconds: int = 0
 
     model_config = {"from_attributes": True}
 
@@ -139,8 +151,6 @@ class ZoneCreateRequest(BaseModel):
     lat: float = Field(ge=-90, le=90)
     lng: float = Field(ge=-180, le=180)
     radius_m: float = Field(gt=0, le=50000)
-    # Miembros cuyos movimientos avisan en esta zona. Lista vacía = todo el grupo.
-    watched_user_ids: list[str] = []
 
 
 class ZoneResponse(BaseModel):
@@ -149,7 +159,8 @@ class ZoneResponse(BaseModel):
     lat: float
     lng: float
     radius_m: float
-    watched_user_ids: list[str] = []
+    # Para poder ordenar las zonas por "reciente" en la app.
+    created_at: datetime | None = None
 
     model_config = {"from_attributes": True}
 
@@ -178,6 +189,8 @@ class ZoneNotificationPrefResponse(BaseModel):
     zone_id: str
     notify_on_enter: bool
     notify_on_exit: bool
+    # De quién quiere que le avisen ESTE usuario en esta zona. Vacía = de todo el grupo.
+    watched_user_ids: list[str] = []
 
     model_config = {"from_attributes": True}
 
@@ -185,6 +198,7 @@ class ZoneNotificationPrefResponse(BaseModel):
 class ZoneNotificationPrefUpdateRequest(BaseModel):
     notify_on_enter: bool
     notify_on_exit: bool
+    watched_user_ids: list[str] = []
 
 
 # ---- Admin API (panel de administración nativo de la app, solo admins) ----

@@ -30,9 +30,8 @@ class ZoneRepository(
         lat: Double,
         lng: Double,
         radiusM: Double,
-        watchedUserIds: List<String> = emptyList(),
     ): ZoneDto = withContext(Dispatchers.IO) {
-        val zone = api.createZone(ZoneCreateRequestDto(name, lat, lng, radiusM, watchedUserIds))
+        val zone = api.createZone(ZoneCreateRequestDto(name, lat, lng, radiusM))
         dao.upsertAll(listOf(zone.toEntity()))
         zone
     }
@@ -43,9 +42,8 @@ class ZoneRepository(
         lat: Double,
         lng: Double,
         radiusM: Double,
-        watchedUserIds: List<String> = emptyList(),
     ): ZoneDto = withContext(Dispatchers.IO) {
-        val zone = api.updateZone(id, ZoneCreateRequestDto(name, lat, lng, radiusM, watchedUserIds))
+        val zone = api.updateZone(id, ZoneCreateRequestDto(name, lat, lng, radiusM))
         dao.upsertAll(listOf(zone.toEntity()))
         zone
     }
@@ -61,18 +59,19 @@ class ZoneRepository(
         api.zoneNotificationPrefs()
     }
 
-    suspend fun updateNotificationPref(zoneId: String, notifyOnEnter: Boolean, notifyOnExit: Boolean): ZoneNotificationPrefDto =
-        withContext(Dispatchers.IO) {
-            api.updateZoneNotificationPref(zoneId, ZoneNotificationPrefUpdateRequestDto(notifyOnEnter, notifyOnExit))
-        }
+    suspend fun updateNotificationPref(
+        zoneId: String,
+        notifyOnEnter: Boolean,
+        notifyOnExit: Boolean,
+        watchedUserIds: List<String> = emptyList(),
+    ): ZoneNotificationPrefDto = withContext(Dispatchers.IO) {
+        api.updateZoneNotificationPref(
+            zoneId,
+            ZoneNotificationPrefUpdateRequestDto(notifyOnEnter, notifyOnExit, watchedUserIds),
+        )
+    }
 }
 
-private fun ZoneEntity.toDto() = ZoneDto(
-    id, name, lat, lng, radiusM,
-    watchedIds.split(",").filter { it.isNotBlank() },
-)
+private fun ZoneEntity.toDto() = ZoneDto(id, name, lat, lng, radiusM)
 
-private fun ZoneDto.toEntity() = ZoneEntity(
-    id, name, lat, lng, radius_m,
-    watched_user_ids.joinToString(","),
-)
+private fun ZoneDto.toEntity() = ZoneEntity(id, name, lat, lng, radius_m)

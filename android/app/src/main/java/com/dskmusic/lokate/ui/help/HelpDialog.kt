@@ -70,10 +70,41 @@ private val sections = listOf(
     HelpSection(
         "⚙️", "Ajustes",
         "Tema claro/oscuro/automático y color de acento (predefinido o personalizado con la rueda " +
-            "de color). Frecuencia de actualización de ubicación (más frecuente = menos batería " +
-            "dura). Sonido y patrón de vibración para \"hacer sonar el dispositivo\". Notificaciones " +
-            "por tipo. Los administradores tienen además un botón para enviar una notificación de " +
-            "prueba a todo el grupo (incluido a ellos mismos), útil para comprobar que todo funciona.",
+            "de color). Frecuencia de actualización de ubicación y wifis de casa (los dos puntos " +
+            "siguientes). Sonido y patrón de vibración para \"hacer sonar el dispositivo\". " +
+            "Notificaciones por tipo. Los administradores tienen además un botón para enviar una " +
+            "notificación de prueba a todo el grupo (incluido a ellos mismos), útil para comprobar " +
+            "que todo funciona.",
+    ),
+    HelpSection(
+        "⏱️", "Cada cuánto se actualiza tu posición",
+        "En Ajustes eliges el ritmo: tiempo real, cada 30 segundos, cada minuto (el normal), cada " +
+            "2, cada 5 o cada 10 minutos, solo bajo demanda, o desactivado.\n\n" +
+            "No hace falta que te pelees con esto para que la batería aguante: la app se apaña " +
+            "sola. En cuanto nota que el móvil lleva un rato quieto, pasa a mirar la posición cada " +
+            "15 minutos y sin encender el GPS; al moverte vuelve al ritmo que elegiste en el acto. " +
+            "Por eso el tiempo real ya no se come la batería mientras estás en casa o sentado en la " +
+            "oficina: solo gasta cuando de verdad te estás moviendo.\n\n" +
+            "\"Solo bajo demanda\" es el modo de menos gasto que sigue siendo localizable: tu móvil " +
+            "no manda nada por su cuenta, pero si alguien pulsa 🔄 en tu ficha responde al momento " +
+            "con tu posición exacta. A cambio, con este modo no llegan avisos de zona (no hay " +
+            "posiciones que comprobar). \"Desactivado\" no responde ni a eso: nadie te ve.\n\n" +
+            "Cuanto más espaciado sea el ritmo, más tarde pueden llegar los avisos de entrada y " +
+            "salida de zona. Para notar que estás quieto, la app usa el permiso de \"actividad " +
+            "física\" que se pide al instalar: solo lee el sensor de movimiento, nunca qué estás " +
+            "haciendo. Si lo rechazas, todo sigue funcionando igual, solo gasta más batería.",
+    ),
+    HelpSection(
+        "📶", "Wifi de casa",
+        "En Ajustes → \"Wifi de casa\" puedes añadir las redes donde sueles estar parado (casa, " +
+            "trabajo, casa de los abuelos). Mientras estés conectado a una de ellas, tu móvil " +
+            "espacia las actualizaciones a una cada 15 minutos: si estás en casa, no hace falta " +
+            "preguntar cada minuto dónde estás. Al salir y empezar a moverte vuelve solo al ritmo " +
+            "normal.\n\n" +
+            "Para añadir una: conéctate a esa wifi y pulsa \"Añadir el wifi actual\". Si el botón " +
+            "sale apagado, comprueba que tienes la ubicación del sistema encendida y el permiso de " +
+            "ubicación concedido — Android no deja leer el nombre de la red sin eso. La papelera de " +
+            "al lado quita la que ya no quieras.",
     ),
 )
 

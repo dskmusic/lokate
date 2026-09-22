@@ -28,7 +28,6 @@ def create_zone(
         lat=body.lat,
         lng=body.lng,
         radius_m=body.radius_m,
-        watched_ids=",".join(body.watched_user_ids),
         created_by=user.id,
     )
     db.add(zone)
@@ -55,7 +54,6 @@ def update_zone(
 ):
     zone = _get_owned_zone(zone_id, user, db)
     zone.name, zone.lat, zone.lng, zone.radius_m = body.name, body.lat, body.lng, body.radius_m
-    zone.watched_ids = ",".join(body.watched_user_ids)
     db.commit()
     db.refresh(zone)
     return zone
@@ -79,7 +77,8 @@ def get_notification_prefs(
     user: models.User = Depends(get_current_user_with_group),
     db: Session = Depends(get_db),
 ):
-    """Preferencia del usuario actual para cada zona del grupo (por defecto: sin avisos hasta que el usuario los active)."""
+    """Preferencia del usuario actual para cada zona del grupo (por defecto: sin avisos hasta que
+    el usuario los active). Es suya y de este móvil: no la comparte con el resto del grupo."""
     zones = db.query(models.Zone).filter(models.Zone.group_id == user.group_id).all()
     prefs = {
         p.zone_id: p
@@ -90,6 +89,7 @@ def get_notification_prefs(
             zone_id=zone.id,
             notify_on_enter=prefs[zone.id].notify_on_enter if zone.id in prefs else False,
             notify_on_exit=prefs[zone.id].notify_on_exit if zone.id in prefs else False,
+            watched_user_ids=prefs[zone.id].watched_user_ids if zone.id in prefs else [],
         )
         for zone in zones
     ]
@@ -111,8 +111,12 @@ def update_notification_pref(
 
     pref.notify_on_enter = body.notify_on_enter
     pref.notify_on_exit = body.notify_on_exit
+    pref.watched_ids = ",".join(body.watched_user_ids)
     db.commit()
 
     return schemas.ZoneNotificationPrefResponse(
-        zone_id=zone_id, notify_on_enter=pref.notify_on_enter, notify_on_exit=pref.notify_on_exit
+        zone_id=zone_id,
+        notify_on_enter=pref.notify_on_enter,
+        notify_on_exit=pref.notify_on_exit,
+        watched_user_ids=pref.watched_user_ids,
     )

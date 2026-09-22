@@ -127,6 +127,7 @@ class SettingsViewModel(
         settings.setLocationFrequency(freq)
         runCatching { authRepository.registerCurrentDeviceToken() }
     }
+    fun setKnownWifiSsids(ssids: Set<String>) = viewModelScope.launch { settings.setKnownWifiSsids(ssids) }
     fun setNotifyZone(enabled: Boolean) = viewModelScope.launch {
         settings.setNotifyZoneEnabled(enabled)
         // Apagarlos aquí deja de registrar canal: el servidor vuelve a mandar "solo data", que

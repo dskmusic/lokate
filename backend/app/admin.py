@@ -1,6 +1,7 @@
 import json
 import math
 import os
+import sqlite3
 from collections import Counter
 from datetime import datetime, timedelta, timezone
 from pathlib import Path
@@ -325,6 +326,53 @@ class FileDeleteAllView(BaseView):
         )
 
 
+def _vacuum_sqlite() -> None:
+    """Devuelve al disco el espacio de las filas borradas. Dos vueltas de tuerca: SQLite no lo
+    suelta por su cuenta, y en modo WAL ni siquiera encoge el fichero mientras alguien lo tenga
+    abierto — de ahi el dispose(), que cierra el pool de conexiones de SQLAlchemy para quedarse
+    a solas con la base. Si justo hay otra peticion escribiendo, se queda sin compactar y ya
+    esta: las filas siguen borradas igual, que es lo que importa."""
+    path = engine.url.database
+    if not engine.url.drivername.startswith("sqlite") or not path:
+        return
+    engine.dispose()
+    try:
+        con = sqlite3.connect(path, timeout=15)
+        try:
+            con.execute("PRAGMA journal_mode=DELETE")
+            con.execute("VACUUM")
+            con.execute("PRAGMA journal_mode=WAL")
+        finally:
+            con.close()
+    except sqlite3.Error:
+        pass
+
+
+class LocationsPurgeView(BaseView):
+    """Ruta propia (oculta) por la misma razón que BackupsView explica arriba."""
+
+    name = "Vaciar ubicaciones"
+
+    def is_visible(self, request: Request) -> bool:
+        return False
+
+    @expose("/locations/purge", identity="locations-purge", methods=["POST"])
+    async def purge(self, request: Request):
+        """Borra TODAS las posiciones guardadas, para empezar a contar de cero. Usuarios,
+        grupos y zonas se quedan intactos; el estado de zonas sí se borra porque se deduce de
+        las posiciones (si no, nadie "entraría" en una zona en la que el servidor cree que ya
+        está). El historial que cada móvil tenga cacheado en local no se toca."""
+        db = SessionLocal()
+        try:
+            db.query(models.ZoneState).delete()
+            db.query(models.LocationPing).delete()
+            db.commit()
+        finally:
+            db.close()
+        _vacuum_sqlite()
+        return RedirectResponse(request.url_for("admin:dashboard"), status_code=303)
+
+
 class UserAvatarUploadView(BaseView):
     """Subir avatar a un usuario desde el propio panel, sin tener que escribir la URL a mano.
     Solo se llega desde el icono 📷 de la lista de usuarios — no aparece como opción del menú."""
@@ -558,6 +606,7 @@ def register_admin(app: FastAPI) -> None:
     admin.add_view(FileDeleteAllView)
     admin.add_view(GroupAdmin)
     admin.add_view(UserAdmin)
+    admin.add_view(LocationsPurgeView)
     admin.add_view(UserAvatarUploadView)
     admin.add_view(SetLocaleView)
     admin.add_view(ZoneAdmin)

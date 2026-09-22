@@ -27,6 +27,7 @@ import com.dskmusic.lokate.data.remote.dto.GroupMemberDto
 import com.dskmusic.lokate.data.remote.dto.LocationDto
 import com.dskmusic.lokate.data.remote.dto.LocationHistoryPointDto
 import com.dskmusic.lokate.data.remote.dto.LocationPingRequestDto
+import com.dskmusic.lokate.data.remote.dto.LocationPingResponseDto
 import com.dskmusic.lokate.data.remote.dto.LoginRequestDto
 import com.dskmusic.lokate.data.remote.dto.RegisterDeviceRequestDto
 import com.dskmusic.lokate.data.remote.dto.RegisterRequestDto
@@ -100,7 +101,7 @@ interface ApiService {
     suspend fun sendTestNotification(@Body body: TestNotificationRequestDto)
 
     @POST("location/ping")
-    suspend fun ping(@Body body: LocationPingRequestDto)
+    suspend fun ping(@Body body: LocationPingRequestDto): LocationPingResponseDto
 
     @GET("location/group/latest")
     suspend fun groupLatestLocations(): List<LocationDto>
@@ -121,6 +122,10 @@ interface ApiService {
 
     @POST("location/request-location/{userId}")
     suspend fun requestLocation(@Path("userId") userId: String)
+
+    /** Pone (o quita) a otro miembro en tiempo real mientras lo sigamos en el mapa. */
+    @POST("location/live/{userId}")
+    suspend fun setLiveTracking(@Path("userId") userId: String, @Query("active") active: Boolean)
 
     @GET("zones")
     suspend fun listZones(): List<ZoneDto>

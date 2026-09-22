@@ -69,6 +69,12 @@ data class LocationPingRequestDto(
     val config_issues: String?,
 )
 
+/** Lo único que el servidor contesta al ping: cuántos segundos quedan de seguimiento en vivo
+ * (0 = nadie nos está siguiendo). Ver [com.dskmusic.lokate.location.LiveTracking]. */
+data class LocationPingResponseDto(
+    val live_seconds: Int = 0,
+)
+
 data class LocationDto(
     val user_id: String,
     val display_name: String,
@@ -88,6 +94,10 @@ data class LocationDto(
      * miembro tiene sin configurar. Cadena vacía = todo correcto; null = su app es anterior a
      * esta versión y no lo manda (se muestra como "desconocido"). */
     val config_issues: String?,
+    /** Segundos que le quedan a ese miembro de seguimiento en vivo (0 = ninguno). Mientras sea
+     * >0 su móvil está en tiempo real, mande lo que mande [location_frequency]: es la
+     * confirmación de que la orden de "seguir" prendió de verdad en el otro móvil. */
+    val live_seconds: Int = 0,
 )
 
 data class LocationHistoryPointDto(
@@ -102,8 +112,6 @@ data class ZoneCreateRequestDto(
     val lat: Double,
     val lng: Double,
     val radius_m: Double,
-    /** Miembros cuyos movimientos avisan en esta zona. Vacía = todo el grupo. */
-    val watched_user_ids: List<String> = emptyList(),
 )
 
 data class ZoneDto(
@@ -112,18 +120,23 @@ data class ZoneDto(
     val lat: Double,
     val lng: Double,
     val radius_m: Double,
-    val watched_user_ids: List<String> = emptyList(),
+    // Puede faltar si el servidor es anterior a que se expusiera: solo se usa para ordenar.
+    val created_at: String? = null,
 )
 
+/** Ajustes de avisos de una zona para ESTE usuario: son suyos, no los comparte con el grupo. */
 data class ZoneNotificationPrefDto(
     val zone_id: String,
     val notify_on_enter: Boolean,
     val notify_on_exit: Boolean,
+    /** De quién quiere que le avisen en esta zona. Vacía = de todo el grupo. */
+    val watched_user_ids: List<String> = emptyList(),
 )
 
 data class ZoneNotificationPrefUpdateRequestDto(
     val notify_on_enter: Boolean,
     val notify_on_exit: Boolean,
+    val watched_user_ids: List<String> = emptyList(),
 )
 
 data class UpdateProfileRequestDto(val display_name: String)

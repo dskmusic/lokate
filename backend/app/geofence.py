@@ -72,18 +72,18 @@ def distance_m(lat1: float, lng1: float, lat2: float, lng2: float) -> float:
     return 2 * EARTH_RADIUS_M * atan2(sqrt(a), sqrt(1 - a))
 
 
-def watches(zone: models.Zone, user_id: str) -> bool:
-    """¿Los movimientos de este usuario avisan en esta zona? Zona sin lista = avisa de todos,
-    incluidos los que entren en el grupo después de crearla."""
-    watched = zone.watched_user_ids
-    return not watched or user_id in watched
+def watches(watched_ids: list[str], user_id: str) -> bool:
+    """¿Los movimientos de este usuario disparan este aviso? Lista vacía = avisa de todos,
+    incluidos los que entren en el grupo más adelante."""
+    return not watched_ids or user_id in watched_ids
 
 
-def _notification_recipients(db: Session, group_id: str, exclude_user_id: str, zone_id: str, is_inside: bool) -> list[str]:
-    """Miembros del grupo (menos quien se ha movido) que quieren avisos de esta zona en esta dirección.
-    Sin fila de preferencia guardada para un usuario+zona, se asume que NO quiere avisos — el
-    usuario tiene que activarlos explícitamente, no vienen activados por defecto."""
-    members = db.query(models.User).filter(models.User.group_id == group_id, models.User.id != exclude_user_id).all()
+def _notification_recipients(db: Session, group_id: str, moved_user_id: str, zone_id: str, is_inside: bool) -> list[str]:
+    """Miembros del grupo (menos quien se ha movido) que quieren avisos de esta zona en esta
+    dirección Y de esta persona. Sin fila de preferencia guardada para un usuario+zona, se asume
+    que NO quiere avisos — el usuario tiene que activarlos explícitamente, no vienen activados
+    por defecto. Cada uno tiene su propia lista: es un ajuste de su móvil, no de la zona."""
+    members = db.query(models.User).filter(models.User.group_id == group_id, models.User.id != moved_user_id).all()
     if not members:
         return []
 
@@ -98,9 +98,10 @@ def _notification_recipients(db: Session, group_id: str, exclude_user_id: str, z
     recipients = []
     for member in members:
         pref = prefs.get(member.id)
-        wants_enter = pref.notify_on_enter if pref else False
-        wants_exit = pref.notify_on_exit if pref else False
-        if (is_inside and wants_enter) or (not is_inside and wants_exit):
+        if pref is None:
+            continue
+        wants = pref.notify_on_enter if is_inside else pref.notify_on_exit
+        if wants and watches(pref.watched_user_ids, moved_user_id):
             recipients.append(member.id)
     return recipients
 
@@ -151,10 +152,6 @@ def check_zone_transitions(
             recipients = [uid for uid in recipients_override if uid != user.id]
         elif user.is_hidden_in(user.group_id):
             # Escondido en este grupo: sus idas y venidas no avisan a nadie.
-            recipients = []
-        elif not watches(zone, user.id):
-            # La zona solo vigila a otros: se guarda el estado (para no soltar el aviso atrasado
-            # si luego se le añade a la lista) pero no se avisa a nadie.
             recipients = []
         else:
             recipients = _notification_recipients(db, user.group_id, user.id, zone.id, is_inside)

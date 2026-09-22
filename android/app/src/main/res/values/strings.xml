@@ -17,6 +17,8 @@
     <string name="onboarding_location_desc">Lokate necesita tu ubicación para mostrarte en el mapa a tu familia.</string>
     <string name="onboarding_background_location_title">Ubicación en segundo plano</string>
     <string name="onboarding_background_location_desc">Para seguir compartiendo tu ubicación aunque no tengas la app abierta, Android pedirá que elijas \"Permitir todo el tiempo\".</string>
+    <string name="onboarding_activity_title">Ahorro de batería inteligente</string>
+    <string name="onboarding_activity_desc">Con este permiso la app nota que el móvil lleva un rato quieto y deja de pedir la ubicación tan a menudo, sin que el grupo deje de verte. Solo se mira el sensor de movimiento: no se guarda qué estás haciendo. Si lo rechazas, la app funciona igual pero gasta más.</string>
     <string name="onboarding_notifications_title">Notificaciones</string>
     <string name="onboarding_notifications_desc">Te avisaremos cuando alguien de tu familia entre o salga de una zona guardada.</string>
     <string name="onboarding_dnd_title">Sonar aunque esté en silencio</string>
@@ -77,7 +79,8 @@
 
     <!-- Gente -->
     <string name="people_title">Gente</string>
-    <string name="people_empty">Todavía no hay miembros con ubicación</string>
+    <string name="people_empty">Todavía no hay miembros en el grupo</string>
+    <string name="people_no_location">Sin ubicación todavía</string>
     <string name="open_in_google_maps">Ver en Google Maps</string>
     <string name="locate_me">Dónde estoy</string>
     <string name="map_style_button">Estilo de mapa</string>
@@ -100,13 +103,20 @@
     <string name="last_seen_label">Última actualización:\n%1$s</string>
     <string name="update_frequency_label">Actualiza: %1$s</string>
     <string name="frequency_short_high">en tiempo real</string>
+    <string name="frequency_short_30_sec">cada 30 s</string>
+    <string name="frequency_short_1_min">cada minuto</string>
     <string name="frequency_short_balanced">cada 2 min</string>
+    <string name="frequency_short_5_min">cada 5 min</string>
     <string name="frequency_short_battery_saver">cada 10 min</string>
     <string name="frequency_short_unknown">frecuencia desconocida</string>
+    <!-- Lo que se enseña en lugar de su frecuencia mientras alguien lo sigue en vivo: su móvil
+         está en tiempo real aunque tenga otra cosa configurada. -->
+    <string name="frequency_short_live">en tiempo real (siguiéndolo)</string>
     <string name="frequency_disabled">Deshabilitado</string>
     <string name="frequency_disabled_confirm_title">¿Deshabilitar las actualizaciones?</string>
     <string name="frequency_disabled_confirm_body">Tu dispositivo dejará de enviar su ubicación y nadie de tu grupo podrá verte ni pedirte una ubicación puntual. Puedes volver a activarlo en cualquier momento desde aquí.</string>
     <string name="frequency_short_disabled">actualizaciones desactivadas</string>
+    <string name="frequency_short_on_demand">solo cuando se la piden</string>
     <!-- Estado de configuración del móvil de un miembro (ficha de miembro) -->
     <string name="config_status_ok">Configuración correcta</string>
     <string name="config_status_unknown">Configuración desconocida (app sin actualizar)</string>
@@ -119,6 +129,7 @@
     <string name="config_issue_battery">Optimización de batería activa: Android puede cerrar la app</string>
     <string name="config_issue_gps_off">Ubicación del sistema (GPS) apagada</string>
     <string name="config_issue_dnd">Sin acceso a No molestar: puede que no suene al localizarlo si está en silencio</string>
+    <string name="config_issue_activity">Sin permiso de actividad física: la app no sabe cuándo está quieto y gasta más batería</string>
     <string name="permissions_all_ok">Todo correcto: no falta ningún permiso</string>
     <string name="test_notification_confirm_title">¿Enviar notificación de prueba?</string>
     <string name="test_notification_confirm_body">Se enviará una notificación de prueba al dispositivo de %1$s.</string>
@@ -231,6 +242,12 @@
     <string name="settings_language_en">English</string>
     <string name="settings_accent_color">Color de acento</string>
     <string name="settings_update_frequency">Frecuencia de actualización de ubicación</string>
+    <string name="settings_known_wifi">Wifi de casa</string>
+    <string name="settings_known_wifi_desc">Conectado a uno de estos wifis, la ubicación se pide cada 15 minutos en vez de al ritmo elegido: si estás en casa, no hace falta preguntar tan seguido. Al salir y empezar a moverte vuelve sola al ritmo normal.</string>
+    <string name="settings_known_wifi_add">Añadir el wifi actual (%1$s)</string>
+    <string name="settings_known_wifi_none">Conéctate a un wifi (con la ubicación del sistema encendida) para poder añadirlo</string>
+    <string name="settings_known_wifi_manual">O escribe el nombre de la red</string>
+    <string name="settings_known_wifi_manual_add">Añadir</string>
     <string name="settings_map_zoom">Zoom inicial del mapa</string>
     <string name="settings_map_zoom_value">Nivel %1$d</string>
     <string name="settings_map_zoom_reset">Restablecer</string>
@@ -272,8 +289,12 @@
     <string name="settings_server_url_reset">Restaurar por defecto</string>
 
     <string name="frequency_high">Tiempo real (como Localizar mi dispositivo, más batería)</string>
+    <string name="frequency_30_sec">Cada 30 segundos</string>
+    <string name="frequency_1_min">Cada minuto (recomendado)</string>
     <string name="frequency_balanced">Equilibrado (cada 2 min)</string>
+    <string name="frequency_5_min">Cada 5 minutos</string>
     <string name="frequency_battery_saver">Ahorro de batería (cada 10 min)</string>
+    <string name="frequency_on_demand">Solo bajo demanda (batería mínima, sin avisos de zona)</string>
 
     <string name="error_generic">Algo ha ido mal. Inténtalo de nuevo.</string>
     <string name="error_network">No se pudo conectar con el servidor.</string>
@@ -362,13 +383,15 @@
     <string name="place_search_not_found">No se ha encontrado nada</string>
     <string name="place_search_failed">No se ha podido buscar. Comprueba la conexión.</string>
     <string name="zone_map_hint">Toca el mapa para elegir el centro de la zona, o búscalo arriba</string>
-    <string name="zone_watch_title">Avisar de estos miembros</string>
-    <string name="zone_watch_hint">Con todos marcados, la zona avisa de cualquiera del grupo, incluido quien entre más adelante.</string>
+    <string name="zone_watch_title">Avisarme de estos miembros</string>
+    <string name="zone_watch_hint">Solo para este dispositivo: cada móvil elige de quién quiere que le avisen. Con todos marcados, avisa de cualquiera del grupo, incluido quien entre más adelante.</string>
     <string name="zone_watch_empty">Marca al menos un miembro</string>
 
     <!-- Distancia y orden de la lista de gente -->
     <string name="distance_from_you">a %1$s de ti</string>
     <string name="distance_unknown">distancia desconocida</string>
+    <string name="list_search_hint">Buscar por nombre</string>
+    <string name="list_search_close">Cerrar el buscador</string>
     <string name="people_sort_label">Ordenar por</string>
     <string name="people_sort_name">Nombre</string>
     <string name="people_sort_distance">Cercanía</string>

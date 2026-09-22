@@ -66,7 +66,7 @@ class User(Base):
     # Grupos (ids separados por comas) en los que este usuario NO quiere que le vean: no sale en
     # la lista de miembros ni en el mapa de los demás, y sus entradas y salidas de zona no avisan.
     # Es para que un administrador pueda entrar a mirar un grupo sin aparecer en él.
-    # ponytail: CSV como watched_ids de las zonas, son un puñado de ids y siempre se leen enteros.
+    # ponytail: CSV como los watched_ids de las preferencias, son un puñado de ids y siempre se leen enteros.
     hidden_group_ids = Column(String, nullable=True)
     created_at = Column(DateTime, default=utcnow)
 
@@ -115,17 +115,8 @@ class Zone(Base):
     radius_m = Column(Float, nullable=False)
     created_by = Column(String, ForeignKey("users.id"), nullable=False)
     created_at = Column(DateTime, default=utcnow)
-    # Quién dispara los avisos de esta zona, separados por comas. Vacío o NULL = todo el grupo,
-    # que es lo que quiere casi siempre y lo único que puede valer para los miembros que entren
-    # en el grupo después de crear la zona.
-    # ponytail: CSV en vez de tabla puente — son cuatro ids por zona y siempre se leen enteros.
-    watched_ids = Column(String, nullable=True)
 
     group = relationship("Group", back_populates="zones")
-
-    @property
-    def watched_user_ids(self) -> list[str]:
-        return [uid for uid in (self.watched_ids or "").split(",") if uid]
 
     def __str__(self) -> str:  # legible en el panel admin
         return self.name
@@ -143,8 +134,9 @@ class ZoneState(Base):
 
 
 class ZoneNotificationPref(Base):
-    """Por usuario y zona: si quiere que le avisen al entrar y/o al salir. Sin fila = ninguno
-    activado — el usuario tiene que activarlos él mismo, no vienen activados por defecto."""
+    """Por usuario y zona: si quiere que le avisen al entrar y/o al salir, y de quién. Sin fila =
+    ninguno activado — el usuario tiene que activarlos él mismo, no vienen activados por defecto.
+    Todo es de ese usuario: cada móvil elige sus avisos sin tocar los de los demás."""
 
     __tablename__ = "zone_notification_prefs"
 
@@ -152,5 +144,13 @@ class ZoneNotificationPref(Base):
     zone_id = Column(String, ForeignKey("zones.id"), primary_key=True)
     notify_on_enter = Column(Boolean, nullable=False, default=False)
     notify_on_exit = Column(Boolean, nullable=False, default=False)
+    # De quién quiere que le avisen en esta zona, ids separados por comas. Vacío o NULL = de todo
+    # el grupo, incluidos los que entren después.
+    # ponytail: CSV en vez de tabla puente — son cuatro ids y siempre se leen enteros.
+    watched_ids = Column(String, nullable=True)
+
+    @property
+    def watched_user_ids(self) -> list[str]:
+        return [uid for uid in (self.watched_ids or "").split(",") if uid]
 
 

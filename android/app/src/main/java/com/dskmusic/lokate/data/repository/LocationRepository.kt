@@ -5,6 +5,7 @@ import com.dskmusic.lokate.data.local.LocationHistoryEntity
 import com.dskmusic.lokate.data.remote.ApiService
 import com.dskmusic.lokate.data.remote.dto.LocationDto
 import com.dskmusic.lokate.data.remote.dto.LocationPingRequestDto
+import com.dskmusic.lokate.location.LiveTracking
 import com.dskmusic.lokate.util.LocationFrequency
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -35,7 +36,10 @@ class LocationRepository(
         status: DeviceStatus,
         frequency: LocationFrequency,
     ) = withContext(Dispatchers.IO) {
-        api.ping(
+        // La respuesta del ping es por donde llegan tanto la renovación como el fin del
+        // seguimiento en vivo: se aplica aquí, que es por donde pasan todos los que pingean
+        // (servicio, worker de respaldo y petición puntual).
+        val response = api.ping(
             LocationPingRequestDto(
                 lat = lat,
                 lng = lng,
@@ -48,6 +52,7 @@ class LocationRepository(
                 config_issues = status.configIssues,
             ),
         )
+        LiveTracking.update(response.live_seconds)
     }
 
     suspend fun groupLatest(): List<LocationDto> = withContext(Dispatchers.IO) { api.groupLatestLocations() }
@@ -57,6 +62,9 @@ class LocationRepository(
     suspend fun stopRing(userId: String) = withContext(Dispatchers.IO) { api.stopRing(userId) }
 
     suspend fun requestLocation(userId: String) = withContext(Dispatchers.IO) { api.requestLocation(userId) }
+
+    suspend fun setLiveTracking(userId: String, active: Boolean) =
+        withContext(Dispatchers.IO) { api.setLiveTracking(userId, active) }
 
     /** [fromIso]/[toIso]: instantes UTC en ISO-8601 (calculados en el cliente para respetar
      * su huso horario) — un día concreto ("ayer", "hoy" o una fecha elegida). */

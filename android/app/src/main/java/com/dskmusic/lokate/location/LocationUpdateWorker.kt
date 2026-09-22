@@ -10,7 +10,6 @@ import androidx.work.WorkerParameters
 import androidx.work.Constraints
 import com.dskmusic.lokate.di.ServiceLocator
 import com.dskmusic.lokate.util.Constants
-import com.dskmusic.lokate.util.LocationFrequency
 import kotlinx.coroutines.flow.first
 import java.util.concurrent.TimeUnit
 
@@ -33,7 +32,7 @@ class LocationUpdateWorker(context: Context, params: WorkerParameters) : Corouti
         // Con el envío desactivado no hay nada que arrancar (el servicio se pararía solo al
         // leerlo). Y arrancar un foreground service desde aquí puede fallar en Android 12+ por
         // estar la app en segundo plano: que ese fallo no se lleve por delante el latido.
-        if (locator.settings.locationFrequency.first() != LocationFrequency.DISABLED) {
+        if (locator.settings.locationFrequency.first().sendsPeriodicUpdates) {
             runCatching { LocationServiceController.ensureStarted(applicationContext) }
         }
         return Result.success()

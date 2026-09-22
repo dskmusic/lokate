@@ -25,6 +25,7 @@ import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -74,6 +75,7 @@ import com.dskmusic.lokate.di.ServiceLocator
 import com.dskmusic.lokate.location.LocationServiceController
 import com.dskmusic.lokate.ui.common.AvatarPicker
 import com.dskmusic.lokate.ui.theme.AccentPresets
+import com.dskmusic.lokate.util.DeviceStatusUtils
 import com.dskmusic.lokate.util.LocationFrequency
 import com.dskmusic.lokate.util.MapStyle
 import com.dskmusic.lokate.util.PermissionUtils
@@ -96,7 +98,10 @@ fun SettingsScreen(
 
     val themeMode by locator.settings.themeMode.collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
     val accentArgb by locator.settings.accentColor.collectAsStateWithLifecycle(initialValue = SettingsDataStore.DEFAULT_ACCENT)
-    val frequency by locator.settings.locationFrequency.collectAsStateWithLifecycle(initialValue = LocationFrequency.REAL_TIME)
+    val frequency by locator.settings.locationFrequency.collectAsStateWithLifecycle(initialValue = LocationFrequency.EVERY_1_MIN)
+    val knownWifi by locator.settings.knownWifiSsids.collectAsStateWithLifecycle(initialValue = emptySet())
+    val currentSsid by remember { DeviceStatusUtils.wifiSsidFlow(context) }
+        .collectAsStateWithLifecycle(initialValue = null)
     val notifyZone by locator.settings.notifyZoneEnabled.collectAsStateWithLifecycle(initialValue = true)
     val notifySystem by locator.settings.notifySystemEnabled.collectAsStateWithLifecycle(initialValue = true)
     val serverUrlOverride by locator.settings.serverBaseUrlOverride.collectAsStateWithLifecycle(initialValue = null)
@@ -261,23 +266,78 @@ fun SettingsScreen(
                             showDisableUpdatesConfirm = true
                         } else {
                             viewModel.setLocationFrequency(freq)
-                            LocationServiceController.ensureStarted(context)
+                            // Solo bajo demanda no manda nada por su cuenta: el servicio sobra,
+                            // responde el push cuando alguien pide la ubicación.
+                            if (freq.sendsPeriodicUpdates) {
+                                LocationServiceController.ensureStarted(context)
+                            } else {
+                                LocationServiceController.stop(context)
+                            }
                         }
                     }
-                    listOf(
-                        LocationFrequency.REAL_TIME to stringResource(R.string.frequency_high),
-                        LocationFrequency.BALANCED to stringResource(R.string.frequency_balanced),
-                        LocationFrequency.BATTERY_SAVER to stringResource(R.string.frequency_battery_saver),
-                        LocationFrequency.DISABLED to stringResource(R.string.frequency_disabled),
-                    ).forEach { (freq, label) ->
+                    LocationFrequency.entries.forEach { freq ->
                         Row(
                             modifier = Modifier.fillMaxWidth().clickable { pick(freq) }.padding(vertical = 8.dp),
                             verticalAlignment = Alignment.CenterVertically,
                         ) {
                             RadioButton(selected = frequency == freq, onClick = { pick(freq) })
-                            Text(label)
+                            Text(stringResource(freq.labelRes))
                         }
                     }
+                }
+            }
+
+            item { HorizontalDivider() }
+            item { SectionTitle(stringResource(R.string.settings_known_wifi)) }
+            item {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                    Text(
+                        stringResource(R.string.settings_known_wifi_desc),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    knownWifi.sorted().forEach { ssid ->
+                        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                            Text(ssid, modifier = Modifier.weight(1f))
+                            IconButton(onClick = { viewModel.setKnownWifiSsids(knownWifi - ssid) }) {
+                                Icon(Icons.Filled.Close, contentDescription = stringResource(R.string.delete))
+                            }
+                        }
+                    }
+                    val ssid = currentSsid
+                    OutlinedButton(
+                        onClick = { ssid?.let { viewModel.setKnownWifiSsids(knownWifi + it) } },
+                        enabled = ssid != null && ssid !in knownWifi,
+                    ) {
+                        Text(
+                            if (ssid == null) {
+                                stringResource(R.string.settings_known_wifi_none)
+                            } else {
+                                stringResource(R.string.settings_known_wifi_add, ssid)
+                            },
+                        )
+                    }
+                    // Hay móviles en los que Android no suelta el nombre de la red ni con los
+                    // permisos dados: ahí queda escribirlo a mano.
+                    var manual by remember { mutableStateOf("") }
+                    OutlinedTextField(
+                        value = manual,
+                        onValueChange = { manual = it },
+                        label = { Text(stringResource(R.string.settings_known_wifi_manual)) },
+                        singleLine = true,
+                        modifier = Modifier.fillMaxWidth(),
+                        trailingIcon = {
+                            TextButton(
+                                onClick = {
+                                    viewModel.setKnownWifiSsids(knownWifi + manual.trim())
+                                    manual = ""
+                                },
+                                enabled = manual.isNotBlank(),
+                            ) {
+                                Text(stringResource(R.string.settings_known_wifi_manual_add))
+                            }
+                        },
+                    )
                 }
             }
 

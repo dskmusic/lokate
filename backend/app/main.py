@@ -46,6 +46,17 @@ def _add_missing_columns() -> None:
         if "watched_ids" not in zone_columns:
             conn.exec_driver_sql("ALTER TABLE zones ADD COLUMN watched_ids VARCHAR")
 
+        # "De quién avisa esta zona" pasó de ser de la zona (una lista para todo el grupo) a ser
+        # de cada usuario. La lista vieja de la zona se copia a las preferencias que ya existían
+        # para que a nadie le cambien los avisos al actualizar.
+        pref_columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(zone_notification_prefs)")}
+        if "watched_ids" not in pref_columns:
+            conn.exec_driver_sql("ALTER TABLE zone_notification_prefs ADD COLUMN watched_ids VARCHAR")
+            conn.exec_driver_sql(
+                "UPDATE zone_notification_prefs SET watched_ids = "
+                "(SELECT watched_ids FROM zones WHERE zones.id = zone_notification_prefs.zone_id)"
+            )
+
 
 _add_missing_columns()
 

@@ -136,6 +136,13 @@
         <span>{{ t('storage_total') }}</span>
         <span>{{ '%.1f'|format(disk_usage.total_bytes / 1048576) }} MB</span>
       </div>
+      <div class="list-group-item">
+        <form method="post" action="{{ url_for('admin:locations-purge') }}"
+              onsubmit="return confirm('{{ t('locations_purge_confirm') }}');">
+          <button type="submit" class="btn btn-sm btn-danger">{{ t('locations_purge') }}</button>
+          <span class="text-secondary ms-2">{{ t('locations_purge_hint') }}</span>
+        </form>
+      </div>
     </div>
   </div>
 </div>

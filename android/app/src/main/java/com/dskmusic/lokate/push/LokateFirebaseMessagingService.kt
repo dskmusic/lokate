@@ -2,6 +2,8 @@ package com.dskmusic.lokate.push
 
 import com.dskmusic.lokate.R
 import com.dskmusic.lokate.di.ServiceLocator
+import com.dskmusic.lokate.location.LiveTracking
+import com.dskmusic.lokate.location.LocationServiceController
 import com.dskmusic.lokate.util.DeviceStatusUtils
 import com.dskmusic.lokate.util.LocationFrequency
 import com.google.android.gms.location.LocationServices
@@ -26,6 +28,17 @@ class LokateFirebaseMessagingService : FirebaseMessagingService() {
         CoroutineScope(Dispatchers.IO).launch {
             runCatching { locator.authRepository.registerDevice(token) }
         }
+    }
+
+    /** Una ubicación puntual y para arriba, sin tocar el ritmo del servicio. La usan tanto la
+     * petición puntual desde la ficha de miembro como el arranque del seguimiento en vivo.
+     * Con el envío de ubicación deshabilitado no manda nada. */
+    private suspend fun pingOneShot(locator: com.dskmusic.lokate.di.ServiceLocator) {
+        val frequency = locator.settings.locationFrequency.first()
+        if (frequency == LocationFrequency.DISABLED) return
+        val location = fetchOneShotLocation(this) ?: return
+        val status = DeviceStatusUtils.read(applicationContext)
+        locator.locationRepository.ping(location.latitude, location.longitude, location.accuracy, status, frequency)
     }
 
     override fun onMessageReceived(message: RemoteMessage) {
@@ -70,15 +83,26 @@ class LokateFirebaseMessagingService : FirebaseMessagingService() {
             // miembro): totalmente silencioso, sin sonido ni notificación — solo se lee la
             // posición una vez y se sube igual que un ping normal en segundo plano.
             "request_location" -> CoroutineScope(Dispatchers.IO).launch {
-                runCatching {
-                    // Con el envío desactivado en Ajustes no se responde ni a las peticiones
-                    // puntuales: quien la pidió ve "desactivado" en la ficha del miembro.
-                    if (locator.settings.locationFrequency.first() == LocationFrequency.DISABLED) return@runCatching
-                    val location = fetchOneShotLocation(this@LokateFirebaseMessagingService) ?: return@runCatching
-                    val status = DeviceStatusUtils.read(applicationContext)
-                    val frequency = locator.settings.locationFrequency.first()
-                    locator.locationRepository.ping(location.latitude, location.longitude, location.accuracy, status, frequency)
-                }
+                // Con el envío desactivado en Ajustes no se responde ni a las peticiones
+                // puntuales: quien la pidió ve "desactivado" en la ficha del miembro.
+                runCatching { pingOneShot(locator) }
+            }
+            // Alguien nos ha puesto en seguimiento en vivo desde su mapa: silencioso, va
+            // consentido con la entrada al grupo. Solo la PRIMERA activación llega por push;
+            // las renovaciones y el fin viajan en la respuesta de cada ping.
+            "live_tracking" -> CoroutineScope(Dispatchers.IO).launch {
+                if (locator.settings.locationFrequency.first() == LocationFrequency.DISABLED) return@launch
+                LiveTracking.update(message.data["seconds"]?.toIntOrNull() ?: 0)
+                // En "solo bajo demanda" no hay servicio corriendo y hay que levantarlo: el
+                // push de alta prioridad da permiso para arrancarlo desde segundo plano. Si
+                // aun así falla (Android 12+ puede negarlo), hay que ENTERARSE: en silencio,
+                // el seguimiento en vivo no arrancaba y no había forma de saber por qué.
+                runCatching { LocationServiceController.ensureStarted(applicationContext) }
+                    .onFailure { android.util.Log.e("LokatePush", "No se pudo arrancar el servicio para el seguimiento", it) }
+                // Y una posición ya, sin esperar al primer fix del servicio: es lo que hace que
+                // quien acaba de pulsar "seguir" vea el primer tic en un par de segundos.
+                runCatching { pingOneShot(locator) }
+                    .onFailure { android.util.Log.w("LokatePush", "Seguimiento: primer ping fallido", it) }
             }
             "emergency_message" -> {
                 NotificationHelper.playRingAlarm(this, null, com.dskmusic.lokate.util.VibrationPattern.STRONG, forcePriority = true)

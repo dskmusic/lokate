@@ -29,9 +29,10 @@ object ConfigCheck {
     const val BATTERY = "battery"
     const val GPS_OFF = "gps_off"
     const val DND = "dnd"
+    const val ACTIVITY = "activity"
 
     /** Orden fijo (de más grave a menos) para que la lista se lea igual siempre. */
-    val ALL = listOf(LOCATION, BACKGROUND_LOCATION, NOTIFICATIONS, NOTIFICATION_CHANNEL, BATTERY, GPS_OFF, DND)
+    val ALL = listOf(LOCATION, BACKGROUND_LOCATION, NOTIFICATIONS, NOTIFICATION_CHANNEL, BATTERY, GPS_OFF, ACTIVITY, DND)
 
     fun issues(context: Context): List<String> = buildList {
         if (!PermissionUtils.hasForegroundLocationPermission(context)) add(LOCATION)
@@ -49,6 +50,9 @@ object ConfigCheck {
             add(NOTIFICATION_CHANNEL)
         }
         if (!PermissionUtils.isIgnoringBatteryOptimizations(context)) add(BATTERY)
+        // Sin esto la app no sabe que el móvil lleva horas quieto y sigue pidiendo ubicaciones
+        // igual: funciona todo, solo gasta más batería de la necesaria.
+        if (!PermissionUtils.hasActivityRecognitionPermission(context)) add(ACTIVITY)
         if (!isLocationEnabled(context)) add(GPS_OFF)
         // El último de la lista por ser el menos grave: solo estorba si además el móvil está en
         // silencio total, y el resto de la app funciona igual sin él.
@@ -58,7 +62,7 @@ object ConfigCheck {
     /** Los que el onboarding sabe pedir. [NOTIFICATION_CHANNEL] y [GPS_OFF] no son permisos
      * sino interruptores que el usuario enciende y apaga cuando quiere (el GPS, sin ir más
      * lejos, se apaga a diario): sacarle el onboarding por ellos no arreglaría nada. */
-    val ONBOARDABLE = listOf(LOCATION, BACKGROUND_LOCATION, NOTIFICATIONS, BATTERY, DND)
+    val ONBOARDABLE = listOf(LOCATION, BACKGROUND_LOCATION, NOTIFICATIONS, BATTERY, ACTIVITY, DND)
 
     fun onboardableIssues(context: Context): List<String> = issues(context).filter { it in ONBOARDABLE }
 

@@ -85,7 +85,8 @@ fun MapView.applyMapStyle(style: MapStyle, offlineFiles: List<File> = emptyList(
         val signature = offlineFiles.joinToString { it.name }
         // Un .map ilegible (descarga corrupta, archivo copiado a mano) hace saltar a Mapsforge al
         // abrirlo: mejor volver al mapa de internet que dejar la app tirada.
-        val ready = tag == signature || runCatching {
+        val already = tag == signature
+        val ready = already || runCatching {
             MapsForgeTileSource.createInstance(context.applicationContext as Application)
             val source = MapsForgeTileSource.createFromFiles(offlineFiles.toTypedArray())
             setTileProvider(MapsForgeTileProvider(SimpleRegisterReceiver(context), source, null))
@@ -93,13 +94,17 @@ fun MapView.applyMapStyle(style: MapStyle, offlineFiles: List<File> = emptyList(
         }.isSuccess
         if (ready) {
             mapOverlay?.setColorFilter(if (style.isDark) DARK_MODE_FILTER else null)
+            // Proveedor recién puesto: sin repintar, el mapa se queda en blanco hasta tocarlo.
+            if (!already) invalidate()
             return
         }
     }
     // Volviendo a las teselas de internet: el proveedor de Mapsforge no sabe descargar nada.
+    var changed = false
     if (tag != null) {
         setTileProvider(MapTileProviderBasic(context.applicationContext))
         tag = null
+        changed = true
     }
     val tileSource = when (style) {
         MapStyle.SATELLITE -> SatelliteTileSource
@@ -108,8 +113,14 @@ fun MapView.applyMapStyle(style: MapStyle, offlineFiles: List<File> = emptyList(
     // setTileSource vacía la caché de teselas en memoria de osmdroid: llamarlo en cada
     // recomposición (una por sondeo, ~15s) obligaba a releer de disco o volver a descargar todo
     // lo visible una y otra vez. Solo se toca si el estilo ha cambiado.
-    if (tileProvider.tileSource != tileSource) setTileSource(tileSource)
+    if (tileProvider.tileSource != tileSource) {
+        setTileSource(tileSource)
+        changed = true
+    }
     mapOverlay?.setColorFilter(if (style.isDark) DARK_MODE_FILTER else null)
+    // Cambiar de fuente deja la vista con las teselas viejas hasta el siguiente gesto: repintar
+    // ya, para que el estilo nuevo cargue sin tener que pellizcar el mapa.
+    if (changed) invalidate()
 }
 
 /** Lo que tarda el mapa en quedarse quieto tras un salto: durante el camino osmdroid va

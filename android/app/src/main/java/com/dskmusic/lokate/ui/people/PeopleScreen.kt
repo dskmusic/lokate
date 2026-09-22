@@ -20,7 +20,9 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Download
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material.icons.outlined.Info
@@ -55,6 +57,7 @@ import com.dskmusic.lokate.R
 import com.dskmusic.lokate.data.remote.absoluteAvatarUrl
 import com.dskmusic.lokate.data.remote.dto.LocationDto
 import com.dskmusic.lokate.di.ServiceLocator
+import com.dskmusic.lokate.ui.common.ListSearchField
 import com.dskmusic.lokate.ui.common.rememberMyLocation
 import com.dskmusic.lokate.ui.map.MapViewModel
 import com.dskmusic.lokate.util.MediaSaver
@@ -66,6 +69,15 @@ import kotlinx.coroutines.launch
 
 private enum class PeopleSort { NAME, DISTANCE, RECENT }
 
+/** Un miembro del grupo con su última posición, si la hay. Sin posición también sale en la
+ * lista: es justo cuando hace falta entrar en su ficha a pedírsela. */
+private data class Person(
+    val id: String,
+    val displayName: String,
+    val avatarUrl: String?,
+    val location: LocationDto?,
+)
+
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
 fun PeopleScreen(
@@ -76,26 +88,59 @@ fun PeopleScreen(
 ) {
     val viewModel = remember { MapViewModel(locator.locationRepository, locator.zoneRepository, locator.groupRepository) }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    var photoMember by remember { mutableStateOf<LocationDto?>(null) }
+    var photoMember by remember { mutableStateOf<Person?>(null) }
     var sort by remember { mutableStateOf(PeopleSort.NAME) }
+    // null = buscador cerrado; "" = abierto y vacío.
+    var query by remember { mutableStateOf<String?>(null) }
     val myLocation = rememberMyLocation()
 
-    val members = remember(state.members, sort, myLocation) {
+    val members = remember(state.members, state.groupMembers, sort, myLocation, query) {
+        val byId = state.members.associateBy { it.user_id }
+        // La lista manda la del grupo; las posiciones solo rellenan. Si aún no ha llegado (o
+        // falló), se tira de las posiciones para no dejar la pantalla vacía.
+        val all = if (state.groupMembers.isEmpty()) {
+            state.members.map { Person(it.user_id, it.display_name, it.avatar_url, it) }
+        } else {
+            state.groupMembers.map { Person(it.id, it.display_name, it.avatar_url, byId[it.id]) }
+        }
+        val text = query?.trim().orEmpty()
+        val found = if (text.isEmpty()) all
+        else all.filter { it.displayName.contains(text, ignoreCase = true) }
         when (sort) {
-            PeopleSort.NAME -> state.members.sortedBy { it.display_name.lowercase() }
-            PeopleSort.RECENT -> state.members.sortedByDescending { parseIsoDate(it.timestamp)?.time ?: 0L }
+            PeopleSort.NAME -> found.sortedBy { it.displayName.lowercase() }
+            PeopleSort.RECENT -> found.sortedByDescending {
+                it.location?.let { l -> parseIsoDate(l.timestamp)?.time } ?: 0L
+            }
+            // Quien no tiene posición no tiene distancia: al final de la lista.
             PeopleSort.DISTANCE -> myLocation?.let { me ->
-                state.members.sortedBy { distanceMeters(me.latitude, me.longitude, it.lat, it.lng) }
-            } ?: state.members
+                found.sortedBy {
+                    it.location?.let { l -> distanceMeters(me.latitude, me.longitude, l.lat, l.lng) }
+                        ?: Float.MAX_VALUE
+                }
+            } ?: found
         }
     }
 
     Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.people_title)) },
+                title = {
+                    val text = query
+                    if (text == null) Text(stringResource(R.string.people_title))
+                    else ListSearchField(text) { query = it }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = null) }
+                },
+                actions = {
+                    IconButton(onClick = { query = if (query == null) "" else null }) {
+                        Icon(
+                            if (query == null) Icons.Filled.Search else Icons.Filled.Close,
+                            contentDescription = stringResource(
+                                if (query == null) R.string.place_search_action else R.string.list_search_close,
+                            ),
+                        )
+                    }
                 },
             )
         },
@@ -105,7 +150,7 @@ fun PeopleScreen(
             return@Scaffold
         }
 
-        if (state.members.isEmpty()) {
+        if (members.isEmpty()) {
             Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
                 Text(stringResource(R.string.people_empty))
             }
@@ -140,13 +185,15 @@ fun PeopleScreen(
             }
             HorizontalDivider()
             LazyColumn(modifier = Modifier.fillMaxSize()) {
-                items(members, key = { it.user_id }) { member ->
+                items(members, key = { it.id }) { member ->
                     PersonRow(
                         member = member,
-                        distance = myLocation?.let { distanceMeters(it.latitude, it.longitude, member.lat, member.lng) },
-                        onClick = { onSelectMember(member.user_id) },
+                        distance = myLocation?.let { me ->
+                            member.location?.let { distanceMeters(me.latitude, me.longitude, it.lat, it.lng) }
+                        },
+                        onClick = { onSelectMember(member.id) },
                         onAvatarClick = { photoMember = member },
-                        onOpenDetail = { onOpenDetail(member.user_id) },
+                        onOpenDetail = { onOpenDetail(member.id) },
                     )
                     HorizontalDivider()
                 }
@@ -161,7 +208,7 @@ fun PeopleScreen(
 
 @Composable
 private fun PersonRow(
-    member: LocationDto,
+    member: Person,
     distance: Float?,
     onClick: () -> Unit,
     onAvatarClick: () -> Unit,
@@ -172,7 +219,7 @@ private fun PersonRow(
         verticalAlignment = Alignment.CenterVertically,
     ) {
         AsyncImage(
-            model = absoluteAvatarUrl(member.avatar_url),
+            model = absoluteAvatarUrl(member.avatarUrl),
             contentDescription = null,
             contentScale = ContentScale.Crop,
             modifier = Modifier.size(64.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant)
@@ -180,43 +227,61 @@ private fun PersonRow(
         )
         Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f)) {
-            Text(member.display_name, style = MaterialTheme.typography.titleMedium)
-            Spacer(Modifier.width(2.dp))
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Icon(
-                    if (member.is_charging == true) Icons.Filled.BatteryChargingFull else Icons.Filled.BatteryFull,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                )
-                Text(
-                    member.battery_level?.let { "$it%" } ?: stringResource(R.string.battery_unknown),
-                    style = MaterialTheme.typography.bodySmall,
-                )
-                Text("·", style = MaterialTheme.typography.bodySmall)
-                Text(formatRelativeTime(member.timestamp), style = MaterialTheme.typography.bodySmall)
-            }
-            distance?.let {
+            Text(member.displayName, style = MaterialTheme.typography.titleMedium)
+            val location = member.location
+            if (location == null) {
+                // Sin posición no hay batería, hora ni wifi que enseñar: queda entrar en la
+                // ficha y pedirle una con el botón de actualizar.
+                Spacer(Modifier.width(2.dp))
+                Text(stringResource(R.string.people_no_location), style = MaterialTheme.typography.bodySmall)
+            } else {
                 Spacer(Modifier.width(2.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                    Icon(Icons.Filled.Place, contentDescription = null, modifier = Modifier.size(16.dp))
+                    Icon(
+                        if (location.is_charging == true) Icons.Filled.BatteryChargingFull else Icons.Filled.BatteryFull,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                    )
                     Text(
-                        stringResource(R.string.distance_from_you, formatDistance(it)),
+                        location.battery_level?.let { "$it%" } ?: stringResource(R.string.battery_unknown),
+                        style = MaterialTheme.typography.bodySmall,
+                    )
+                    Text("·", style = MaterialTheme.typography.bodySmall)
+                    Text(formatRelativeTime(location.timestamp), style = MaterialTheme.typography.bodySmall)
+                    // Alguien lo tiene en seguimiento en vivo: su móvil está en tiempo real
+                    // ahora mismo, tenga puesto lo que tenga puesto en sus ajustes.
+                    if (location.live_seconds > 0) {
+                        Text("·", style = MaterialTheme.typography.bodySmall)
+                        Text(
+                            stringResource(R.string.frequency_short_live),
+                            style = MaterialTheme.typography.bodySmall,
+                            color = MaterialTheme.colorScheme.primary,
+                        )
+                    }
+                }
+                distance?.let {
+                    Spacer(Modifier.width(2.dp))
+                    Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                        Icon(Icons.Filled.Place, contentDescription = null, modifier = Modifier.size(16.dp))
+                        Text(
+                            stringResource(R.string.distance_from_you, formatDistance(it)),
+                            style = MaterialTheme.typography.bodySmall,
+                        )
+                    }
+                }
+                Spacer(Modifier.width(2.dp))
+                Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    Icon(
+                        if (location.wifi_connected == true) Icons.Filled.Wifi else Icons.Filled.WifiOff,
+                        contentDescription = null,
+                        modifier = Modifier.size(16.dp),
+                    )
+                    Text(
+                        if (location.wifi_connected == true) location.wifi_ssid ?: stringResource(R.string.wifi_connected_label)
+                        else stringResource(R.string.wifi_not_connected_label),
                         style = MaterialTheme.typography.bodySmall,
                     )
                 }
-            }
-            Spacer(Modifier.width(2.dp))
-            Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
-                Icon(
-                    if (member.wifi_connected == true) Icons.Filled.Wifi else Icons.Filled.WifiOff,
-                    contentDescription = null,
-                    modifier = Modifier.size(16.dp),
-                )
-                Text(
-                    if (member.wifi_connected == true) member.wifi_ssid ?: stringResource(R.string.wifi_connected_label)
-                    else stringResource(R.string.wifi_not_connected_label),
-                    style = MaterialTheme.typography.bodySmall,
-                )
             }
         }
         IconButton(onClick = onOpenDetail) {
@@ -226,12 +291,12 @@ private fun PersonRow(
 }
 
 @Composable
-private fun AvatarPreviewDialog(member: LocationDto, onDismiss: () -> Unit) {
+private fun AvatarPreviewDialog(member: Person, onDismiss: () -> Unit) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     var saving by remember { mutableStateOf(false) }
     var saveMessage by remember { mutableStateOf<String?>(null) }
-    val avatarUrl = absoluteAvatarUrl(member.avatar_url)
+    val avatarUrl = absoluteAvatarUrl(member.avatarUrl)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -260,8 +325,8 @@ private fun AvatarPreviewDialog(member: LocationDto, onDismiss: () -> Unit) {
                     saving = true
                     scope.launch {
                         val ok = runCatching {
-                            val file = MediaSaver.downloadToCache(context, url, "${member.display_name}.jpg")
-                            MediaSaver.saveToDevice(context, file, "image/jpeg", "${member.display_name}.jpg")
+                            val file = MediaSaver.downloadToCache(context, url, "${member.displayName}.jpg")
+                            MediaSaver.saveToDevice(context, file, "image/jpeg", "${member.displayName}.jpg")
                         }.getOrDefault(false)
                         saveMessage = context.getString(if (ok) R.string.emergency_media_saved else R.string.emergency_media_error)
                         saving = false

@@ -24,6 +24,17 @@ object PermissionUtils {
             PackageManager.PERMISSION_GRANTED
     }
 
+    /**
+     * Reconocimiento de actividad: lo que permite saber que el móvil lleva un rato quieto para
+     * espaciar las ubicaciones (ver LocationForegroundService). Hasta Android 9 el permiso lo
+     * daba Play Services al instalar, sin diálogo, así que ahí siempre está concedido.
+     */
+    fun hasActivityRecognitionPermission(context: Context): Boolean {
+        if (Build.VERSION.SDK_INT < Build.VERSION_CODES.Q) return true
+        return ContextCompat.checkSelfPermission(context, Manifest.permission.ACTIVITY_RECOGNITION) ==
+            PackageManager.PERMISSION_GRANTED
+    }
+
     fun hasNotificationPermission(context: Context): Boolean {
         if (Build.VERSION.SDK_INT < Build.VERSION_CODES.TIRAMISU) return true
         return ContextCompat.checkSelfPermission(context, Manifest.permission.POST_NOTIFICATIONS) ==

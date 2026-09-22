@@ -12,6 +12,8 @@ import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.clickable
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
@@ -37,6 +39,7 @@ import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.ButtonDefaults
 import androidx.compose.material3.CircularProgressIndicator
+import androidx.compose.material3.FilledTonalButton
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.LocalContentColor
@@ -157,13 +160,38 @@ fun MemberDetailScreen(
 
         val location = state.location
         if (location == null) {
-            Box(Modifier.fillMaxSize().padding(padding), contentAlignment = Alignment.Center) {
+            // Miembro que aún no ha mandado nada (o ubicaciones recién vaciadas): no hay ficha
+            // que enseñar, pero sí se le puede pedir una — que es justo lo que hace falta aquí.
+            Column(
+                modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
                 Text(stringResource(R.string.no_location_yet))
+                Spacer(Modifier.height(16.dp))
+                if (state.requestingLocation) {
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                    Spacer(Modifier.height(8.dp))
+                    Text(
+                        stringResource(R.string.location_request_in_progress),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                } else {
+                    Button(onClick = { viewModel.requestFreshLocation() }) {
+                        Icon(Icons.Filled.Refresh, contentDescription = null)
+                        Spacer(Modifier.width(8.dp))
+                        Text(stringResource(R.string.refresh_location))
+                    }
+                }
             }
             return@Scaffold
         }
 
-        Column(modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp)) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp)
+                .verticalScroll(rememberScrollState()),
+        ) {
             Row(verticalAlignment = Alignment.CenterVertically) {
                 AsyncImage(
                     model = absoluteAvatarUrl(location.avatar_url),
@@ -198,27 +226,33 @@ fun MemberDetailScreen(
             Spacer(Modifier.height(24.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.BatteryFull, contentDescription = null)
+                Icon(Icons.Filled.BatteryFull, contentDescription = null, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(
                     location.battery_level?.let { "$it% · ${stringResource(R.string.battery_label)}" + if (location.is_charging == true) " (${stringResource(R.string.charging_label)})" else "" }
                         ?: stringResource(R.string.battery_unknown),
+                    style = MaterialTheme.typography.bodyMedium,
                 )
             }
             Spacer(Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Place, contentDescription = null)
+                Icon(Icons.Filled.Place, contentDescription = null, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(
                     myLocation?.let { me ->
                         val meters = distanceMeters(me.latitude, me.longitude, location.lat, location.lng)
                         stringResource(R.string.distance_from_you, formatDistance(meters))
                     } ?: stringResource(R.string.distance_unknown),
+                    style = MaterialTheme.typography.bodyMedium,
                 )
             }
             Spacer(Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(if (location.wifi_connected == true) Icons.Filled.Wifi else Icons.Filled.WifiOff, contentDescription = null)
+                Icon(
+                    if (location.wifi_connected == true) Icons.Filled.Wifi else Icons.Filled.WifiOff,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                )
                 Spacer(Modifier.width(8.dp))
                 Text(
                     when (location.wifi_connected) {
@@ -227,24 +261,34 @@ fun MemberDetailScreen(
                         false -> stringResource(R.string.wifi_not_connected_label)
                         null -> stringResource(R.string.wifi_unknown_label)
                     },
+                    style = MaterialTheme.typography.bodyMedium,
                 )
             }
             Spacer(Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.Schedule, contentDescription = null)
+                Icon(Icons.Filled.Schedule, contentDescription = null, modifier = Modifier.size(20.dp))
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    stringResource(
+                    style = MaterialTheme.typography.bodyMedium,
+                    // Mientras alguien lo tenga en seguimiento en vivo, su móvil está en tiempo
+                    // real mande lo que mande su ajuste: se tapa el valor configurado, no se
+                    // toca — al caducar la marca vuelve a verse el suyo sin restaurar nada.
+                    color = if (location.live_seconds > 0) {
+                        MaterialTheme.colorScheme.primary
+                    } else {
+                        MaterialTheme.colorScheme.onSurface
+                    },
+                    text = stringResource(
                         R.string.update_frequency_label,
-                        stringResource(
-                            when (location.location_frequency) {
-                                LocationFrequency.REAL_TIME.name -> R.string.frequency_short_high
-                                LocationFrequency.BALANCED.name -> R.string.frequency_short_balanced
-                                LocationFrequency.BATTERY_SAVER.name -> R.string.frequency_short_battery_saver
-                                LocationFrequency.DISABLED.name -> R.string.frequency_short_disabled
-                                else -> R.string.frequency_short_unknown
-                            },
-                        ),
+                        if (location.live_seconds > 0) {
+                            stringResource(R.string.frequency_short_live)
+                        } else {
+                            // Puede venir una frecuencia que esta versión de la app aún no conoce.
+                            stringResource(
+                                LocationFrequency.entries.find { it.name == location.location_frequency }
+                                    ?.shortLabelRes ?: R.string.frequency_short_unknown,
+                            )
+                        },
                     ),
                 )
             }
@@ -257,6 +301,31 @@ fun MemberDetailScreen(
             )
 
             Spacer(Modifier.height(32.dp))
+
+            // Lo mismo que el icono de arriba, pero donde se busca: con el resto de acciones y
+            // con el color de acento, que es la que más se usa.
+            FilledTonalButton(
+                onClick = { viewModel.requestFreshLocation() },
+                modifier = Modifier.fillMaxWidth(),
+                enabled = !state.requestingLocation,
+                colors = ButtonDefaults.filledTonalButtonColors(
+                    containerColor = MaterialTheme.colorScheme.primaryContainer,
+                    contentColor = MaterialTheme.colorScheme.onPrimaryContainer,
+                ),
+            ) {
+                if (state.requestingLocation) {
+                    CircularProgressIndicator(
+                        modifier = Modifier.size(18.dp),
+                        strokeWidth = 2.dp,
+                        color = MaterialTheme.colorScheme.onPrimaryContainer,
+                    )
+                } else {
+                    Icon(Icons.Filled.Refresh, contentDescription = null)
+                }
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.refresh_location))
+            }
+            Spacer(Modifier.height(12.dp))
 
             OutlinedButton(
                 onClick = { onOpenHistory(location.user_id, location.display_name) },
@@ -547,7 +616,7 @@ private fun ConfigStatusRow(raw: String?, onFix: (() -> Unit)? = null) {
         verticalAlignment = Alignment.Top,
         modifier = if (fixable) Modifier.fillMaxWidth().clickable(onClick = onFix!!) else Modifier,
     ) {
-        Icon(icon, contentDescription = null, tint = tint)
+        Icon(icon, contentDescription = null, tint = tint, modifier = Modifier.size(20.dp))
         Spacer(Modifier.width(8.dp))
         Column {
             Text(
@@ -559,6 +628,7 @@ private fun ConfigStatusRow(raw: String?, onFix: (() -> Unit)? = null) {
                     },
                 ),
                 color = tint,
+                style = MaterialTheme.typography.bodyMedium,
             )
             issues.orEmpty().forEach { issue ->
                 Text(
@@ -570,6 +640,7 @@ private fun ConfigStatusRow(raw: String?, onFix: (() -> Unit)? = null) {
                             ConfigCheck.NOTIFICATION_CHANNEL -> R.string.config_issue_notif_channel
                             ConfigCheck.BATTERY -> R.string.config_issue_battery
                             ConfigCheck.DND -> R.string.config_issue_dnd
+                            ConfigCheck.ACTIVITY -> R.string.config_issue_activity
                             else -> R.string.config_issue_gps_off
                         },
                     ),

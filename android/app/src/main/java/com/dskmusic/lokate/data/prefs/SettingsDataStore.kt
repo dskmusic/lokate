@@ -6,6 +6,7 @@ import androidx.datastore.preferences.core.edit
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
+import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
 import com.dskmusic.lokate.util.Constants
 import com.dskmusic.lokate.util.LocationFrequency
@@ -37,6 +38,7 @@ class SettingsDataStore(private val context: Context) {
         val MAP_STYLE = stringPreferencesKey("map_style")
         val TEST_MODE_RECIPIENTS = stringPreferencesKey("test_mode_recipients")
         val MAP_CACHE_CLEARED_AT = longPreferencesKey("map_cache_cleared_at")
+        val KNOWN_WIFI_SSIDS = stringSetPreferencesKey("known_wifi_ssids")
     }
 
     /** Cuándo se vació la caché de teselas del mapa por última vez (epoch ms) — la usa
@@ -144,11 +146,19 @@ class SettingsDataStore(private val context: Context) {
 
     val locationFrequency: Flow<LocationFrequency> = context.dataStore.data.map { prefs ->
         prefs[Keys.LOCATION_FREQUENCY]?.let { runCatching { LocationFrequency.valueOf(it) }.getOrNull() }
-            ?: LocationFrequency.REAL_TIME
+            ?: LocationFrequency.EVERY_1_MIN
     }
 
     suspend fun setLocationFrequency(freq: LocationFrequency) {
         context.dataStore.edit { it[Keys.LOCATION_FREQUENCY] = freq.name }
+    }
+
+    /** Wifis que el usuario marcó como sitio fijo (casa, trabajo). Estando conectado a uno de
+     * ellos no hace falta preguntar dónde está cada minuto: ver LocationForegroundService. */
+    val knownWifiSsids: Flow<Set<String>> = context.dataStore.data.map { it[Keys.KNOWN_WIFI_SSIDS] ?: emptySet() }
+
+    suspend fun setKnownWifiSsids(ssids: Set<String>) {
+        context.dataStore.edit { it[Keys.KNOWN_WIFI_SSIDS] = ssids }
     }
 
     val notifyZoneEnabled: Flow<Boolean> = context.dataStore.data.map { it[Keys.NOTIFY_ZONE] ?: true }

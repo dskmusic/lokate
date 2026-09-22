@@ -1,5 +1,6 @@
 import os
 from datetime import datetime, timedelta, timezone
+from time import monotonic
 
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
@@ -32,6 +33,41 @@ def _purge_old_pings(db: Session) -> None:
     ).delete()
 
 
+# Seguimiento en vivo: mientras alguien tiene a un miembro "seguido" en su mapa, ese movil se
+# pone en tiempo real. La marca vive en memoria del proceso y caduca sola — si el que sigue
+# cierra la app, deja de renovarla y el seguido vuelve a su modo sin que nadie se lo diga.
+# ponytail: dict en memoria como el modo prueba de geofence.py, no merece una columna en la BD.
+LIVE_TTL_S = 180
+# Tope duro de una sesion de seguimiento: aunque el que sigue se deje la pantalla abierta toda
+# la noche renovando, el seguido vuelve a su ritmo al llegar aqui. Para seguir mas rato hay que
+# volver a pulsar "seguir", que es justo la confirmacion que queremos.
+LIVE_MAX_S = 30 * 60
+# Si el seguido lleva mas de esto sin mandar un ping, la siguiente renovacion vuelve a mandarle
+# el push: un push perdido dejaba el tiempo real sin arrancar hasta su siguiente ping normal,
+# que con el movil en reposo puede tardar 15 minutos.
+LIVE_REPUSH_SILENT_S = 30
+_live_until: dict[str, float] = {}
+_live_started: dict[str, float] = {}
+_last_ping: dict[str, float] = {}
+
+
+def _live_seconds(user_id: str) -> int:
+    """Segundos que le quedan de seguimiento en vivo, 0 si no esta siendo seguido."""
+    until = _live_until.get(user_id)
+    if until is None:
+        return 0
+    remaining = until - monotonic()
+    if remaining <= 0:
+        _live_stop(user_id)
+        return 0
+    return int(remaining)
+
+
+def _live_stop(user_id: str) -> None:
+    _live_until.pop(user_id, None)
+    _live_started.pop(user_id, None)
+
+
 def _group_member(db: Session, user: models.User, user_id: str) -> models.User | None:
     """El miembro del grupo de quien pregunta, o None. Quien se esconde en ese grupo no existe
     para los demás: ni ubicación, ni historial, ni hacer sonar su móvil."""
@@ -41,7 +77,7 @@ def _group_member(db: Session, user: models.User, user_id: str) -> models.User |
     return None if target is None or target.hidden_from(user) else target
 
 
-@router.post("/ping", status_code=status.HTTP_204_NO_CONTENT)
+@router.post("/ping", response_model=schemas.LocationPingResponse)
 def ping(
     body: schemas.LocationPingRequest,
     tasks: BackgroundTasks,
@@ -49,6 +85,10 @@ def ping(
     db: Session = Depends(get_db),
 ):
     db.add(models.LocationPing(user_id=user.id, lat=body.lat, lng=body.lng, accuracy=body.accuracy))
+    # Ultima senal de vida de este movil: la mira set_live_tracking para decidir si repetir el
+    # push de seguimiento. ponytail: dict en memoria, igual que la propia marca de seguimiento
+    # — si el contenedor reinicia, lo peor que pasa es un push de mas.
+    _last_ping[user.id] = monotonic()
 
     user.battery_level = body.battery_level
     user.is_charging = body.is_charging
@@ -72,9 +112,9 @@ def ping(
     # desharía la simulación al instante. Si la simulación caducó sin que el admin saliera del
     # modo, este primer ping real recoloca su estado de zonas en silencio.
     simulation = geofence.simulation_status(user.id)
-    if simulation == "active":
-        return
-    geofence.check_zone_transitions(db, user, body.lat, body.lng, notify=simulation is None, tasks=tasks)
+    if simulation != "active":
+        geofence.check_zone_transitions(db, user, body.lat, body.lng, notify=simulation is None, tasks=tasks)
+    return schemas.LocationPingResponse(live_seconds=_live_seconds(user.id))
 
 
 @router.get("/group/latest", response_model=list[schemas.LocationResponse])
@@ -109,6 +149,9 @@ def group_latest(
                     wifi_ssid=member.wifi_ssid,
                     location_frequency=member.location_frequency,
                     config_issues=member.config_issues,
+                    # Para que quien mira el mapa vea si el tiempo real que ha pedido ha
+                    # prendido de verdad en el otro movil, y no solo que pulso el boton.
+                    live_seconds=_live_seconds(member.id),
                 )
             )
     return results
@@ -176,6 +219,51 @@ def stop_ring_device(
         body="Parar alarma",
         data={"type": "stop_ring"},
     )
+
+
+@router.post("/live/{user_id}", status_code=status.HTTP_204_NO_CONTENT)
+def set_live_tracking(
+    user_id: str,
+    active: bool = True,
+    user: models.User = Depends(get_current_user_with_group),
+    db: Session = Depends(get_db),
+):
+    """Pone (o quita) a ese miembro en seguimiento en vivo: su movil pasa a tiempo real mientras
+    dure. Quien sigue debe volver a llamar cada minuto para renovar; si deja de hacerlo, la
+    marca caduca sola a los LIVE_TTL_S y el seguido vuelve a su modo de siempre.
+
+    El push sale al empezar y se repite en las renovaciones mientras el seguido siga sin dar
+    senales (ver LIVE_REPUSH_SILENT_S): si el primero se pierde — movil dormido, fabricante
+    agresivo — el siguiente lo despierta, en vez de quedarse esperando a su proximo ping, que
+    en reposo puede tardar 15 minutos. Lo demas (renovar, terminar) viaja gratis en la
+    respuesta de sus propios pings (ver _live_seconds)."""
+    target = _group_member(db, user, user_id)
+    if not target:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Member not found in your group")
+
+    if not active:
+        _live_stop(target.id)
+        return
+
+    now = monotonic()
+    was_live = _live_seconds(target.id) > 0
+    if was_live and now - _live_started.get(target.id, now) >= LIVE_MAX_S:
+        # Tope de seguridad: se acabo la sesion, no se renueva mas. El seguido vuelve a su
+        # ritmo solo, sin depender de que el que sigue se acuerde de soltarlo.
+        _live_stop(target.id)
+        return
+
+    _live_until[target.id] = now + LIVE_TTL_S
+    if not was_live:
+        _live_started[target.id] = now
+    if not was_live or now - _last_ping.get(target.id, 0.0) >= LIVE_REPUSH_SILENT_S:
+        push.send_to_user(
+            db,
+            user_id=target.id,
+            title="Lokate",
+            body="Seguimiento en vivo",
+            data={"type": "live_tracking", "seconds": str(LIVE_TTL_S)},
+        )
 
 
 @router.post("/request-location/{user_id}", status_code=status.HTTP_204_NO_CONTENT)

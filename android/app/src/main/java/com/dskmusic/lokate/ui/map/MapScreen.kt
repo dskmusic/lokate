@@ -31,7 +31,6 @@ import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.MyLocation
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.People
-import androidx.compose.material.icons.filled.PersonAdd
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Settings
 import androidx.compose.material.icons.filled.Share
@@ -73,6 +72,7 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.dskmusic.lokate.R
 import com.dskmusic.lokate.data.remote.absoluteAvatarUrl
@@ -117,7 +117,14 @@ fun MapScreen(
     LaunchedEffect(Unit) {
         isAdmin = runCatching { locator.authRepository.me() }.getOrNull()?.is_admin == true
     }
-    val viewModel = remember { MapViewModel(locator.locationRepository, locator.zoneRepository, locator.groupRepository) }
+    // viewModel() y no remember{} como el resto de pantallas: este ViewModel tiene dos bucles
+    // infinitos (sondeo y renovación del seguimiento) y con remember nunca se llama a
+    // onCleared, así que cada visita a la pestaña dejaba uno nuevo corriendo para siempre.
+    // Atado a la entrada del NavHost, además, sigue vivo mientras el mapa esté en la pila: ir
+    // a Gente o a Ajustes y volver ya no corta el seguimiento en vivo.
+    val viewModel: MapViewModel = viewModel {
+        MapViewModel(locator.locationRepository, locator.zoneRepository, locator.groupRepository)
+    }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val zones by viewModel.zones.collectAsStateWithLifecycle(initialValue = emptyList())
     val avatarBitmaps = rememberAvatarBitmaps(state.members)
@@ -129,18 +136,18 @@ fun MapScreen(
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
     var showHelp by remember { mutableStateOf(false) }
     var showFollowMenu by remember { mutableStateOf(false) }
-    // Leído de MapCameraMemory (no arranca siempre en null): si ya estabas siguiendo a alguien
-    // y cambias de pestaña, al volver el seguimiento sigue activo tal cual lo dejaste.
-    var followUserId by remember { mutableStateOf(MapCameraMemory.followUserId) }
+    // El seguimiento vive en el ViewModel (sobrevive a cambiar de pestaña) y le pone el móvil
+    // al seguido en tiempo real mientras dure; al soltarlo vuelve a su ritmo de siempre.
+    val followUserId = state.followUserId
+    val followed = state.members.find { it.user_id == followUserId }
 
     // Modo "seguir en vivo": mientras haya alguien elegido, recentra el mapa cada vez que
     // llega una ubicación nueva suya (mismo ciclo de sondeo que ya alimenta los marcadores).
     // Puede ser cualquier miembro del grupo, incluido uno mismo.
-    LaunchedEffect(followUserId, state.members, mapViewRef) {
-        val uid = followUserId ?: return@LaunchedEffect
+    LaunchedEffect(followUserId, followed?.timestamp, mapViewRef) {
         val map = mapViewRef ?: return@LaunchedEffect
-        val followed = state.members.find { it.user_id == uid } ?: return@LaunchedEffect
-        map.moveTo(GeoPoint(followed.lat, followed.lng))
+        val target = followed ?: return@LaunchedEffect
+        map.moveTo(GeoPoint(target.lat, target.lng))
     }
 
     // Modo prueba (solo admins): se guarda fuera de la composición porque cambiar de pestaña
@@ -420,6 +427,13 @@ fun MapScreen(
                     }
                 },
             )
+            // Tic de radar sobre el seguido: late en cada posición que llega, se haya movido o
+            // no. Es lo único que distingue "está quieto" de "no está llegando nada".
+            LiveRadarPulse(
+                mapView = mapViewRef,
+                location = if (state.followLive) followed else null,
+                modifier = Modifier.fillMaxSize(),
+            )
             if (state.loading) {
                 CircularProgressIndicator(modifier = Modifier.align(Alignment.Center))
             }
@@ -432,8 +446,7 @@ fun MapScreen(
                 label = stringResource(R.string.place_search_label),
                 modifier = Modifier.align(Alignment.TopCenter).padding(8.dp).fillMaxWidth(),
             ) { place ->
-                followUserId = null
-                MapCameraMemory.followUserId = null
+                viewModel.setFollowing(null)
                 // setZoom + setCenter dentro de map.post, sin animateTo: encadenar zoom y
                 // animación en osmdroid cuelga el mapa (mismo problema que ya había al
                 // posicionar la zona nueva, ver ZoneEditScreen).
@@ -452,9 +465,18 @@ fun MapScreen(
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
                 Box {
+                    // Tres estados a propósito: apagado, "pedido pero el otro móvil aún no ha
+                    // confirmado" (color de aviso) y "en vivo de verdad". Antes el botón se
+                    // encendía igual aunque la orden no hubiera prendido en el otro lado, y no
+                    // había forma de distinguir "no funciona" de "va, pero está parado".
+                    val followColor = when {
+                        state.followLive -> MaterialTheme.colorScheme.primary
+                        followUserId != null -> MaterialTheme.colorScheme.tertiary
+                        else -> MaterialTheme.colorScheme.surface
+                    }
                     SmallFloatingActionButton(
                         onClick = { showFollowMenu = true },
-                        containerColor = if (followUserId != null) MaterialTheme.colorScheme.primary else MaterialTheme.colorScheme.surface,
+                        containerColor = followColor,
                     ) {
                         Icon(
                             if (followUserId != null) Icons.Filled.GpsFixed else Icons.Filled.GpsOff,
@@ -468,8 +490,7 @@ fun MapScreen(
                                 text = { Text(stringResource(R.string.map_follow_stop)) },
                                 leadingIcon = { Icon(Icons.Filled.GpsOff, contentDescription = null) },
                                 onClick = {
-                                    followUserId = null
-                                    MapCameraMemory.followUserId = null
+                                    viewModel.setFollowing(null)
                                     showFollowMenu = false
                                 },
                             )
@@ -497,8 +518,7 @@ fun MapScreen(
                                     }
                                 },
                                 onClick = {
-                                    followUserId = member.user_id
-                                    MapCameraMemory.followUserId = member.user_id
+                                    viewModel.setFollowing(member.user_id)
                                     // Solo al elegir a quién seguir: el recentrado de cada
                                     // sondeo no toca el zoom, para no pelearse con el usuario
                                     // si se aleja a mirar algo mientras sigue a alguien.
@@ -518,20 +538,12 @@ fun MapScreen(
                 }
             }
 
-            // Invitar (arriba) y compartir ubicación (abajo), apiladas en la derecha.
-            Column(
+            // Compartir ubicación. Invitar con el código del grupo ya vive en la info del grupo.
+            FloatingActionButton(
+                onClick = { shareCurrentLocation(context) },
                 modifier = Modifier.align(Alignment.BottomEnd).padding(16.dp),
-                horizontalAlignment = Alignment.CenterHorizontally,
-                verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
-                SmallFloatingActionButton(onClick = {
-                    state.group?.let { context.startActivity(LocationSharing.inviteIntent(it.name, it.invite_code)) }
-                }) {
-                    Icon(Icons.Filled.PersonAdd, contentDescription = stringResource(R.string.group_invite_button))
-                }
-                FloatingActionButton(onClick = { shareCurrentLocation(context) }) {
-                    Icon(Icons.Filled.Share, contentDescription = stringResource(R.string.share_current_location))
-                }
+                Icon(Icons.Filled.Share, contentDescription = stringResource(R.string.share_current_location))
             }
         }
     }

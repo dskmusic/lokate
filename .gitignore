@@ -5,6 +5,8 @@
 backend/tests/
 CREAR BACKUP.pyw
 ToDo.txt
+DOSSIER.es.md
+DOSSIER.en.md
 
 # ---- Secrets / credentials ----
 backend/.env
@@ -44,3 +46,6 @@ android/app/debug/
 # ---- OS cruft ----
 .DS_Store
 Thumbs.db
+
+# ---- Notas locales (no se publican) ----
+MANUAL-BATERIA.md

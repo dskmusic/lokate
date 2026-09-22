@@ -20,7 +20,7 @@ class ZonesViewModel(
     private val _prefs = MutableStateFlow<Map<String, ZoneNotificationPrefDto>>(emptyMap())
     val prefs: StateFlow<Map<String, ZoneNotificationPrefDto>> = _prefs
 
-    /** Para poner cara a los miembros que vigila cada zona. */
+    /** Para poner cara a los miembros de los que me avisa cada zona. */
     private val _members = MutableStateFlow<List<GroupMemberDto>>(emptyList())
     val members: StateFlow<List<GroupMemberDto>> = _members
 
@@ -45,19 +45,22 @@ class ZonesViewModel(
 
     fun setNotifyOnEnter(zoneId: String, value: Boolean) {
         val current = _prefs.value[zoneId]
-        val notifyOnExit = current?.notify_on_exit ?: false
-        updatePref(zoneId, value, notifyOnExit)
+        updatePref(zoneId, value, current?.notify_on_exit ?: false, current?.watched_user_ids.orEmpty())
     }
 
     fun setNotifyOnExit(zoneId: String, value: Boolean) {
         val current = _prefs.value[zoneId]
-        val notifyOnEnter = current?.notify_on_enter ?: false
-        updatePref(zoneId, notifyOnEnter, value)
+        updatePref(zoneId, current?.notify_on_enter ?: false, value, current?.watched_user_ids.orEmpty())
     }
 
-    private fun updatePref(zoneId: String, notifyOnEnter: Boolean, notifyOnExit: Boolean) {
+    private fun updatePref(
+        zoneId: String,
+        notifyOnEnter: Boolean,
+        notifyOnExit: Boolean,
+        watchedUserIds: List<String>,
+    ) {
         viewModelScope.launch {
-            runCatching { zoneRepository.updateNotificationPref(zoneId, notifyOnEnter, notifyOnExit) }
+            runCatching { zoneRepository.updateNotificationPref(zoneId, notifyOnEnter, notifyOnExit, watchedUserIds) }
                 .onSuccess { updated -> _prefs.value = _prefs.value + (zoneId to updated) }
         }
     }

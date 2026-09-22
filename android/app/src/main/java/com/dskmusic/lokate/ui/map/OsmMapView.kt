@@ -32,13 +32,12 @@ private const val MARKER_SIZE_PX = 120
  * memoria (no se persiste en disco: se pierde si se mata el proceso, y eso está bien, es un
  * recuerdo de sesión, no un ajuste). La posición/zoom solo la usa [OsmMapView] cuando se le
  * pide explícitamente con `rememberCamera = true` — las demás pantallas con mapa (crear zona,
- * etc.) no la tocan ni la leen, cada una sigue centrando como le convenga. [followUserId] lo
- * lee y escribe directamente [com.dskmusic.lokate.ui.map.MapScreen], para que "seguir en vivo"
- * tampoco se pierda al cambiar de pestaña. */
+ * etc.) no la tocan ni la leen, cada una sigue centrando como le convenga. A quién se está
+ * siguiendo en vivo NO vive aquí: eso lo guarda MapViewModel, que sobrevive igual a los
+ * cambios de pestaña y además es quien renueva la marca en el servidor. */
 object MapCameraMemory {
     var center: GeoPoint? = null
     var zoom: Double? = null
-    var followUserId: String? = null
 
     /** Modo prueba de los administradores (ver MapScreen): igual que [followUserId], vive aquí
      * para que cambiar de pestaña no lo apague sin querer — la pantalla del mapa y su ViewModel
@@ -47,11 +46,10 @@ object MapCameraMemory {
 
     /** Se llama al iniciar/cerrar sesión (ver AuthRepository) — sin esto, si un usuario cierra
      * sesión y otro entra en el mismo proceso de la app (p. ej. probando varias cuentas sin
-     * matar la app del todo), heredaría la posición/seguimiento del usuario anterior en vez de
-     * arrancar centrado en su propia ubicación. */
+     * matar la app del todo), heredaría la posición del usuario anterior en vez de arrancar
+     * centrado en su propia ubicación. */
     fun reset() {
         resetView()
-        followUserId = null
         testMode = false
     }
 
@@ -108,6 +106,17 @@ fun OsmMapView(
                 controller.setZoom(MapCameraMemory.zoom!!)
             } else {
                 controller.setZoom(initialZoom)
+            }
+
+            // osmdroid solo pide teselas al dibujarse y calcula qué pedir a partir del tamaño de
+            // la vista; en la primera composición aún mide 0, así que el zoom/centro de arriba se
+            // fijan sobre un área vacía y el mapa sale en blanco hasta que lo tocas. Al llegar el
+            // primer layout con tamaño real, reaplicar el zoom recalcula el área visible y fuerza
+            // a pedir las teselas — pasa igual al abrir la app, al cambiar de estilo y al volver
+            // de otra pestaña, porque en los tres casos se crea un MapView nuevo.
+            addOnFirstLayoutListener { _, _, _, _, _ ->
+                controller.setZoom(zoomLevelDouble)
+                invalidate()
             }
 
             if (rememberCamera) {

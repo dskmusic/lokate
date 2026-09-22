@@ -1,15 +1,27 @@
 package com.dskmusic.lokate.location
 
+import android.app.PendingIntent
 import android.app.Service
+import android.content.BroadcastReceiver
+import android.content.Context
 import android.content.Intent
+import android.content.IntentFilter
 import android.content.pm.ServiceInfo
+import android.location.Location
 import android.os.IBinder
 import androidx.core.app.ServiceCompat
+import androidx.core.content.ContextCompat
 import com.dskmusic.lokate.di.ServiceLocator
 import com.dskmusic.lokate.push.NotificationHelper
 import com.dskmusic.lokate.util.Constants
 import com.dskmusic.lokate.util.DeviceStatusUtils
 import com.dskmusic.lokate.util.LocationFrequency
+import com.dskmusic.lokate.util.PermissionUtils
+import com.google.android.gms.location.ActivityRecognition
+import com.google.android.gms.location.ActivityTransition
+import com.google.android.gms.location.ActivityTransitionRequest
+import com.google.android.gms.location.ActivityTransitionResult
+import com.google.android.gms.location.DetectedActivity
 import com.google.android.gms.location.FusedLocationProviderClient
 import com.google.android.gms.location.LocationCallback
 import com.google.android.gms.location.LocationRequest
@@ -17,9 +29,10 @@ import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import kotlinx.coroutines.CoroutineScope
-import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.collectLatest
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.launch
 
@@ -33,18 +46,67 @@ class LocationForegroundService : Service() {
     private lateinit var fusedClient: FusedLocationProviderClient
     private lateinit var locator: ServiceLocator
     private val serviceScope = CoroutineScope(SupervisorJob())
+
+    /** El intervalo que eligió el usuario en Ajustes, y el que está pedido ahora mismo al
+     * sistema — no tienen por qué coincidir: ver [applyLocationRequest]. */
+    private var configuredIntervalMs: Long = 0
     private var currentIntervalMs: Long = -1
+
+    /** Última posición enviada al servidor, para no repetir pings estando parado (ver
+     * [worthSending]). */
+    private var lastSent: Location? = null
+
+    /** Señales de que aquí no está pasando nada: el móvil lleva un rato sin moverse y/o está en
+     * un wifi que el usuario marcó como sitio fijo. */
+    private var isStill = false
+    private var knownWifiSsids: Set<String> = emptySet()
+    private var currentSsid: String? = null
+    private var transitionsRegistered = false
+
+    /** Alguien del grupo nos tiene en seguimiento en vivo ahora mismo. Manda sobre todo lo
+     * demás: ni el reposo ni el wifi de casa lo bajan. */
+    private val liveActive: Boolean get() = LiveTracking.until.value > System.currentTimeMillis()
+
+    /** El resultado de combinar las dos señales de arriba: lo calcula [applyLocationRequest] y
+     * lo consulta [worthSending], que se aplica a cada fix suelto. */
+    private var idle = false
 
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
-            val location = result.lastLocation ?: return
+            // Con entrega en bloque (setMaxUpdateDelayMillis) aquí llegan varios fixes de golpe:
+            // se mandan todos los que aporten algo, no solo el último, para no dejar huecos en el
+            // historial. El filtrado va en el hilo del callback para que no se pisen dos tandas.
+            val toSend = result.locations.filter(::worthSending)
+            // Momento barato para enterarse de que se ha entrado o salido de un wifi conocido:
+            // si nada ha cambiado, applyLocationRequest no hace nada.
+            applyLocationRequest()
+            if (toSend.isEmpty()) return
             serviceScope.launch {
                 runCatching {
                     val status = DeviceStatusUtils.read(applicationContext)
                     val frequency = locator.settings.locationFrequency.first()
-                    locator.locationRepository.ping(location.latitude, location.longitude, location.accuracy, status, frequency)
+                    toSend.forEach {
+                        locator.locationRepository.ping(it.latitude, it.longitude, it.accuracy, status, frequency)
+                    }
                 }
             }
+        }
+    }
+
+    /**
+     * Entrar y salir de quieto según el acelerómetro. Lo vigila el co-procesador de sensores del
+     * móvil, que gasta microamperios y no despierta a la CPU para nada: sale muchísimo más
+     * barato que el fix de GPS o de wifi que nos ahorra.
+     */
+    private val stillReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            val result = ActivityTransitionResult.extractResult(intent) ?: return
+            result.transitionEvents.forEach { event ->
+                if (event.activityType == DetectedActivity.STILL) {
+                    isStill = event.transitionType == ActivityTransition.ACTIVITY_TRANSITION_ENTER
+                }
+            }
+            applyLocationRequest()
         }
     }
 
@@ -52,6 +114,41 @@ class LocationForegroundService : Service() {
         super.onCreate()
         fusedClient = LocationServices.getFusedLocationProviderClient(this)
         locator = ServiceLocator.getInstance(applicationContext)
+        serviceScope.launch {
+            // Conectarse o salir de un wifi cambia el estado de reposo sin que llegue ninguna
+            // ubicación: sin esto, salir de casa no se notaría hasta el siguiente fix (hasta 15
+            // minutos después) en los móviles que denegaron el permiso de actividad.
+            DeviceStatusUtils.wifiSsidFlow(applicationContext).collect {
+                currentSsid = it
+                applyLocationRequest()
+            }
+        }
+        serviceScope.launch {
+            locator.settings.knownWifiSsids.collect {
+                knownWifiSsids = it
+                applyLocationRequest()
+            }
+        }
+        serviceScope.launch {
+            // collectLatest: cada renovación cancela la espera anterior y vuelve a contar. El
+            // corte lo pone también el propio móvil, para que un "deja de seguir" perdido no
+            // deje a nadie en tiempo real para siempre.
+            var wasLive = false
+            LiveTracking.until.collectLatest { until ->
+                val remaining = until - System.currentTimeMillis()
+                applyLocationRequest()
+                if (remaining <= 0) {
+                    // En "solo bajo demanda" el servicio lo había levantado el propio
+                    // seguimiento: al acabar no tiene nada que hacer aquí.
+                    if (wasLive && configuredIntervalMs <= 0L) stopSelf()
+                    wasLive = false
+                    return@collectLatest
+                }
+                wasLive = true
+                delay(remaining)
+                LiveTracking.update(0)
+            }
+        }
     }
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
@@ -69,21 +166,91 @@ class LocationForegroundService : Service() {
             // onboarding, el BootReceiver y el worker de respaldo cada 15 min): comprobarlo en el
             // propio servicio los cubre todos. La notificación asoma unos milisegundos antes de
             // pararse — startForeground tiene que salir ya, antes de leer el DataStore.
-            if (frequency == LocationFrequency.DISABLED) {
+            // Cubre tanto "deshabilitado" como "solo bajo demanda": ninguno de los dos manda nada
+            // por su cuenta, y el segundo responde desde el push, sin necesidad de servicio.
+            // Salvo que alguien nos esté siguiendo en vivo: ahí el servicio hace falta aunque
+            // el modo elegido no mande nada por su cuenta.
+            if (!frequency.sendsPeriodicUpdates && !liveActive) {
                 stopSelf()
                 return@launch
             }
-            startLocationUpdates(frequency.intervalMs)
+            configuredIntervalMs = frequency.intervalMs
+            startActivityTransitions()
+            applyLocationRequest()
         }
         return START_STICKY
+    }
+
+    /**
+     * Quieto o en un wifi de los marcados como sitio fijo = la posición no está cambiando, así
+     * que pedirla al ritmo elegido es tirar batería. Las dos señales van por separado a
+     * propósito: quien deniegue el permiso de actividad sigue ahorrando por el wifi, y quien no
+     * use wifi sigue ahorrando por el sensor.
+     */
+    private fun applyLocationRequest() {
+        if (liveActive) {
+            idle = false
+            startLocationUpdates(LocationFrequency.REAL_TIME.intervalMs)
+            return
+        }
+        if (configuredIntervalMs <= 0L) {
+            // Sin modo periódico y sin seguimiento no hay nada que pedir: se llega aquí al
+            // caducar el seguimiento de un móvil en "solo bajo demanda", justo antes de pararse.
+            fusedClient.removeLocationUpdates(locationCallback)
+            currentIntervalMs = -1
+            return
+        }
+        val onKnownWifi = currentSsid?.let { it in knownWifiSsids } == true
+        idle = isStill || onKnownWifi
+        startLocationUpdates(if (idle) maxOf(configuredIntervalMs, IDLE_INTERVAL_MS) else configuredIntervalMs)
+    }
+
+    /**
+     * Un móvil quieto encima de la mesa manda el mismo número de pings que uno cruzando la
+     * ciudad, y cada ping deja la radio móvil en alta potencia unos segundos. Estando parado
+     * basta con un latido de vez en cuando para que el grupo sepa que sigue ahí.
+     *
+     * El filtro solo se aplica de medio minuto en adelante: en tiempo real lo que se espera es
+     * ver el punto moverse, aunque sea poco.
+     */
+    private fun worthSending(location: Location): Boolean {
+        val previous = lastSent
+        // En reposo la ubicación la ponen el wifi y las antenas, y eso baila solo hasta 100 m de
+        // un fix al siguiente: con el listón en 25 m el mapa enseñaría paseos que no existen.
+        val minMove = if (idle) IDLE_MIN_MOVE_METERS else MIN_MOVE_METERS
+        val worth = previous == null ||
+            currentIntervalMs < MIN_MOVE_FROM_INTERVAL_MS ||
+            location.distanceTo(previous) >= minMove ||
+            location.time - previous.time >= IDLE_INTERVAL_MS
+        if (worth) lastSent = location
+        return worth
     }
 
     private fun startLocationUpdates(intervalMs: Long) {
         if (currentIntervalMs == intervalMs) return
         currentIntervalMs = intervalMs
 
-        val request = LocationRequest.Builder(Priority.PRIORITY_HIGH_ACCURACY, intervalMs)
-            .setMinUpdateIntervalMillis(intervalMs / 2)
+        // Con fixes cada pocos segundos el GPS no llega a apagarse entre uno y otro, así que la
+        // precisión máxima ya se está pagando igual. De medio minuto en adelante, ubicar por wifi
+        // y antenas (~100 m) cuesta una fracción y sobra para ver dónde anda alguien.
+        val priority = if (intervalMs < MIN_MOVE_FROM_INTERVAL_MS) {
+            Priority.PRIORITY_HIGH_ACCURACY
+        } else {
+            Priority.PRIORITY_BALANCED_POWER_ACCURACY
+        }
+
+        val request = LocationRequest.Builder(priority, intervalMs)
+            // El sistema acumula los fixes y los entrega en bloque: la radio móvil despierta una
+            // vez en lugar de tres. El tope se queda por debajo de lo que falta para completar
+            // [IDLE_INTERVAL_MS], así entre tomar una posición y entregarla nunca pasan más de
+            // esos 15 min — en reposo, donde el intervalo ya es de 15, el lote sale sobrando.
+            .setMaxUpdateDelayMillis(
+                if (intervalMs >= MIN_MOVE_FROM_INTERVAL_MS) {
+                    minOf(intervalMs * 3, IDLE_INTERVAL_MS - intervalMs).coerceAtLeast(0L)
+                } else {
+                    0L
+                },
+            )
             .build()
 
         fusedClient.removeLocationUpdates(locationCallback)
@@ -94,11 +261,81 @@ class LocationForegroundService : Service() {
         }
     }
 
+    private fun startActivityTransitions() {
+        if (transitionsRegistered || !PermissionUtils.hasActivityRecognitionPermission(this)) return
+
+        // Receptor dinámico y no del manifiesto: solo tiene sentido mientras el servicio viva, y
+        // así se va con él sin dejar nada registrado en el sistema.
+        ContextCompat.registerReceiver(
+            this,
+            stillReceiver,
+            IntentFilter(ACTION_STILL_TRANSITION),
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+        transitionsRegistered = true
+
+        val request = ActivityTransitionRequest(
+            listOf(
+                ActivityTransition.Builder()
+                    .setActivityType(DetectedActivity.STILL)
+                    .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_ENTER)
+                    .build(),
+                ActivityTransition.Builder()
+                    .setActivityType(DetectedActivity.STILL)
+                    .setActivityTransition(ActivityTransition.ACTIVITY_TRANSITION_EXIT)
+                    .build(),
+            ),
+        )
+        try {
+            ActivityRecognition.getClient(this)
+                .requestActivityTransitionUpdates(request, transitionPendingIntent())
+        } catch (e: SecurityException) {
+            // Permiso revocado entre la comprobación y esta línea: se sigue sin la optimización.
+        }
+    }
+
+    /** MUTABLE porque Play Services escribe el resultado de la transición dentro del intent. */
+    private fun transitionPendingIntent(): PendingIntent = PendingIntent.getBroadcast(
+        this,
+        0,
+        Intent(ACTION_STILL_TRANSITION).setPackage(packageName),
+        PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_MUTABLE,
+    )
+
     override fun onDestroy() {
         fusedClient.removeLocationUpdates(locationCallback)
+        if (transitionsRegistered) {
+            runCatching {
+                ActivityRecognition.getClient(this).removeActivityTransitionUpdates(transitionPendingIntent())
+            }
+            unregisterReceiver(stillReceiver)
+            transitionsRegistered = false
+        }
         serviceScope.cancel()
         super.onDestroy()
     }
 
     override fun onBind(intent: Intent?): IBinder? = null
+
+    private companion object {
+        const val ACTION_STILL_TRANSITION = "com.dskmusic.lokate.action.STILL_TRANSITION"
+
+        /** A partir de qué intervalo se considera modo ahorro: precisión equilibrada, entrega en
+         * bloque y filtro de movimiento. */
+        const val MIN_MOVE_FROM_INTERVAL_MS = 30_000L
+
+        /** Cuánto hay que haberse movido para que un fix merezca un ping en modo ahorro. Por
+         * debajo de esto suele ser ruido del propio GPS, no un desplazamiento real. */
+        const val MIN_MOVE_METERS = 25f
+
+        /** Lo mismo pero en reposo, donde la posición viene de wifi y antenas y el margen de
+         * error propio ya ronda los 100 m. */
+        const val IDLE_MIN_MOVE_METERS = 100f
+
+        /** El ritmo de "aquí no pasa nada", que vale para tres cosas a la vez: cada cuánto se
+         * pide ubicación con el móvil quieto o en casa, cada cuánto se manda un ping aunque no se
+         * haya movido (para que el grupo vea hora fresca) y el tope de lo que se puede retrasar
+         * un lote. Subirlo ahorra más y enseña posiciones más viejas. */
+        const val IDLE_INTERVAL_MS = 15 * 60_000L
+    }
 }
