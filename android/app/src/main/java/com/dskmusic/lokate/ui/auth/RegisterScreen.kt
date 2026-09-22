@@ -34,7 +34,7 @@ import com.dskmusic.lokate.ui.common.AvatarPicker
 @Composable
 fun RegisterScreen(locator: ServiceLocator, onRegistered: () -> Unit, onGoToLogin: () -> Unit) {
     val context = LocalContext.current
-    val viewModel = remember { AuthViewModel(locator.authRepository) }
+    val viewModel = remember { AuthViewModel(locator.authRepository, locator.backupRepository) }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
     var username by remember { mutableStateOf("") }

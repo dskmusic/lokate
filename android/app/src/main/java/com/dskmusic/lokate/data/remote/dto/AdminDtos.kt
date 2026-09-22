@@ -52,6 +52,17 @@ data class AdminUserDto(
 
 data class AdminUserUpdateRequestDto(val display_name: String?, val is_admin: Boolean?)
 
+/** Wifi que un admin añade a la lista de "wifis de casa" de un usuario desde su ficha. */
+data class AdminKnownWifiRequestDto(val ssid: String)
+
+/** Las wifis de casa que el servidor le conoce a un usuario (de su copia en la nube).
+ * known=false: ese usuario no tiene copia todavía, asi que no hay forma de saberlo. */
+data class AdminKnownWifiDto(
+    val known: Boolean = false,
+    val updated_at: String? = null,
+    val ssids: List<String> = emptyList(),
+)
+
 data class AdminUserCreateRequestDto(
     val username: String,
     val password: String,

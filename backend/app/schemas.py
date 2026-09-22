@@ -104,6 +104,33 @@ class LocationPingRequest(BaseModel):
     wifi_ssid: str | None = None
     location_frequency: str | None = None
     config_issues: str | None = None
+    # Ver models.User.update_mode. Texto libre a proposito: si una version futura del movil
+    # manda un modo nuevo, el servidor lo guarda igual y ya lo pintara quien sepa leerlo.
+    update_mode: str | None = None
+
+
+class QueuedPing(BaseModel):
+    """Un ping que el móvil no pudo entregar en su momento: viaja con SU hora."""
+
+    lat: float = Field(ge=-90, le=90)
+    lng: float = Field(ge=-180, le=180)
+    accuracy: float | None = None
+    timestamp: datetime
+
+
+class LocationPingBatchRequest(BaseModel):
+    """Vaciado de la cola del móvil. El estado (batería, wifi, modo) es el de AHORA y no el
+    de cada punto: es lo que los demás ven en la ficha, y la batería de hace dos horas no le
+    sirve a nadie. El tope de 300 es el mismo que aplica el móvil a su cola."""
+
+    pings: list[QueuedPing] = Field(min_length=1, max_length=300)
+    battery_level: int | None = Field(default=None, ge=0, le=100)
+    is_charging: bool | None = None
+    wifi_connected: bool | None = None
+    wifi_ssid: str | None = None
+    location_frequency: str | None = None
+    config_issues: str | None = None
+    update_mode: str | None = None
 
 
 class LocationPingResponse(BaseModel):
@@ -129,6 +156,7 @@ class LocationResponse(BaseModel):
     wifi_ssid: str | None
     location_frequency: str | None
     config_issues: str | None
+    update_mode: str | None = None
     # Segundos que le quedan a ese miembro de seguimiento en vivo (0 = ninguno). Mientras sea
     # >0 su movil esta en tiempo real, mande lo que mande location_frequency.
     live_seconds: int = 0
@@ -151,6 +179,9 @@ class ZoneCreateRequest(BaseModel):
     lat: float = Field(ge=-90, le=90)
     lng: float = Field(ge=-180, le=180)
     radius_m: float = Field(gt=0, le=50000)
+    # Por defecto publica: es lo que hacian todas las zonas antes de que esto existiera, y lo
+    # que espera quien no se fija en el selector.
+    is_public: bool = True
 
 
 class ZoneResponse(BaseModel):
@@ -159,6 +190,9 @@ class ZoneResponse(BaseModel):
     lat: float
     lng: float
     radius_m: float
+    is_public: bool = True
+    # Quien la creo: la app lo usa para marcar "solo tuya" y para saber que puede editarla.
+    created_by: str | None = None
     # Para poder ordenar las zonas por "reciente" en la app.
     created_at: datetime | None = None
 
@@ -199,6 +233,25 @@ class ZoneNotificationPrefUpdateRequest(BaseModel):
     notify_on_enter: bool
     notify_on_exit: bool
     watched_user_ids: list[str] = []
+
+
+# ---- Copia de ajustes en la nube ----
+class BackupUploadRequest(BaseModel):
+    # 512 KB de tope: los ajustes de un movil ocupan unos pocos KB, y asi nadie usa esto de
+    # almacen de lo que le apetezca.
+    payload: str = Field(min_length=2, max_length=512 * 1024)
+    app_version: str | None = None
+
+
+class BackupResponse(BaseModel):
+    """exists=False cuando el usuario no tiene copia todavia. Se contesta 200 con exists=False en
+    vez de 404 para que el cliente no tenga que tratar un error para el caso normal de 'aun no
+    hay copia'."""
+
+    exists: bool
+    updated_at: datetime | None = None
+    app_version: str | None = None
+    payload: str | None = None
 
 
 # ---- Admin API (panel de administración nativo de la app, solo admins) ----
@@ -277,6 +330,22 @@ class AdminUserResponse(BaseModel):
 class AdminUserUpdateRequest(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=60)
     is_admin: bool | None = None
+
+
+class AdminKnownWifiRequest(BaseModel):
+    """La wifi que un admin quiere anadir a la lista de "wifis de casa" de un usuario."""
+
+    # 32 bytes es el maximo de un SSID; 64 por si viene escapado.
+    ssid: str = Field(min_length=1, max_length=64)
+
+
+class AdminKnownWifiResponse(BaseModel):
+    """known=False: ese usuario no tiene copia en la nube, asi que el servidor no ha visto nunca
+    su lista de wifis. updated_at es de cuando se hizo esa copia, no de ahora mismo."""
+
+    known: bool
+    updated_at: datetime | None = None
+    ssids: list[str] = []
 
 
 class AdminZoneResponse(BaseModel):

@@ -1,5 +1,6 @@
 package com.dskmusic.lokate.data.remote
 
+import android.content.Context
 import com.dskmusic.lokate.BuildConfig
 import com.dskmusic.lokate.data.prefs.SessionManager
 import com.dskmusic.lokate.util.Constants
@@ -11,13 +12,14 @@ import java.util.concurrent.TimeUnit
 
 object NetworkModule {
 
-    fun createApiService(session: SessionManager): ApiService {
+    fun createApiService(context: Context, session: SessionManager): ApiService {
         val logging = HttpLoggingInterceptor().apply {
             level = if (BuildConfig.DEBUG) HttpLoggingInterceptor.Level.BASIC else HttpLoggingInterceptor.Level.NONE
         }
         val client = OkHttpClient.Builder()
             .addInterceptor(DynamicBaseUrlInterceptor())
             .addInterceptor(AuthInterceptor(session))
+            .addInterceptor(SessionExpiredInterceptor(context, session))
             .addInterceptor(logging)
             .connectTimeout(15, TimeUnit.SECONDS)
             .readTimeout(15, TimeUnit.SECONDS)

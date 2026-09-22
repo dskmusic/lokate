@@ -25,6 +25,7 @@ import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Slider
+import androidx.compose.material3.Switch
 import androidx.compose.material3.Text
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
@@ -136,6 +137,24 @@ private fun ZoneEditContent(locator: ServiceLocator, existingZone: ZoneDto?, onD
                 modifier = Modifier.fillMaxWidth(),
                 singleLine = true,
             )
+            Spacer(Modifier.height(8.dp))
+
+            // Pública por defecto: es lo que espera quien no se fija en este interruptor, y lo
+            // que hacían todas las zonas antes de que existiera.
+            Row(
+                modifier = Modifier.fillMaxWidth().clickable { viewModel.updateVisibility(!state.isPublic) },
+                verticalAlignment = Alignment.CenterVertically,
+            ) {
+                Column(Modifier.weight(1f)) {
+                    Text(stringResource(R.string.zone_public_label))
+                    Text(
+                        stringResource(if (state.isPublic) R.string.zone_public_hint else R.string.zone_private_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                }
+                Switch(checked = state.isPublic, onCheckedChange = viewModel::updateVisibility)
+            }
             Spacer(Modifier.height(8.dp))
 
             PlaceSearchField(

@@ -18,6 +18,11 @@ object Constants {
     const val RING_CHANNEL_ID = "lokate_ring"
     const val SYSTEM_CHANNEL_ID = "lokate_system"
 
+    /** Avisos que el movil se pinta sobre si mismo. Id fijo y uno por problema: repetir el
+     * aviso no debe apilar veinte notificaciones, sino reemplazar la anterior. */
+    const val SESSION_EXPIRED_NOTIFICATION_ID = 1002
+    const val PING_STALLED_NOTIFICATION_ID = 1003
+
     const val LOCATION_WORKER_TAG = "lokate_location_backup_worker"
 
     /** Accesos directos del icono de la app (ver res/xml/shortcuts.xml). La sección va como

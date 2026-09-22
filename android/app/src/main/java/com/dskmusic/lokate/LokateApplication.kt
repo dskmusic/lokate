@@ -29,7 +29,11 @@ class LokateApplication : Application() {
             // paralelo se notaba la carga lenta. Más hebras + más cola + más teselas en memoria
             // (menos recarga al mover el mapa) suaviza bastante esa primera carga.
             tileDownloadThreads = 8
-            tileDownloadMaxQueueSize = 40
+            // Cuando la cola se llena, osmdroid TIRA las peticiones que no caben (sin reintento):
+            // esas teselas se quedan dibujadas con la del zoom de arriba estirada — el mapa
+            // "pixelado" hasta que lo tocas. Una pantalla grande con el anillo de overshoot pide
+            // bastante más de 40 de golpe, así que la cola se llenaba en cada apertura.
+            tileDownloadMaxQueueSize = 200
             cacheMapTileCount = 12
             // osmdroid dimensiona la caché en memoria justo a las teselas que caben en pantalla,
             // así que al arrastrar el mapa las que acaban de salir por un borde ya no están y

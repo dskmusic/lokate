@@ -90,19 +90,9 @@ def _group_member(db: Session, user: models.User, user_id: str) -> models.User |
     return None if target is None or target.hidden_from(user) else target
 
 
-@router.post("/ping", response_model=schemas.LocationPingResponse)
-def ping(
-    body: schemas.LocationPingRequest,
-    tasks: BackgroundTasks,
-    user: models.User = Depends(get_current_user_with_group),
-    db: Session = Depends(get_db),
-):
-    db.add(models.LocationPing(user_id=user.id, lat=body.lat, lng=body.lng, accuracy=body.accuracy))
-    # Ultima senal de vida de este movil: la mira set_live_tracking para decidir si repetir el
-    # push de seguimiento. ponytail: dict en memoria, igual que la propia marca de seguimiento
-    # — si el contenedor reinicia, lo peor que pasa es un push de mas.
-    _last_ping[user.id] = monotonic()
-
+def _apply_device_status(user: models.User, body) -> None:
+    """Estado del móvil que viaja con cada ping. Lo comparten el ping suelto y el vaciado de
+    la cola."""
     user.battery_level = body.battery_level
     user.is_charging = body.is_charging
     user.wifi_connected = body.wifi_connected
@@ -116,6 +106,24 @@ def ping(
     # (cliente antiguo que no lo manda), así que la guarda mira is not None, no si es falsy.
     if body.config_issues is not None:
         user.config_issues = body.config_issues
+    if body.update_mode is not None:
+        user.update_mode = body.update_mode
+
+
+@router.post("/ping", response_model=schemas.LocationPingResponse)
+def ping(
+    body: schemas.LocationPingRequest,
+    tasks: BackgroundTasks,
+    user: models.User = Depends(get_current_user_with_group),
+    db: Session = Depends(get_db),
+):
+    db.add(models.LocationPing(user_id=user.id, lat=body.lat, lng=body.lng, accuracy=body.accuracy))
+    # Ultima senal de vida de este movil: la mira set_live_tracking para decidir si repetir el
+    # push de seguimiento. ponytail: dict en memoria, igual que la propia marca de seguimiento
+    # — si el contenedor reinicia, lo peor que pasa es un push de mas.
+    _last_ping[user.id] = monotonic()
+
+    _apply_device_status(user, body)
 
     _purge_old_pings(db)
     db.commit()
@@ -127,6 +135,58 @@ def ping(
     simulation = geofence.simulation_status(user.id)
     if simulation != "active":
         geofence.check_zone_transitions(db, user, body.lat, body.lng, notify=simulation is None, tasks=tasks)
+    return schemas.LocationPingResponse(live_seconds=_live_seconds(user.id))
+
+
+@router.post("/pings", response_model=schemas.LocationPingResponse)
+def ping_batch(
+    body: schemas.LocationPingBatchRequest,
+    tasks: BackgroundTasks,
+    user: models.User = Depends(get_current_user_with_group),
+    db: Session = Depends(get_db),
+):
+    """Los pings que el móvil no pudo entregar en su momento (sin cobertura, servidor caído)
+    y suelta de golpe al recuperar la red. Van todos en UNA petición a propósito: la cola se
+    vacía cuando el móvil ya está despierto por otra cosa, y una petición por punto sería
+    justo el gasto de radio que la cola viene a evitar."""
+    now = datetime.now(timezone.utc)
+    oldest_allowed = now - timedelta(days=RETENTION_DAYS)
+    stored = []
+    for item in body.pings:
+        timestamp = item.timestamp
+        if timestamp.tzinfo is None:
+            timestamp = timestamp.replace(tzinfo=timezone.utc)
+        # El reloj del móvil no es de fiar: una hora futura dejaría ese punto por encima de
+        # todos los que lleguen después, congelando a esa persona en el mapa hasta que la
+        # hora falsa quedara atrás de verdad.
+        timestamp = min(timestamp, now)
+        if timestamp < oldest_allowed:
+            continue
+        stored.append((timestamp, item))
+        db.add(
+            models.LocationPing(
+                user_id=user.id,
+                lat=item.lat,
+                lng=item.lng,
+                accuracy=item.accuracy,
+                timestamp=timestamp,
+            )
+        )
+    _last_ping[user.id] = monotonic()
+    _apply_device_status(user, body)
+    _purge_old_pings(db)
+    db.commit()
+
+    # Las zonas se evalúan SOLO con el punto más reciente: reproducir una ruta de hace dos
+    # horas dispararía la ristra entera de entradas y salidas de entonces, todas a la vez y
+    # todas fuera de hora. Lo que importa ahora es dónde está esa persona.
+    if stored:
+        newest = max(stored, key=lambda pair: pair[0])[1]
+        simulation = geofence.simulation_status(user.id)
+        if simulation != "active":
+            geofence.check_zone_transitions(
+                db, user, newest.lat, newest.lng, notify=simulation is None, tasks=tasks
+            )
     return schemas.LocationPingResponse(live_seconds=_live_seconds(user.id))
 
 
@@ -162,6 +222,7 @@ def group_latest(
                     wifi_ssid=member.wifi_ssid,
                     location_frequency=member.location_frequency,
                     config_issues=member.config_issues,
+                    update_mode=member.update_mode,
                     # Para que quien mira el mapa vea si el tiempo real que ha pedido ha
                     # prendido de verdad en el otro movil, y no solo que pulso el boton.
                     live_seconds=_live_confirmed_seconds(member.id),

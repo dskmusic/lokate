@@ -1,6 +1,7 @@
 package com.dskmusic.lokate.ui.settings
 
 import android.app.Activity
+import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import android.content.Intent
@@ -76,6 +77,7 @@ import com.dskmusic.lokate.location.LocationServiceController
 import com.dskmusic.lokate.ui.common.AvatarPicker
 import com.dskmusic.lokate.ui.theme.AccentPresets
 import com.dskmusic.lokate.util.DeviceStatusUtils
+import com.dskmusic.lokate.util.formatTimestamp
 import com.dskmusic.lokate.util.LocationFrequency
 import com.dskmusic.lokate.util.MapStyle
 import com.dskmusic.lokate.util.PermissionUtils
@@ -93,7 +95,7 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val viewModel = remember {
-        SettingsViewModel(locator.settings, locator.authRepository, locator.groupRepository, locator.zoneRepository, locator.locationRepository)
+        SettingsViewModel(locator.settings, locator.authRepository, locator.groupRepository, locator.zoneRepository, locator.locationRepository, locator.backupRepository)
     }
 
     val themeMode by locator.settings.themeMode.collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
@@ -115,6 +117,22 @@ fun SettingsScreen(
     val updateFlagEnabled by viewModel.updateFlagEnabled.collectAsStateWithLifecycle()
     val updateFlagError by viewModel.updateFlagError.collectAsStateWithLifecycle()
     val groupMembers by viewModel.groupMembers.collectAsStateWithLifecycle()
+    val backupState by viewModel.backup.collectAsStateWithLifecycle()
+
+    var showRestoreConfirm by remember { mutableStateOf(false) }
+    // Se mira al abrir Ajustes para poder enseñar de cuándo es la copia que hay arriba.
+    LaunchedEffect(Unit) { viewModel.loadBackupInfo() }
+    LaunchedEffect(backupState.message) {
+        val message = backupState.message ?: return@LaunchedEffect
+        val text = when (message) {
+            SettingsViewModel.DONE_BACKUP -> context.getString(R.string.settings_backup_done)
+            SettingsViewModel.DONE_RESTORE -> context.getString(R.string.settings_backup_restored)
+            SettingsViewModel.DONE_EMPTY -> context.getString(R.string.settings_backup_none)
+            else -> context.getString(R.string.settings_backup_error, message)
+        }
+        Toast.makeText(context, text, Toast.LENGTH_LONG).show()
+        viewModel.clearBackupMessage()
+    }
 
     var showColorPicker by remember { mutableStateOf(false) }
     var showClearDataConfirm by remember { mutableStateOf(false) }
@@ -526,6 +544,42 @@ fun SettingsScreen(
             }
 
             item { HorizontalDivider() }
+            item { SectionTitle(stringResource(R.string.settings_backup_section)) }
+            item {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                    Text(
+                        stringResource(R.string.settings_backup_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    val savedAt = backupState.savedAt
+                    Text(
+                        when {
+                            savedAt != null -> stringResource(R.string.settings_backup_last, formatTimestamp(savedAt))
+                            backupState.checked -> stringResource(R.string.settings_backup_last_never)
+                            else -> stringResource(R.string.settings_backup_checking)
+                        },
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(top = 6.dp),
+                    )
+                    Row(
+                        modifier = Modifier.fillMaxWidth().padding(vertical = 8.dp),
+                        horizontalArrangement = Arrangement.spacedBy(8.dp),
+                    ) {
+                        Button(onClick = { viewModel.backupNow() }, enabled = !backupState.working) {
+                            Text(stringResource(R.string.settings_backup_now))
+                        }
+                        TextButton(
+                            onClick = { showRestoreConfirm = true },
+                            enabled = !backupState.working && backupState.savedAt != null,
+                        ) {
+                            Text(stringResource(R.string.settings_backup_restore))
+                        }
+                    }
+                }
+            }
+
+            item { HorizontalDivider() }
             item { SectionTitle(stringResource(R.string.settings_server_url)) }
             item {
                 Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
@@ -721,6 +775,23 @@ fun SettingsScreen(
                 }) { Text(stringResource(R.string.settings_clear_local_data)) }
             },
             dismissButton = { TextButton(onClick = { showClearDataConfirm = false }) { Text(stringResource(R.string.cancel)) } },
+        )
+    }
+
+    if (showRestoreConfirm) {
+        AlertDialog(
+            onDismissRequest = { showRestoreConfirm = false },
+            title = { Text(stringResource(R.string.settings_backup_restore)) },
+            text = { Text(stringResource(R.string.settings_backup_restore_confirm)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showRestoreConfirm = false
+                    viewModel.restoreBackup()
+                }) { Text(stringResource(R.string.settings_backup_restore)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showRestoreConfirm = false }) { Text(stringResource(R.string.cancel)) }
+            },
         )
     }
 

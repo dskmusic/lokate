@@ -25,6 +25,29 @@ interface ZoneDao {
 }
 
 @Dao
+interface PendingPingDao {
+    @Insert
+    suspend fun insert(ping: PendingPingEntity)
+
+    @Query("SELECT * FROM pending_pings ORDER BY timestampMillis ASC LIMIT :max")
+    suspend fun oldest(max: Int): List<PendingPingEntity>
+
+    @Query("DELETE FROM pending_pings WHERE id IN (:ids)")
+    suspend fun deleteIds(ids: List<Long>)
+
+    @Query("DELETE FROM pending_pings WHERE timestampMillis < :cutoffMillis")
+    suspend fun deleteOlderThan(cutoffMillis: Long)
+
+    /** Deja solo los [max] mas recientes: una cola sin tope acaba siendo un segundo
+     * historial, y lo viejo ya no le importa a nadie. */
+    @Query("DELETE FROM pending_pings WHERE id NOT IN (SELECT id FROM pending_pings ORDER BY timestampMillis DESC LIMIT :max)")
+    suspend fun trim(max: Int)
+
+    @Query("DELETE FROM pending_pings")
+    suspend fun clear()
+}
+
+@Dao
 interface LocationHistoryDao {
     @Query("SELECT * FROM location_history WHERE userId = :userId AND timestampMillis >= :sinceMillis ORDER BY timestampMillis ASC")
     fun observeHistory(userId: String, sinceMillis: Long): Flow<List<LocationHistoryEntity>>

@@ -9,6 +9,8 @@ import com.dskmusic.lokate.data.repository.GroupRepository
 import com.dskmusic.lokate.data.repository.LocationRepository
 import com.dskmusic.lokate.data.repository.ZoneRepository
 import kotlinx.coroutines.Job
+import kotlinx.coroutines.async
+import kotlinx.coroutines.awaitAll
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.flow.MutableSharedFlow
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -31,12 +33,30 @@ data class MapUiState(
      * pantalla) para que cambiar de pestaña no lo apague: la pantalla se destruye, el
      * ViewModel no. */
     val followUserId: String? = null,
+    /** Se agotó la espera sin que el otro móvil diera señales (GPS apagado, push perdido, el
+     * sistema no dejó arrancar el servicio...). Se sigue intentando, pero hay que enseñarlo:
+     * un botón encendido mientras no llega nada es peor que no tener botón. */
+    val followUnconfirmed: Boolean = false,
+    /** Se le ha pedido a todo el grupo una ubicacion fresca y aun se esperan respuestas. */
+    val refreshingAll: Boolean = false,
 ) {
     /** El seguido ya está en tiempo real de verdad (lo confirma el servidor en cada sondeo),
      * no solo "le hemos dado al botón". */
     val followLive: Boolean
         get() = followUserId != null && members.any { it.user_id == followUserId && it.live_seconds > 0 }
+
+    val followState: FollowState
+        get() = when {
+            followUserId == null -> FollowState.OFF
+            followLive -> FollowState.LIVE
+            followUnconfirmed -> FollowState.FAILED
+            else -> FollowState.PENDING
+        }
 }
+
+/** OFF = no se sigue a nadie. PENDING = orden mandada, esperando a que el otro móvil conteste.
+ * LIVE = está mandando posición en tiempo real. FAILED = no contesta (se sigue intentando). */
+enum class FollowState { OFF, PENDING, LIVE, FAILED }
 
 private const val POLL_INTERVAL_MS = 15_000L
 
@@ -53,6 +73,11 @@ private const val LIVE_RENEW_MS = 30_000L
  * de sobra para el push, levantar el servicio y el primer fix; pasado esto, o el push se perdió
  * o el sistema no dejó arrancar nada. Se sigue intentando igual, solo es el aviso. */
 private const val FOLLOW_CONFIRM_TIMEOUT_MS = 20_000L
+
+/** Ritmo y tope del sondeo tras pedirle a todo el grupo una ubicacion fresca: los moviles
+ * contestan de uno en uno, asi que la lista se refresca segun van llegando. */
+private const val REFRESH_ALL_POLL_MS = 2_500L
+private const val REFRESH_ALL_POLLS = 8
 
 class MapViewModel(
     private val locationRepository: LocationRepository,
@@ -135,16 +160,34 @@ class MapViewModel(
     fun setFollowing(userId: String?) {
         if (userId == followUserId) return
         val previous = followUserId
-        _uiState.value = _uiState.value.copy(followUserId = userId)
+        _uiState.value = _uiState.value.copy(followUserId = userId, followUnconfirmed = false)
         followJob?.cancel()
         followJob = viewModelScope.launch {
             if (previous != null) runCatching { locationRepository.setLiveTracking(previous, false) }
             if (userId == null) return@launch
+            // Vigilancia de ida y vuelta: avisa cuando prende y también si deja de llegar
+            // (apagar el GPS a mitad de un seguimiento es exactamente el caso a cubrir). Se
+            // cancela con el propio followJob al dejar de seguir.
             launch {
-                val confirmed = withTimeoutOrNull(FOLLOW_CONFIRM_TIMEOUT_MS) {
-                    _uiState.first { it.followUserId == userId && it.followLive }
+                var announced: Boolean? = null
+                while (true) {
+                    val live = if (announced != true) {
+                        withTimeoutOrNull(FOLLOW_CONFIRM_TIMEOUT_MS) { _uiState.first { it.followLive } } != null
+                    } else {
+                        _uiState.first { !it.followLive }
+                        false
+                    }
+                    // Soltar a quien se seguía (o cambiar de seguido) también apaga followLive, y
+                    // eso llegaba aquí como "ha dejado de contestar": el aviso de fallo salía al
+                    // DESCONECTAR, que es justo cuando todo ha ido bien. Este job se cancela al
+                    // dejar de seguir, pero StateFlow reanuda al de abajo en el acto (mismo hilo),
+                    // antes de que la cancelación llegue.
+                    if (followUserId != userId) return@launch
+                    if (live == announced) continue
+                    announced = live
+                    _uiState.value = _uiState.value.copy(followUnconfirmed = !live)
+                    _followFeedback.tryEmit(live)
                 }
-                _followFeedback.tryEmit(confirmed != null)
             }
             while (true) {
                 runCatching { locationRepository.setLiveTracking(userId, true) }
@@ -152,6 +195,26 @@ class MapViewModel(
             }
         }
         startPolling(restart = true)
+    }
+
+    /** Pide a todo el grupo una ubicacion fresca de golpe (el mismo push silencioso que el
+     * boton de la ficha, pero para todos) y va refrescando la lista segun contestan. No se
+     * espera a que contesten todos: se sondea un rato fijo, o se esperaria siempre al mas
+     * lento. */
+    fun refreshAll() {
+        if (_uiState.value.refreshingAll) return
+        _uiState.value = _uiState.value.copy(refreshingAll = true)
+        viewModelScope.launch {
+            val ids = _uiState.value.groupMembers.map { it.id }
+                .ifEmpty { _uiState.value.members.map { it.user_id } }
+            ids.map { id -> async { runCatching { locationRepository.requestLocation(id) } } }.awaitAll()
+            repeat(REFRESH_ALL_POLLS) {
+                delay(REFRESH_ALL_POLL_MS)
+                runCatching { locationRepository.groupLatest() }
+                    .onSuccess { _uiState.value = _uiState.value.copy(members = it) }
+            }
+            _uiState.value = _uiState.value.copy(refreshingAll = false)
+        }
     }
 
     fun setTestMode(active: Boolean) {

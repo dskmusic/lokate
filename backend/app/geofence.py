@@ -11,7 +11,7 @@ EARTH_RADIUS_M = 6_371_000
 # Margen de histéresis: una vez dentro, hay que alejarse radius_m + este margen para contar
 # como salida. Evita el parpadeo entrada/salida (y el bombardeo de notificaciones) cuando el
 # GPS oscila cerca del borde o una carretera roza el límite de la zona.
-ZONE_EXIT_MARGIN_M = 30
+ZONE_EXIT_MARGIN_M = 20
 
 # ---- Modo prueba de los administradores ----
 # Mientras un admin arrastra a alguien por el mapa para probar los avisos, la posición REAL de
@@ -155,6 +155,10 @@ def check_zone_transitions(
             recipients = []
         else:
             recipients = _notification_recipients(db, user.group_id, user.id, zone.id, is_inside)
+        # Zona privada: solo avisa a quien la creo, aunque a otro le quedara una preferencia
+        # guardada de cuando la zona era publica.
+        if not zone.is_public:
+            recipients = [uid for uid in recipients if uid == zone.created_by]
         report.append((body, len(recipients)))
 
         if notify:

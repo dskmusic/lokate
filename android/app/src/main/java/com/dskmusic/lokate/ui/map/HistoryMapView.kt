@@ -66,6 +66,8 @@ fun HistoryMapView(
     // Sin conexión pero mirando una zona sin descargar -> mapa de internet, con aviso.
     val effectiveStyle = rememberEffectiveMapStyle(mapView, mapStyle, offlineFiles)
 
+    TileRetryEffect(mapView)
+
     AndroidView(
         factory = { mapView },
         modifier = modifier,

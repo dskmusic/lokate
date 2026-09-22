@@ -3,7 +3,7 @@ package com.dskmusic.lokate.ui.member
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dskmusic.lokate.data.remote.dto.LocationDto
-import com.dskmusic.lokate.data.repository.GroupRepository
+import com.dskmusic.lokate.data.repository.AdminRepository
 import com.dskmusic.lokate.data.repository.LocationRepository
 import com.dskmusic.lokate.data.repository.MessageRepository
 import java.io.File
@@ -26,15 +26,18 @@ data class MemberDetailUiState(
     val ringSent: Boolean = false,
     val sendingMessage: Boolean = false,
     val messageSent: Boolean = false,
-    val sendingTestNotification: Boolean = false,
-    val testNotificationSent: Boolean = false,
+    /** Wifi que un admin acaba de mandar a las "wifis de casa" de este miembro, para avisar. */
+    val knownWifiAdded: String? = null,
+    /** Sus "wifis de casa" según la última copia en la nube, para no mandarle una que ya tiene.
+     * null = todavía no se ha mirado o no hay copia (entonces no se puede saber). */
+    val knownWifis: List<String>? = null,
     val error: String? = null,
 )
 
 class MemberDetailViewModel(
     private val locationRepository: LocationRepository,
     private val messageRepository: MessageRepository,
-    private val groupRepository: GroupRepository,
+    private val adminRepository: AdminRepository,
     private val userId: String,
 ) : ViewModel() {
 
@@ -109,17 +112,23 @@ class MemberDetailViewModel(
         }
     }
 
-    /** Notificación de prueba a este miembro (mismo endpoint que Ajustes, solo admins). */
-    fun sendTestNotification() {
-        _uiState.value = _uiState.value.copy(sendingTestNotification = true, testNotificationSent = false)
+    /** Solo admins: qué wifis de casa tiene ya, para no volver a mandarle la misma. Sale de su
+     * copia en la nube, que su móvil sube al aplicar uno de estos cambios. */
+    fun loadKnownWifi() {
         viewModelScope.launch {
-            runCatching { groupRepository.sendTestNotification(listOf(userId)) }
-                .onSuccess {
-                    _uiState.value = _uiState.value.copy(sendingTestNotification = false, testNotificationSent = true)
-                }
-                .onFailure {
-                    _uiState.value = _uiState.value.copy(sendingTestNotification = false, error = it.message)
-                }
+            val response = runCatching { adminRepository.knownWifi(userId) }.getOrNull()
+            // Sin copia (o sin respuesta) se queda en null: "no se sabe" no es "no la tiene".
+            _uiState.value = _uiState.value.copy(knownWifis = response?.ssids?.takeIf { response.known })
+        }
+    }
+
+    /** Solo admins: mete la wifi a la que está conectado ahora mismo en sus "wifis de casa".
+     * El servidor se lo manda por push a su móvil, que es donde vive esa lista. */
+    fun addKnownWifi(ssid: String) {
+        viewModelScope.launch {
+            runCatching { adminRepository.addKnownWifi(userId, ssid) }
+                .onSuccess { _uiState.value = _uiState.value.copy(knownWifiAdded = ssid) }
+                .onFailure { _uiState.value = _uiState.value.copy(error = it.message) }
         }
     }
 

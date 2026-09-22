@@ -380,6 +380,34 @@ object NotificationHelper {
         )
     }
 
+    /**
+     * Aviso que el movil se pinta sobre si mismo (sesion caducada, lleva demasiado sin poder
+     * mandar ubicacion): no viene de ningun push. No mira el ajuste de "avisos del sistema" a
+     * proposito -- es su propio movil el que esta fallando, y callarselo es justo el problema
+     * que esto viene a resolver. [notificationId] es fijo por tipo de problema.
+     */
+    fun showLocalAlert(context: Context, notificationId: Int, title: String, body: String) {
+        val intent = Intent(context, com.dskmusic.lokate.MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+        }
+        val pendingIntent = PendingIntent.getActivity(
+            context,
+            notificationId,
+            intent,
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val notification = NotificationCompat.Builder(context, Constants.SYSTEM_CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setSmallIcon(R.drawable.ic_notification)
+            .setGroup(SYSTEM_GROUP)
+            .setAutoCancel(true)
+            .setContentIntent(pendingIntent)
+            .build()
+        NotificationManagerCompat.from(context).notify(notificationId, notification)
+    }
+
     fun showSystemNotification(context: Context, title: String, body: String) {
         val notification = NotificationCompat.Builder(context, Constants.SYSTEM_CHANNEL_ID)
             .setContentTitle(title)

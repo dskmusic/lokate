@@ -16,6 +16,10 @@ import com.dskmusic.lokate.data.remote.dto.LocationDto
 import com.dskmusic.lokate.data.remote.dto.ZoneDto
 import com.dskmusic.lokate.util.Constants
 import com.dskmusic.lokate.util.MapStyle
+import com.dskmusic.lokate.util.distanceMeters
+import kotlin.math.PI
+import kotlin.math.roundToInt
+import kotlin.math.sin
 import org.osmdroid.events.MapEventsReceiver
 import org.osmdroid.events.MapListener
 import org.osmdroid.events.ScrollEvent
@@ -94,9 +98,22 @@ fun OsmMapView(
     val cameraRestored = remember {
         rememberCamera && MapCameraMemory.center != null && MapCameraMemory.zoom != null
     }
+    // Los marcadores que se taparian se reparten en circulo y esa separacion se mide en
+    // pixeles, asi que al cambiar el zoom hay que rehacerlos (ver [spreadOverlapping]). Se
+    // guarda redondeado a medio nivel para no repintarlo todo por cada pellizco.
+    val spreadZoom = remember { mutableStateOf(initialZoom) }
     val mapView = remember {
         MapView(context).apply {
             setMultiTouchControls(true)
+            addMapListener(object : MapListener {
+                override fun onScroll(event: ScrollEvent?): Boolean = false
+
+                override fun onZoom(event: ZoomEvent?): Boolean {
+                    val rounded = (zoomLevelDouble * 2).roundToInt() / 2.0
+                    if (rounded != spreadZoom.value) spreadZoom.value = rounded
+                    return false
+                }
+            })
             // El rocker +/- nativo de osmdroid se solapaba con los FAB de Compose (pellizcar
             // para hacer zoom ya cubre lo mismo).
             zoomController.setVisibility(org.osmdroid.views.CustomZoomButtonsController.Visibility.NEVER)
@@ -155,11 +172,14 @@ fun OsmMapView(
         onDispose { mapView.onDetach() }
     }
 
+    TileRetryEffect(mapView)
+
     // El sondeo trae la lista de miembros entera cada ~15s aunque nadie se haya movido, y este
     // bloque se ejecuta en cada recomposición: sin la firma se rehacían todos los marcadores
     // (recortando de nuevo el bitmap de cada avatar) y se repintaba el mapa para nada.
     val overlaySignature = buildString {
         append(mapStyle).append('#').append(onMapTap != null).append('#')
+        append(spreadZoom.value).append('#')
         // La batería entra en la firma porque el anillo del marcador la pinta: si no, el
         // marcador se quedaría con el anillo del primer sondeo para siempre.
         members.forEach {
@@ -233,21 +253,11 @@ fun OsmMapView(
                     view.overlays.add(marker)
                 }
 
-                // Agrupa a quienes están (casi) en el mismo punto para separarlos un poco en
-                // círculo alrededor del centro — si no, sus marcadores se tapan unos a otros y
-                // solo se puede tocar el de arriba del todo.
-                members.groupBy { "%.5f,%.5f".format(it.lat, it.lng) }.values.forEach { group ->
-                    if (group.size == 1) {
-                        val member = group[0]
-                        addMemberMarker(member, GeoPoint(member.lat, member.lng))
-                    } else {
-                        val center = GeoPoint(group[0].lat, group[0].lng)
-                        val offsetMeters = 10.0
-                        group.forEachIndexed { index, member ->
-                            val bearing = (360.0 / group.size) * index
-                            addMemberMarker(member, center.destinationPoint(offsetMeters, bearing))
-                        }
-                    }
+                // Cuantos metros mide un pixel aqui y ahora: lo sabe la propia proyeccion del
+                // mapa (tiene en cuenta el zoom, la latitud y el tamano de tesela).
+                val metersPerPixel = 1.0 / view.projection.metersToPixels(1f).toDouble().coerceAtLeast(1e-9)
+                spreadOverlapping(members, metersPerPixel).forEach { (member, position) ->
+                    addMemberMarker(member, position)
                 }
 
                 view.invalidate()
@@ -261,6 +271,41 @@ fun OsmMapView(
             }
         },
     )
+}
+
+/**
+ * Reparte en circulo a quienes caen tan cerca que sus marcadores se taparian, y deja al
+ * resto en su sitio. La separacion se calcula en pixeles y no en metros fijos: dos personas
+ * a 10 m son dos marcadores pegados en un mapa de ciudad, asi que un desplazamiento fijo en
+ * metros no separa nada al alejar el zoom (y separa de mas al acercarlo, mintiendo sobre
+ * donde esta cada uno). El radio sale de la geometria del circulo: con [n] marcadores de
+ * [MARKER_SIZE_PX] repartidos, la distancia entre vecinos es 2*r*sin(pi/n), asi que ese es
+ * el radio minimo para que no se toquen.
+ */
+private fun spreadOverlapping(
+    members: List<LocationDto>,
+    metersPerPixel: Double,
+): List<Pair<LocationDto, GeoPoint>> {
+    val clusterMeters = MARKER_SIZE_PX * metersPerPixel
+    // ponytail: O(n^2) sobre los miembros del grupo. Son una familia, no un estadio.
+    val clusters = mutableListOf<MutableList<LocationDto>>()
+    members.forEach { member ->
+        val near = clusters.firstOrNull {
+            distanceMeters(it[0].lat, it[0].lng, member.lat, member.lng) <= clusterMeters
+        }
+        if (near != null) near.add(member) else clusters.add(mutableListOf(member))
+    }
+    return clusters.flatMap { group ->
+        if (group.size == 1) {
+            listOf(group[0] to GeoPoint(group[0].lat, group[0].lng))
+        } else {
+            val center = GeoPoint(group.map { it.lat }.average(), group.map { it.lng }.average())
+            val radiusMeters = MARKER_SIZE_PX * 0.55 / sin(PI / group.size) * metersPerPixel
+            group.sortedBy { it.user_id }.mapIndexed { index, member ->
+                member to center.destinationPoint(radiusMeters, 360.0 / group.size * index)
+            }
+        }
+    }
 }
 
 private fun buildCirclePolygon(center: GeoPoint, radiusMeters: Double, points: Int = 64): Polygon {

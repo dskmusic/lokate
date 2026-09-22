@@ -49,6 +49,11 @@ class User(Base):
     # del grupo la ve en su ficha. Con DISABLED no llegan pings, por eso importa que /auth/device
     # también la registre: es la única vía por la que el grupo se entera de que está apagada.
     location_frequency = Column(String, nullable=True)
+    # Como esta mandando posicion ese movil AHORA mismo (moving / still / home_wifi / live /
+    # on_demand): lo decide su propia app (ver UpdateMode.kt) y es lo que explica que alguien
+    # con "cada 30 segundos" lleve 7 minutos sin actualizar — en reposo su movil espacia a 15
+    # min a proposito. NULL = su app es anterior a esta version y no lo manda.
+    update_mode = Column(String, nullable=True)
     # Lista separada por comas de lo que ese usuario tiene SIN configurar en su móvil
     # (permisos denegados, batería sin excluir, GPS apagado...). Cadena vacía = todo correcto;
     # NULL = su app es anterior a esta versión y no lo manda. Viaja por el mismo camino que
@@ -114,6 +119,9 @@ class Zone(Base):
     lng = Column(Float, nullable=False)
     radius_m = Column(Float, nullable=False)
     created_by = Column(String, ForeignKey("users.id"), nullable=False)
+    # Privada = solo existe para quien la creo: no la ven ni la pueden tocar los demas, y sus
+    # avisos solo le llegan a el. Por defecto publica, que es como funcionaban todas hasta ahora.
+    is_public = Column(Boolean, nullable=False, default=True)
     created_at = Column(DateTime, default=utcnow)
 
     group = relationship("Group", back_populates="zones")
@@ -154,3 +162,20 @@ class ZoneNotificationPref(Base):
         return [uid for uid in (self.watched_ids or "").split(",") if uid]
 
 
+
+
+class UserBackup(Base):
+    """La copia de los ajustes del movil de un usuario: un JSON tal cual lo manda la app, una
+    fila por usuario (la nueva pisa la anterior). El servidor no mira dentro ni lo interpreta —
+    lo que haya que entender de ese JSON lo entiende la app que lo escribio.
+
+    ponytail: una columna de texto y a correr. Desglosarlo en columnas obligaria a tocar el
+    servidor cada vez que la app anade un ajuste, que es justo lo que no queremos."""
+
+    __tablename__ = "user_backups"
+
+    user_id = Column(String, ForeignKey("users.id"), primary_key=True)
+    payload = Column(String, nullable=False)
+    # Version de la app que hizo la copia, solo para poder diagnosticar restauraciones raras.
+    app_version = Column(String, nullable=True)
+    updated_at = Column(DateTime, default=utcnow, onupdate=utcnow)

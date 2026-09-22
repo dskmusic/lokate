@@ -90,7 +90,9 @@
     <string name="map_follow_me">Follow someone live</string>
     <string name="map_follow_stop">Stop following</string>
     <string name="follow_live_confirmed">Real time is on for their phone</string>
-    <string name="follow_live_unconfirmed">Their phone has not answered yet; still trying</string>
+    <string name="follow_live_unconfirmed">Could not turn on real time: their phone is not answering (is their location off?). Still trying</string>
+    <string name="follow_live_chip_pending">Waiting for their phone…</string>
+    <string name="follow_live_chip_failed">No answer: not in real time</string>
     <string name="map_follow_you">%1$s (you)</string>
     <string name="help_title">Help</string>
 
@@ -102,8 +104,44 @@
     <string name="wifi_connected_label">Connected to Wi-Fi</string>
     <string name="wifi_not_connected_label">No Wi-Fi (mobile data)</string>
     <string name="wifi_unknown_label">Unknown connection</string>
+    <string name="wifi_add_known_button">Add to their home Wi-Fi list</string>
+    <string name="wifi_add_known_title">Add home Wi-Fi</string>
+    <string name="wifi_add_known_body">Add the Wi-Fi “%1$s” to the home Wi-Fi list of %2$s? While connected to it, their phone will send its location less often to save battery.</string>
+    <string name="wifi_add_known_sent">Request sent: “%1$s” will be added as soon as their phone receives it</string>
+    <string name="wifi_add_known_already">Already in their home Wi-Fi list</string>
+    <string name="wifi_add_known_pending">Request sent: it will be added when their phone receives it</string>
+    <string name="wifi_add_known_unknown">Their list cannot be checked: there is no cloud backup of their settings yet. If they already had it, it would not be duplicated.</string>
     <string name="last_seen_label">Last update:\n%1$s</string>
+    <string name="last_seen_ago">%1$s ago</string>
+    <!-- Alerts the phone raises about itself -->
+    <string name="session_expired_title">Session expired</string>
+    <string name="session_expired_body">Open Lokate and sign in again: until then your family cannot see your location.</string>
+    <string name="ping_stalled_title">Lokate is not sending your location</string>
+    <string name="ping_stalled_body">Your location has not been sent in a while. Open the app and check permissions and battery saver.</string>
     <string name="update_frequency_label">Updates: %1$s</string>
+    <string name="update_short_moving">moving</string>
+    <string name="update_short_still">not moving</string>
+    <string name="update_short_home_wifi">at a home wifi</string>
+    <string name="update_short_on_demand">on demand</string>
+    <string name="update_short_overdue">no signal</string>
+    <string name="update_info_title">How often it updates</string>
+    <string name="update_info_last">Last update: %1$s ago (%2$s).</string>
+    <string name="update_info_frequency">Rate set on their phone: %1$s.</string>
+    <string name="update_info_state">Right now: %1$s.</string>
+    <string name="update_state_moving">Moving</string>
+    <string name="update_state_still">Not moving</string>
+    <string name="update_state_home_wifi">On one of their home wifi networks</string>
+    <string name="update_state_live">Live tracking</string>
+    <string name="update_state_on_demand">Only answers when asked</string>
+    <string name="update_state_unknown">Unknown</string>
+    <string name="update_body_moving">While they are moving, their phone sends its position at the rate they chose. It can arrive up to a minute later: the system groups several positions and delivers them at once, so the radio does not wake up every few seconds.</string>
+    <string name="update_body_still">Their phone has noticed they have not moved for a while (from the physical activity sensor, or because their position is not changing) and has spaced updates out to one every 15 minutes, whatever rate they chose. On top of that, while stationary it only sends a position after moving more than 100 metres, so the map does not draw walks that never happened. As soon as they move again it goes back to their rate straight away.</string>
+    <string name="update_body_home_wifi">They are connected to a wifi network they marked as a fixed place (home, work, family homes). While they stay there, their phone updates once every 15 minutes instead of at their chosen rate: if they are not moving, asking every minute only drains the battery. Leaving that network restores their rate.</string>
+    <string name="update_body_live">Someone is tracking them live: their phone sends its position every few seconds while it lasts, overriding whatever rate they chose.</string>
+    <string name="update_body_on_demand">Their phone does not send its position on its own. It only answers when someone taps the refresh button on their card, so the time you see is the last time it was asked.</string>
+    <string name="update_body_unknown">Their app is older than this version and does not send this yet, so there is no way to tell why it is taking so long.</string>
+    <string name="update_info_overdue">It has been far longer than expected without any signal. The usual causes are no coverage (a failed send is not retried, it waits for the next one), power saving with a low battery, or the system having stopped their app.</string>
+    <string name="update_info_footer">The time shown is when the last position reached the server, not the last time their phone checked where it was.</string>
     <string name="frequency_short_high">in real time</string>
     <string name="frequency_short_30_sec">every 30 s</string>
     <string name="frequency_short_1_min">every minute</string>
@@ -131,8 +169,6 @@
     <string name="config_issue_dnd">No Do Not Disturb access: it may not ring when located if silenced</string>
     <string name="config_issue_activity">No physical activity permission: the app cannot tell when the phone is still, so it uses more battery</string>
     <string name="permissions_all_ok">All good: no permissions missing</string>
-    <string name="test_notification_confirm_title">Send a test notification?</string>
-    <string name="test_notification_confirm_body">A test notification will be sent to %1$s\'s device.</string>
     <string name="ring_device_button">Ring the device</string>
     <string name="ring_confirm_title">Ring the device?</string>
     <string name="ring_confirm_body">A sound alert will be sent to %1$s\'s phone to help locate it.</string>
@@ -195,6 +231,10 @@
 
     <!-- Zones -->
     <string name="zones_title">Zones</string>
+    <string name="zone_public_label">Visible to the whole group</string>
+    <string name="zone_public_hint">Everyone in the group sees it and can get its alerts.</string>
+    <string name="zone_private_hint">Yours only: nobody else sees it and its alerts go only to you.</string>
+    <string name="zone_private_badge">%1$d m · private</string>
     <string name="zone_add">Add zone</string>
     <string name="zone_name_label">Zone name</string>
     <string name="zone_radius_label">Radius (meters)</string>
@@ -394,6 +434,7 @@
     <string name="people_sort_name">Name</string>
     <string name="people_sort_distance">Distance</string>
     <string name="people_sort_recent">Recent</string>
+    <string name="people_refresh_all">Refresh everyone</string>
     <!-- Offline maps -->
     <string name="map_style_offline">Offline</string>
     <string name="map_style_offline_dark">Offline (dark)</string>
@@ -422,4 +463,20 @@
     <string name="offline_maps_back_in_area">Back in a downloaded area: offline map</string>
     <string name="offline_maps_missing_body">You picked the offline map, but there is no area stored on your phone. Download one or keep using the online map.</string>
     <string name="offline_maps_missing_live">Use the online map</string>
+    <string name="settings_backup_section">Cloud backup</string>
+    <string name="settings_backup_hint">Saves the settings of this phone on the server (theme, colour, notifications, frequency, home wifi…). It runs on its own once a day, and you will be offered to restore it after reinstalling the app. Your zones and your group are always kept on the server.</string>
+    <string name="settings_backup_last">Last backup: %1$s</string>
+    <string name="settings_backup_last_never">No backup yet</string>
+    <string name="settings_backup_checking">Checking…</string>
+    <string name="settings_backup_now">Back up now</string>
+    <string name="settings_backup_restore">Restore backup</string>
+    <string name="settings_backup_restore_confirm">The settings of this phone will be replaced with the ones in the backup. Whatever you have set now will be lost.</string>
+    <string name="settings_backup_done">Backup saved</string>
+    <string name="settings_backup_restored">Settings restored</string>
+    <string name="settings_backup_none">There is no backup saved</string>
+    <string name="settings_backup_error">Could not do it: %1$s</string>
+    <string name="login_backup_title">There is a backup of your settings</string>
+    <string name="login_backup_body">Saved on %1$s. Do you want to restore it on this phone?</string>
+    <string name="login_backup_restore">Restore</string>
+    <string name="login_backup_skip">Not now</string>
 </resources>

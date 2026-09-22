@@ -90,7 +90,9 @@
     <string name="map_follow_me">Seguir a alguien en vivo</string>
     <string name="map_follow_stop">Dejar de seguir</string>
     <string name="follow_live_confirmed">Tiempo real activado en su móvil</string>
-    <string name="follow_live_unconfirmed">Su móvil aún no responde; se sigue intentando</string>
+    <string name="follow_live_unconfirmed">No se ha podido activar el tiempo real: su móvil no responde (¿tiene la ubicación apagada?). Se sigue intentando</string>
+    <string name="follow_live_chip_pending">Esperando a su móvil…</string>
+    <string name="follow_live_chip_failed">Sin respuesta: no está en tiempo real</string>
     <string name="map_follow_you">%1$s (tú)</string>
     <string name="help_title">Ayuda</string>
 
@@ -102,8 +104,46 @@
     <string name="wifi_connected_label">Conectado a WiFi</string>
     <string name="wifi_not_connected_label">Sin WiFi (datos móviles)</string>
     <string name="wifi_unknown_label">Conexión desconocida</string>
+    <string name="wifi_add_known_button">Añadir a sus wifis de casa</string>
+    <string name="wifi_add_known_title">Añadir wifi de casa</string>
+    <string name="wifi_add_known_body">¿Añadir la wifi «%1$s» a las wifis de casa de %2$s? Estando conectado a ella, su móvil dejará de mandar ubicación tan a menudo para ahorrar batería.</string>
+    <string name="wifi_add_known_sent">Orden enviada: «%1$s» se añadirá en cuanto su móvil la reciba</string>
+    <string name="wifi_add_known_already">Ya está en sus wifis de casa</string>
+    <string name="wifi_add_known_pending">Orden enviada: se añadirá cuando su móvil la reciba</string>
+    <string name="wifi_add_known_unknown">No se puede comprobar si ya la tiene: aún no hay copia en la nube de sus ajustes. Si ya la tuviera, no se duplicaría.</string>
     <string name="last_seen_label">Última actualización:\n%1$s</string>
+    <string name="last_seen_ago">hace %1$s</string>
+    <!-- Avisos que el propio móvil se pinta cuando algo suyo falla -->
+    <string name="session_expired_title">Sesión caducada</string>
+    <string name="session_expired_body">Abre Lokate e inicia sesión otra vez: hasta entonces tu familia no verá tu ubicación.</string>
+    <string name="ping_stalled_title">Lokate no está enviando tu ubicación</string>
+    <string name="ping_stalled_body">Llevas un buen rato sin enviar ubicación. Abre la app y revisa los permisos y el ahorro de batería.</string>
     <string name="update_frequency_label">Actualiza: %1$s</string>
+    <!-- Por qué alguien lleva X minutos sin actualizar: el modo lo manda su propio móvil
+         en cada ping (ver UpdateMode.kt) y aquí solo se traduce. -->
+    <string name="update_short_moving">en movimiento</string>
+    <string name="update_short_still">en reposo</string>
+    <string name="update_short_home_wifi">en casa (wifi)</string>
+    <string name="update_short_on_demand">bajo demanda</string>
+    <string name="update_short_overdue">sin señal</string>
+    <string name="update_info_title">Cada cuánto se actualiza</string>
+    <string name="update_info_last">Última actualización: hace %1$s (%2$s).</string>
+    <string name="update_info_frequency">Ritmo elegido en su móvil: %1$s.</string>
+    <string name="update_info_state">Ahora mismo: %1$s.</string>
+    <string name="update_state_moving">En movimiento</string>
+    <string name="update_state_still">Sin moverse</string>
+    <string name="update_state_home_wifi">En una de sus wifis de casa</string>
+    <string name="update_state_live">En tiempo real</string>
+    <string name="update_state_on_demand">Solo contesta si se lo piden</string>
+    <string name="update_state_unknown">Desconocido</string>
+    <string name="update_body_moving">Mientras se mueve, su móvil manda la posición al ritmo que tiene elegido. Puede llegar hasta un minuto más tarde: el sistema junta varias posiciones y las entrega de una vez, para no encender la radio a cada rato.</string>
+    <string name="update_body_still">Su móvil ha visto que lleva un rato sin moverse (por el sensor de actividad física, o porque su posición no cambia) y ha espaciado las actualizaciones a una cada 15 minutos, tenga el ritmo que tenga elegido. Además, estando parado solo manda posición si se desplaza más de 100 metros, para no dibujar paseos que no existen. En cuanto vuelva a moverse recupera su ritmo al instante.</string>
+    <string name="update_body_home_wifi">Está conectado a una wifi que tiene marcada como sitio fijo (casa, trabajo, casa de los abuelos). Mientras siga ahí, su móvil actualiza una vez cada 15 minutos en lugar de a su ritmo: si no se está moviendo, preguntar cada minuto solo gasta batería. Al salir de esa wifi vuelve a su ritmo.</string>
+    <string name="update_body_live">Alguien lo tiene en seguimiento en tiempo real: su móvil manda posición cada pocos segundos mientras dure, por encima del ritmo que tenga elegido.</string>
+    <string name="update_body_on_demand">Su móvil no manda posición por su cuenta. Solo responde cuando alguien pulsa el botón de actualizar en su ficha, así que la hora que ves es la de la última vez que se la pidieron.</string>
+    <string name="update_body_unknown">Su app es anterior a esta versión y todavía no manda este dato, así que no se puede saber por qué tarda.</string>
+    <string name="update_info_overdue">Lleva bastante más de lo esperable sin dar señales. Lo habitual es que sea falta de cobertura (un envío que falla no se reintenta: se espera al siguiente), el ahorro de energía del móvil con la batería baja, o que el sistema haya detenido su app.</string>
+    <string name="update_info_footer">La hora que se muestra es la de la última posición que llegó al servidor, no la de la última vez que su móvil miró dónde estaba.</string>
     <string name="frequency_short_high">en tiempo real</string>
     <string name="frequency_short_30_sec">cada 30 s</string>
     <string name="frequency_short_1_min">cada minuto</string>
@@ -133,8 +173,6 @@
     <string name="config_issue_dnd">Sin acceso a No molestar: puede que no suene al localizarlo si está en silencio</string>
     <string name="config_issue_activity">Sin permiso de actividad física: la app no sabe cuándo está quieto y gasta más batería</string>
     <string name="permissions_all_ok">Todo correcto: no falta ningún permiso</string>
-    <string name="test_notification_confirm_title">¿Enviar notificación de prueba?</string>
-    <string name="test_notification_confirm_body">Se enviará una notificación de prueba al dispositivo de %1$s.</string>
     <string name="ring_device_button">Hacer sonar el dispositivo</string>
     <string name="ring_confirm_title">¿Hacer sonar el dispositivo?</string>
     <string name="ring_confirm_body">Se enviará una notificación sonora al móvil de %1$s para ayudar a localizarlo.</string>
@@ -197,6 +235,10 @@
 
     <!-- Zonas -->
     <string name="zones_title">Zonas</string>
+    <string name="zone_public_label">Visible para todo el grupo</string>
+    <string name="zone_public_hint">La ven todos los miembros y pueden recibir sus avisos.</string>
+    <string name="zone_private_hint">Solo tuya: nadie más la ve y sus avisos solo te llegan a ti.</string>
+    <string name="zone_private_badge">%1$d m · solo tuya</string>
     <string name="zone_add">Añadir zona</string>
     <string name="zone_name_label">Nombre de la zona</string>
     <string name="zone_radius_label">Radio (metros)</string>
@@ -398,6 +440,7 @@
     <string name="people_sort_name">Nombre</string>
     <string name="people_sort_distance">Cercanía</string>
     <string name="people_sort_recent">Reciente</string>
+    <string name="people_refresh_all">Actualizar a todos</string>
     <!-- Mapas sin conexión -->
     <string name="map_style_offline">Sin conexión</string>
     <string name="map_style_offline_dark">Sin conexión (oscuro)</string>
@@ -426,4 +469,20 @@
     <string name="offline_maps_back_in_area">De vuelta en una zona descargada: mapa sin conexión</string>
     <string name="offline_maps_missing_body">Has elegido el mapa sin conexión, pero no tienes ninguna zona guardada en el móvil. Descarga una o sigue con el mapa de internet.</string>
     <string name="offline_maps_missing_live">Usar el mapa de internet</string>
+    <string name="settings_backup_section">Copia en la nube</string>
+    <string name="settings_backup_hint">Guarda en el servidor los ajustes de este móvil (tema, color, notificaciones, frecuencia, wifis de casa…). Se hace sola una vez al día y al reinstalar la app se te ofrece restaurarla. Tus zonas y tu grupo ya se guardan siempre en el servidor.</string>
+    <string name="settings_backup_last">Última copia: %1$s</string>
+    <string name="settings_backup_last_never">Todavía no hay ninguna copia</string>
+    <string name="settings_backup_checking">Consultando…</string>
+    <string name="settings_backup_now">Hacer copia ahora</string>
+    <string name="settings_backup_restore">Restaurar copia</string>
+    <string name="settings_backup_restore_confirm">Se van a sustituir los ajustes de este móvil por los de la copia guardada. Lo que tengas configurado ahora se perderá.</string>
+    <string name="settings_backup_done">Copia guardada</string>
+    <string name="settings_backup_restored">Ajustes restaurados</string>
+    <string name="settings_backup_none">No hay ninguna copia guardada</string>
+    <string name="settings_backup_error">No se ha podido: %1$s</string>
+    <string name="login_backup_title">Hay una copia de tus ajustes</string>
+    <string name="login_backup_body">Guardada el %1$s. ¿Quieres restaurarla en este móvil?</string>
+    <string name="login_backup_restore">Restaurar</string>
+    <string name="login_backup_skip">Ahora no</string>
 </resources>

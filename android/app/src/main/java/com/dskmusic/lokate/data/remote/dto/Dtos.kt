@@ -57,6 +57,29 @@ data class GroupMemberDto(
 /** null = a todo el grupo. */
 data class TestNotificationRequestDto(val user_ids: List<String>?)
 
+/** Un ping que se quedo en la cola del movil: viaja con la hora de cuando se tomo. */
+data class QueuedPingDto(
+    val lat: Double,
+    val lng: Double,
+    val accuracy: Float?,
+    /** ISO-8601 UTC ("2026-09-22T19:03:11Z"). */
+    val timestamp: String,
+)
+
+/** Vaciado de la cola: todos los pings pendientes en UNA peticion. El estado del movil
+ * (bateria, wifi...) es el de AHORA, no el de cada punto: es lo que los demas ven en la
+ * ficha, y de nada sirve enterarse de la bateria que habia hace dos horas. */
+data class LocationPingBatchRequestDto(
+    val pings: List<QueuedPingDto>,
+    val battery_level: Int?,
+    val is_charging: Boolean?,
+    val wifi_connected: Boolean?,
+    val wifi_ssid: String?,
+    val location_frequency: String?,
+    val config_issues: String?,
+    val update_mode: String?,
+)
+
 data class LocationPingRequestDto(
     val lat: Double,
     val lng: Double,
@@ -67,6 +90,9 @@ data class LocationPingRequestDto(
     val wifi_ssid: String?,
     val location_frequency: String?,
     val config_issues: String?,
+    /** Cómo está mandando posición este móvil ahora mismo. Ver
+     * [com.dskmusic.lokate.location.UpdateMode]. */
+    val update_mode: String?,
 )
 
 /** Lo único que el servidor contesta al ping: cuántos segundos quedan de seguimiento en vivo
@@ -94,6 +120,11 @@ data class LocationDto(
      * miembro tiene sin configurar. Cadena vacía = todo correcto; null = su app es anterior a
      * esta versión y no lo manda (se muestra como "desconocido"). */
     val config_issues: String?,
+    /** Valor de [com.dskmusic.lokate.location.UpdateMode] con el que ese miembro está
+     * mandando posición ahora mismo: es lo que explica que alguien con "cada minuto" lleve
+     * doce sin actualizar (casi siempre, que no se está moviendo). null = su app es anterior
+     * a esta versión y no lo manda. */
+    val update_mode: String? = null,
     /** Segundos que le quedan a ese miembro de seguimiento en vivo (0 = ninguno). Mientras sea
      * >0 su móvil está en tiempo real, mande lo que mande [location_frequency]: es la
      * confirmación de que la orden de "seguir" prendió de verdad en el otro móvil. */
@@ -112,6 +143,8 @@ data class ZoneCreateRequestDto(
     val lat: Double,
     val lng: Double,
     val radius_m: Double,
+    /** false = zona privada: solo la ve y solo avisa a quien la creó. */
+    val is_public: Boolean = true,
 )
 
 data class ZoneDto(
@@ -120,6 +153,10 @@ data class ZoneDto(
     val lat: Double,
     val lng: Double,
     val radius_m: Double,
+    /** Con un servidor anterior a esto llega ausente, y Gson deja el valor por defecto: pública,
+     * que es justo como se comportaban todas las zonas entonces. */
+    val is_public: Boolean = true,
+    val created_by: String? = null,
     // Puede faltar si el servidor es anterior a que se expusiera: solo se usa para ordenar.
     val created_at: String? = null,
 )
@@ -155,3 +192,14 @@ data class RegisterDeviceRequestDto(
 data class UpdateCheckDto(val update_available: Boolean)
 
 data class UpdateFlagRequestDto(val enabled: Boolean)
+
+/** La copia de ajustes guardada en el servidor. [payload] es el JSON que escribió la propia app
+ * (ver SettingsDataStore.exportJson); el servidor no mira dentro. exists=false = aún no hay. */
+data class BackupDto(
+    val exists: Boolean = false,
+    val updated_at: String? = null,
+    val app_version: String? = null,
+    val payload: String? = null,
+)
+
+data class BackupUploadRequestDto(val payload: String, val app_version: String?)

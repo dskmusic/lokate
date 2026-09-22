@@ -1,6 +1,8 @@
 from fastapi import APIRouter, Depends, HTTPException, status
 from sqlalchemy.orm import Session
 
+from sqlalchemy import or_
+
 from .. import models, schemas
 from ..auth import get_current_user_with_group
 from ..database import get_db
@@ -8,12 +10,21 @@ from ..database import get_db
 router = APIRouter(prefix="/zones", tags=["zones"])
 
 
+def _visible_zones(db: Session, user: models.User):
+    """Las de su grupo, menos las privadas de otros. Una privada no existe para los demas: ni
+    se lista, ni se edita, ni se borra, ni avisa (ver geofence)."""
+    return db.query(models.Zone).filter(
+        models.Zone.group_id == user.group_id,
+        or_(models.Zone.is_public.is_(True), models.Zone.created_by == user.id),
+    )
+
+
 @router.get("", response_model=list[schemas.ZoneResponse])
 def list_zones(
     user: models.User = Depends(get_current_user_with_group),
     db: Session = Depends(get_db),
 ):
-    return db.query(models.Zone).filter(models.Zone.group_id == user.group_id).all()
+    return _visible_zones(db, user).all()
 
 
 @router.post("", response_model=schemas.ZoneResponse, status_code=status.HTTP_201_CREATED)
@@ -28,6 +39,7 @@ def create_zone(
         lat=body.lat,
         lng=body.lng,
         radius_m=body.radius_m,
+        is_public=body.is_public,
         created_by=user.id,
     )
     db.add(zone)
@@ -37,9 +49,7 @@ def create_zone(
 
 
 def _get_owned_zone(zone_id: str, user: models.User, db: Session) -> models.Zone:
-    zone = db.query(models.Zone).filter(
-        models.Zone.id == zone_id, models.Zone.group_id == user.group_id
-    ).first()
+    zone = _visible_zones(db, user).filter(models.Zone.id == zone_id).first()
     if not zone:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Zone not found")
     return zone
@@ -54,6 +64,7 @@ def update_zone(
 ):
     zone = _get_owned_zone(zone_id, user, db)
     zone.name, zone.lat, zone.lng, zone.radius_m = body.name, body.lat, body.lng, body.radius_m
+    zone.is_public = body.is_public
     db.commit()
     db.refresh(zone)
     return zone
@@ -79,7 +90,7 @@ def get_notification_prefs(
 ):
     """Preferencia del usuario actual para cada zona del grupo (por defecto: sin avisos hasta que
     el usuario los active). Es suya y de este móvil: no la comparte con el resto del grupo."""
-    zones = db.query(models.Zone).filter(models.Zone.group_id == user.group_id).all()
+    zones = _visible_zones(db, user).all()
     prefs = {
         p.zone_id: p
         for p in db.query(models.ZoneNotificationPref).filter(models.ZoneNotificationPref.user_id == user.id).all()

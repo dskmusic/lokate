@@ -56,6 +56,16 @@ class LocationForegroundService : Service() {
      * [worthSending]). */
     private var lastSent: Location? = null
 
+    /** Y la última que de verdad llegó (o quedó guardada para reintentarla). Se separan
+     * porque [worthSending] marca la posición ANTES de intentar mandarla: si el envío se
+     * pierde del todo, hay que volver aquí, o el móvil descartaría los siguientes fixes por
+     * "no se ha movido" comparándolos con uno que el servidor nunca vio. */
+    private var lastDelivered: Location? = null
+
+    /** Cuándo se dio por bueno el último fix (epoch ms). Lo usa la válvula de escape del
+     * filtro de precisión: ver [tooVague]. */
+    private var lastSentAt = 0L
+
     /** Señales de que aquí no está pasando nada: el móvil lleva un rato sin moverse y/o está en
      * un wifi que el usuario marcó como sitio fijo. */
     private var isStill = false
@@ -85,8 +95,21 @@ class LocationForegroundService : Service() {
                 runCatching {
                     val status = DeviceStatusUtils.read(applicationContext)
                     val frequency = locator.settings.locationFrequency.first()
-                    toSend.forEach {
-                        locator.locationRepository.ping(it.latitude, it.longitude, it.accuracy, status, frequency)
+                    for (fix in toSend) {
+                        val handled = locator.locationRepository.ping(
+                            fix.latitude,
+                            fix.longitude,
+                            fix.accuracy,
+                            status,
+                            frequency,
+                        )
+                        // Ni entregado ni guardado: el resto del lote correría la misma suerte,
+                        // y se deshace la marca para no descartar los fixes que vengan detrás.
+                        if (!handled) {
+                            lastSent = lastDelivered
+                            break
+                        }
+                        lastDelivered = fix
                     }
                 }
             }
@@ -203,6 +226,7 @@ class LocationForegroundService : Service() {
         }
         val onKnownWifi = currentSsid?.let { it in knownWifiSsids } == true
         idle = isStill || onKnownWifi
+        UpdateMode.setIdle(still = isStill, homeWifi = onKnownWifi)
         startLocationUpdates(if (idle) maxOf(configuredIntervalMs, IDLE_INTERVAL_MS) else configuredIntervalMs)
     }
 
@@ -219,12 +243,36 @@ class LocationForegroundService : Service() {
         // En reposo la ubicación la ponen el wifi y las antenas, y eso baila solo hasta 100 m de
         // un fix al siguiente: con el listón en 25 m el mapa enseñaría paseos que no existen.
         val minMove = if (idle) IDLE_MIN_MOVE_METERS else MIN_MOVE_METERS
-        val worth = previous == null ||
+        val moved = previous == null || location.distanceTo(previous) >= minMove
+        val worth = moved ||
             currentIntervalMs < MIN_MOVE_FROM_INTERVAL_MS ||
-            location.distanceTo(previous) >= minMove ||
             location.time - previous.time >= IDLE_INTERVAL_MS
-        if (worth) lastSent = location
-        return worth
+        if (!worth) return false
+        if (tooVague(location)) return false
+        lastSent = location
+        lastSentAt = System.currentTimeMillis()
+        // En los ritmos rápidos, entre un fix y el siguiente hay cuatro metros yendo
+        // andando: ahí "no se ha movido" no significa nada y el reposo lo dice el sensor.
+        if (currentIntervalMs >= MIN_MOVE_FROM_INTERVAL_MS) UpdateMode.setStationary(!moved)
+        return true
+    }
+
+    /**
+     * Un fix con cientos de metros de margen de error no se distingue en el mapa de uno bueno,
+     * pero puede colocar a alguien en otro barrio — y si además dispara un aviso de zona, el
+     * grupo recibe una entrada o salida que no ha ocurrido.
+     *
+     * El listón depende del modo: con el GPS en marcha, 200 m es un fix a medio cocer; en
+     * reposo la posición la ponen wifi y antenas y 500 m es lo normal, así que ahí exigir más
+     * sería no mandar nada nunca.
+     */
+    private fun tooVague(location: Location): Boolean {
+        if (!location.hasAccuracy()) return false
+        val limit = if (idle) MAX_ACCURACY_IDLE_METERS else MAX_ACCURACY_METERS
+        if (location.accuracy <= limit) return false
+        // Válvula de escape: tras un buen rato sin mandar nada (interior, sótano, mal día de
+        // GPS), una posición mala es mejor que dejar al grupo con la hora congelada.
+        return System.currentTimeMillis() - lastSentAt < IDLE_INTERVAL_MS
     }
 
     private fun startLocationUpdates(intervalMs: Long) {
@@ -242,12 +290,12 @@ class LocationForegroundService : Service() {
 
         val request = LocationRequest.Builder(priority, intervalMs)
             // El sistema acumula los fixes y los entrega en bloque: la radio móvil despierta una
-            // vez en lugar de tres. El tope se queda por debajo de lo que falta para completar
-            // [IDLE_INTERVAL_MS], así entre tomar una posición y entregarla nunca pasan más de
-            // esos 15 min — en reposo, donde el intervalo ya es de 15, el lote sale sobrando.
+            // vez en lugar de tres. El tope es fijo y corto ([MAX_BATCH_DELAY_MS]) y nunca pasa
+            // de lo que falta para completar [IDLE_INTERVAL_MS] — en reposo, donde el intervalo
+            // ya es de 15 min, el lote sale sobrando.
             .setMaxUpdateDelayMillis(
                 if (intervalMs >= MIN_MOVE_FROM_INTERVAL_MS) {
-                    minOf(intervalMs * 3, IDLE_INTERVAL_MS - intervalMs).coerceAtLeast(0L)
+                    minOf(MAX_BATCH_DELAY_MS, IDLE_INTERVAL_MS - intervalMs).coerceAtLeast(0L)
                 } else {
                     0L
                 },
@@ -321,6 +369,12 @@ class LocationForegroundService : Service() {
     private companion object {
         const val ACTION_STILL_TRANSITION = "com.dskmusic.lokate.action.STILL_TRANSITION"
 
+        /** Lo más que el sistema puede retrasar la entrega de un fix para juntarlo con los
+         * siguientes. Fijo y corto a propósito: proporcional al intervalo (que es lo que hacía
+         * antes) dejaba a quien tenía "cada 2 minutos" con hasta seis minutos de retraso yendo
+         * por la calle, que es justo cuando la posición importa. */
+        const val MAX_BATCH_DELAY_MS = 60_000L
+
         /** A partir de qué intervalo se considera modo ahorro: precisión equilibrada, entrega en
          * bloque y filtro de movimiento. */
         const val MIN_MOVE_FROM_INTERVAL_MS = 30_000L
@@ -332,6 +386,10 @@ class LocationForegroundService : Service() {
         /** Lo mismo pero en reposo, donde la posición viene de wifi y antenas y el margen de
          * error propio ya ronda los 100 m. */
         const val IDLE_MIN_MOVE_METERS = 100f
+
+        /** Margen de error a partir del cual un fix no se manda (ver [tooVague]). */
+        const val MAX_ACCURACY_METERS = 200f
+        const val MAX_ACCURACY_IDLE_METERS = 500f
 
         /** El ritmo de "aquí no pasa nada", que vale para tres cosas a la vez: cada cuánto se
          * pide ubicación con el móvil quieto o en casa, cada cuánto se manda un ping aunque no se

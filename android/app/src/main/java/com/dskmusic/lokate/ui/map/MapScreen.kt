@@ -48,6 +48,7 @@ import androidx.compose.material3.NavigationBar
 import androidx.compose.material3.NavigationBarItem
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.SmallFloatingActionButton
+import androidx.compose.material3.Surface
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
@@ -157,7 +158,7 @@ fun MapScreen(
             Toast.makeText(
                 context,
                 if (confirmed) R.string.follow_live_confirmed else R.string.follow_live_unconfirmed,
-                Toast.LENGTH_SHORT,
+                if (confirmed) Toast.LENGTH_SHORT else Toast.LENGTH_LONG,
             ).show()
         }
     }
@@ -476,24 +477,45 @@ fun MapScreen(
                 modifier = Modifier.align(Alignment.BottomStart).padding(16.dp),
                 verticalArrangement = Arrangement.spacedBy(12.dp),
             ) {
+                // Mientras el otro móvil no conteste, dicho con todas las letras y a la vista:
+                // el toast se lo pierde quien mire la pantalla dos segundos después.
+                if (state.followState == FollowState.PENDING || state.followState == FollowState.FAILED) {
+                    val failed = state.followState == FollowState.FAILED
+                    Surface(
+                        color = if (failed) MaterialTheme.colorScheme.errorContainer else MaterialTheme.colorScheme.tertiaryContainer,
+                        contentColor = if (failed) MaterialTheme.colorScheme.onErrorContainer else MaterialTheme.colorScheme.onTertiaryContainer,
+                        shape = MaterialTheme.shapes.large,
+                    ) {
+                        Text(
+                            stringResource(if (failed) R.string.follow_live_chip_failed else R.string.follow_live_chip_pending),
+                            style = MaterialTheme.typography.labelMedium,
+                            modifier = Modifier.padding(horizontal = 10.dp, vertical = 6.dp),
+                        )
+                    }
+                }
                 Box {
-                    // Tres estados a propósito: apagado, "pedido pero el otro móvil aún no ha
-                    // confirmado" (color de aviso) y "en vivo de verdad". Antes el botón se
+                    // Cuatro estados a propósito: apagado, "pedido pero el otro móvil aún no ha
+                    // confirmado", "no contesta" y "en vivo de verdad". Antes el botón se
                     // encendía igual aunque la orden no hubiera prendido en el otro lado, y no
                     // había forma de distinguir "no funciona" de "va, pero está parado".
-                    val followColor = when {
-                        state.followLive -> MaterialTheme.colorScheme.primary
-                        followUserId != null -> MaterialTheme.colorScheme.tertiary
-                        else -> MaterialTheme.colorScheme.surface
+                    val followColor = when (state.followState) {
+                        FollowState.LIVE -> MaterialTheme.colorScheme.primary
+                        FollowState.PENDING -> MaterialTheme.colorScheme.tertiary
+                        FollowState.FAILED -> MaterialTheme.colorScheme.error
+                        FollowState.OFF -> MaterialTheme.colorScheme.surface
                     }
                     SmallFloatingActionButton(
                         onClick = { showFollowMenu = true },
                         containerColor = followColor,
                     ) {
                         Icon(
-                            if (followUserId != null) Icons.Filled.GpsFixed else Icons.Filled.GpsOff,
+                            if (state.followState == FollowState.LIVE) Icons.Filled.GpsFixed else Icons.Filled.GpsOff,
                             contentDescription = stringResource(R.string.map_follow_me),
-                            tint = if (followUserId != null) MaterialTheme.colorScheme.onPrimary else MaterialTheme.colorScheme.onSurface,
+                            tint = when (state.followState) {
+                                FollowState.OFF -> MaterialTheme.colorScheme.onSurface
+                                FollowState.FAILED -> MaterialTheme.colorScheme.onError
+                                else -> MaterialTheme.colorScheme.onPrimary
+                            },
                         )
                     }
                     DropdownMenu(expanded = showFollowMenu, onDismissRequest = { showFollowMenu = false }) {

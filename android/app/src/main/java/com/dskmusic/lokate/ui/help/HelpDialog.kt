@@ -106,6 +106,21 @@ private val sections = listOf(
             "ubicación concedido — Android no deja leer el nombre de la red sin eso. La papelera de " +
             "al lado quita la que ya no quieras.",
     ),
+    HelpSection(
+        "☁️", "Copia de seguridad en la nube",
+        "Guarda en el servidor los ajustes de este móvil: tema y color, frecuencia de " +
+            "actualización, wifis de casa, notificaciones, sonido y vibración. Las zonas, el grupo " +
+            "y el historial NO hacen falta aquí: ya viven en el servidor y vuelven solos al entrar " +
+            "con tu usuario.\n\n" +
+            "Se sube sola, como mucho una vez al día, cuando el móvil tiene internet. Hay una sola " +
+            "copia por usuario: la nueva pisa la anterior. En Ajustes → \"Copia de seguridad\" ves la " +
+            "fecha de la última y tienes \"Copiar ahora\" si acabas de cambiar algo y no quieres " +
+            "esperar.\n\n" +
+            "Para recuperarla: al iniciar sesión, si hay copia, la app te pregunta si quieres " +
+            "restaurarla — que es lo que deja un móvil nuevo igual que el viejo. También puedes " +
+            "hacerlo cuando quieras con \"Restaurar\" en Ajustes; eso pisa los ajustes que tengas " +
+            "ahora en este móvil.",
+    ),
 )
 
 @Composable

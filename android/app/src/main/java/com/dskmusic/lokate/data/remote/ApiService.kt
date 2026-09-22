@@ -8,6 +8,8 @@ import com.dskmusic.lokate.data.remote.dto.AdminDiskUsageDto
 import com.dskmusic.lokate.data.remote.dto.AdminFileDto
 import com.dskmusic.lokate.data.remote.dto.AdminGroupCreateRequestDto
 import com.dskmusic.lokate.data.remote.dto.AdminGroupDto
+import com.dskmusic.lokate.data.remote.dto.AdminKnownWifiDto
+import com.dskmusic.lokate.data.remote.dto.AdminKnownWifiRequestDto
 import com.dskmusic.lokate.data.remote.dto.AdminSimulateDto
 import com.dskmusic.lokate.data.remote.dto.AdminSimulateRequestDto
 import com.dskmusic.lokate.data.remote.dto.AdminUserCreateRequestDto
@@ -17,6 +19,8 @@ import com.dskmusic.lokate.data.remote.dto.AdminZoneCreateRequestDto
 import com.dskmusic.lokate.data.remote.dto.AdminZoneDto
 import com.dskmusic.lokate.data.remote.dto.AdminZoneUpdateRequestDto
 import com.dskmusic.lokate.data.remote.dto.AvatarResponseDto
+import com.dskmusic.lokate.data.remote.dto.BackupDto
+import com.dskmusic.lokate.data.remote.dto.BackupUploadRequestDto
 import com.dskmusic.lokate.data.remote.dto.GroupCreateRequestDto
 import com.dskmusic.lokate.data.remote.dto.GroupDto
 import com.dskmusic.lokate.data.remote.dto.GroupJoinRequestDto
@@ -26,6 +30,7 @@ import com.dskmusic.lokate.data.remote.dto.GroupVisibilityRequestDto
 import com.dskmusic.lokate.data.remote.dto.GroupMemberDto
 import com.dskmusic.lokate.data.remote.dto.LocationDto
 import com.dskmusic.lokate.data.remote.dto.LocationHistoryPointDto
+import com.dskmusic.lokate.data.remote.dto.LocationPingBatchRequestDto
 import com.dskmusic.lokate.data.remote.dto.LocationPingRequestDto
 import com.dskmusic.lokate.data.remote.dto.LocationPingResponseDto
 import com.dskmusic.lokate.data.remote.dto.LoginRequestDto
@@ -103,6 +108,9 @@ interface ApiService {
     @POST("location/ping")
     suspend fun ping(@Body body: LocationPingRequestDto): LocationPingResponseDto
 
+    @POST("location/pings")
+    suspend fun pingBatch(@Body body: LocationPingBatchRequestDto): LocationPingResponseDto
+
     @GET("location/group/latest")
     suspend fun groupLatestLocations(): List<LocationDto>
 
@@ -126,6 +134,12 @@ interface ApiService {
     /** Pone (o quita) a otro miembro en tiempo real mientras lo sigamos en el mapa. */
     @POST("location/live/{userId}")
     suspend fun setLiveTracking(@Path("userId") userId: String, @Query("active") active: Boolean)
+
+    @GET("backup")
+    suspend fun getBackup(): BackupDto
+
+    @PUT("backup")
+    suspend fun putBackup(@Body body: BackupUploadRequestDto): BackupDto
 
     @GET("zones")
     suspend fun listZones(): List<ZoneDto>
@@ -196,6 +210,12 @@ interface ApiService {
 
     @POST("admin-api/users/{id}/locate")
     suspend fun adminLocateUser(@Path("id") id: String)
+
+    @GET("admin-api/users/{id}/known-wifi")
+    suspend fun adminKnownWifi(@Path("id") id: String): AdminKnownWifiDto
+
+    @POST("admin-api/users/{id}/known-wifi")
+    suspend fun adminAddKnownWifi(@Path("id") id: String, @Body body: AdminKnownWifiRequestDto)
 
     @Multipart
     @POST("admin-api/users/{id}/avatar")

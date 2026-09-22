@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiOff
@@ -50,6 +51,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
+import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import coil.compose.AsyncImage
@@ -58,7 +60,10 @@ import com.dskmusic.lokate.data.remote.absoluteAvatarUrl
 import com.dskmusic.lokate.data.remote.dto.LocationDto
 import com.dskmusic.lokate.di.ServiceLocator
 import com.dskmusic.lokate.ui.common.ListSearchField
+import com.dskmusic.lokate.ui.common.UpdateStatusDialog
+import com.dskmusic.lokate.ui.common.isOverdue
 import com.dskmusic.lokate.ui.common.rememberMyLocation
+import com.dskmusic.lokate.ui.common.updateModeShortLabel
 import com.dskmusic.lokate.ui.map.MapViewModel
 import com.dskmusic.lokate.util.MediaSaver
 import com.dskmusic.lokate.util.distanceMeters
@@ -133,6 +138,19 @@ fun PeopleScreen(
                     IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = null) }
                 },
                 actions = {
+                    // Refrescar a todos: pide ubicacion fresca a todo el grupo de una vez, sin
+                    // tener que entrar en la ficha de cada uno.
+                    if (state.refreshingAll) {
+                        CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                        Spacer(Modifier.width(12.dp))
+                    } else {
+                        IconButton(onClick = { viewModel.refreshAll() }) {
+                            Icon(
+                                Icons.Filled.Refresh,
+                                contentDescription = stringResource(R.string.people_refresh_all),
+                            )
+                        }
+                    }
                     IconButton(onClick = { query = if (query == null) "" else null }) {
                         Icon(
                             if (query == null) Icons.Filled.Search else Icons.Filled.Close,
@@ -184,6 +202,14 @@ fun PeopleScreen(
                 }
             }
             HorizontalDivider()
+            if (state.refreshingAll) {
+                Text(
+                    stringResource(R.string.location_request_in_progress),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                )
+            }
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 items(members, key = { it.id }) { member ->
                     PersonRow(
@@ -214,6 +240,7 @@ private fun PersonRow(
     onAvatarClick: () -> Unit,
     onOpenDetail: () -> Unit,
 ) {
+    var showUpdateInfo by remember { mutableStateOf(false) }
     Row(
         modifier = Modifier.fillMaxWidth().clickable(onClick = onClick).padding(horizontal = 16.dp, vertical = 12.dp),
         verticalAlignment = Alignment.CenterVertically,
@@ -247,7 +274,21 @@ private fun PersonRow(
                         style = MaterialTheme.typography.bodySmall,
                     )
                     Text("·", style = MaterialTheme.typography.bodySmall)
-                    Text(formatRelativeTime(location.timestamp), style = MaterialTheme.typography.bodySmall)
+                    // La hora y el porqué van juntos y se tocan juntos: "7 min" a secas deja con
+                    // la duda de si eso es normal teniendo puesto "cada 30 segundos" (lo es: en
+                    // reposo su móvil espacia a 15 min). Subrayado para que se vea que se toca.
+                    val modeLabel = updateModeShortLabel(location)?.let { " · ${stringResource(it)}" }.orEmpty()
+                    Text(
+                        formatRelativeTime(location.timestamp) + modeLabel,
+                        style = MaterialTheme.typography.bodySmall,
+                        textDecoration = TextDecoration.Underline,
+                        color = if (isOverdue(location)) {
+                            MaterialTheme.colorScheme.error
+                        } else {
+                            MaterialTheme.colorScheme.onSurface
+                        },
+                        modifier = Modifier.clickable { showUpdateInfo = true },
+                    )
                     // Alguien lo tiene en seguimiento en vivo: su móvil está en tiempo real
                     // ahora mismo, tenga puesto lo que tenga puesto en sus ajustes.
                     if (location.live_seconds > 0) {
@@ -281,6 +322,9 @@ private fun PersonRow(
                         else stringResource(R.string.wifi_not_connected_label),
                         style = MaterialTheme.typography.bodySmall,
                     )
+                }
+                if (showUpdateInfo) {
+                    UpdateStatusDialog(location, onDismiss = { showUpdateInfo = false })
                 }
             }
         }

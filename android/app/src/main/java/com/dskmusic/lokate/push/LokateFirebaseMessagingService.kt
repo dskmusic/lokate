@@ -103,6 +103,25 @@ class LokateFirebaseMessagingService : FirebaseMessagingService() {
                 runCatching { pingOneShot(locator) }
                     .onFailure { android.util.Log.w("LokatePush", "Seguimiento: primer ping fallido", it) }
             }
+            // Un admin ha añadido una wifi a nuestras "wifis de casa" desde nuestra ficha. Esa
+            // lista solo existe aquí, por eso viaja por push. Silencioso a propósito (sin
+            // notificación ni sonido, como la petición de ubicación puntual): el push no lleva
+            // bloque "notification", así que el sistema tampoco pinta nada con la app cerrada.
+            "add_known_wifi" -> {
+                val ssid = message.data["ssid"].orEmpty()
+                if (ssid.isNotBlank()) CoroutineScope(Dispatchers.IO).launch {
+                    val current = locator.settings.knownWifiSsids.first()
+                    // Repetida: no se toca nada (es un Set, no duplicaría) y encima así no se
+                    // sube una copia idéntica por cada intento.
+                    if (ssid in current) return@launch
+                    locator.settings.setKnownWifiSsids(current + ssid)
+                    // Y se sube la copia en el acto: es de donde saca el admin la lista para
+                    // saber qué wifis tiene ya (ver admin_api.list_known_wifi). Sin esto, hasta
+                    // la copia automática del día siguiente le seguiría pareciendo que falta.
+                    runCatching { locator.backupRepository.backupNow() }
+                        .onFailure { android.util.Log.w("LokatePush", "Copia tras añadir wifi fallida", it) }
+                }
+            }
             "emergency_message" -> {
                 NotificationHelper.playRingAlarm(this, null, com.dskmusic.lokate.util.VibrationPattern.STRONG, forcePriority = true)
                 val attachmentUrl = message.data["attachment_url"].orEmpty().ifBlank { null }

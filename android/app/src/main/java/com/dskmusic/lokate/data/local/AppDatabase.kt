@@ -5,10 +5,15 @@ import androidx.room.Database
 import androidx.room.Room
 import androidx.room.RoomDatabase
 
-@Database(entities = [ZoneEntity::class, LocationHistoryEntity::class], version = 3, exportSchema = false)
+@Database(
+    entities = [ZoneEntity::class, LocationHistoryEntity::class, PendingPingEntity::class],
+    version = 5,
+    exportSchema = false,
+)
 abstract class AppDatabase : RoomDatabase() {
     abstract fun zoneDao(): ZoneDao
     abstract fun locationHistoryDao(): LocationHistoryDao
+    abstract fun pendingPingDao(): PendingPingDao
 
     companion object {
         @Volatile private var instance: AppDatabase? = null

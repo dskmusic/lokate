@@ -2,6 +2,7 @@ package com.dskmusic.lokate.ui.member
 
 import android.net.Uri
 import android.webkit.MimeTypeMap
+import android.widget.Toast
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.foundation.background
@@ -21,13 +22,14 @@ import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.CheckCircle
 import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Map
-import androidx.compose.material.icons.filled.Notifications
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Refresh
@@ -67,6 +69,8 @@ import coil.compose.AsyncImage
 import com.dskmusic.lokate.R
 import com.dskmusic.lokate.data.remote.absoluteAvatarUrl
 import com.dskmusic.lokate.di.ServiceLocator
+import com.dskmusic.lokate.ui.common.UpdateStatusDialog
+import com.dskmusic.lokate.ui.common.UpdateStatusSummary
 import com.dskmusic.lokate.ui.common.rememberMyLocation
 import com.dskmusic.lokate.util.ConfigCheck
 import com.dskmusic.lokate.util.FileUtils
@@ -74,6 +78,7 @@ import com.dskmusic.lokate.util.LocationFrequency
 import com.dskmusic.lokate.util.LocationSharing
 import com.dskmusic.lokate.util.distanceMeters
 import com.dskmusic.lokate.util.formatDistance
+import com.dskmusic.lokate.util.formatRelativeTime
 import com.dskmusic.lokate.util.formatTimestamp
 
 private enum class AttachmentKind { PHOTO, VIDEO, FILE }
@@ -90,17 +95,23 @@ fun MemberDetailScreen(
 ) {
     val context = LocalContext.current
     val viewModel = remember(userId) {
-        MemberDetailViewModel(locator.locationRepository, locator.messageRepository, locator.groupRepository, userId)
+        MemberDetailViewModel(
+            locator.locationRepository, locator.messageRepository, locator.adminRepository, userId,
+        )
     }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var showRingConfirm by remember { mutableStateOf(false) }
     var showStopRingConfirm by remember { mutableStateOf(false) }
-    var showTestNotificationConfirm by remember { mutableStateOf(false) }
-    // El endpoint de notificación de prueba es solo para admins (devuelve 403 al resto), así que
-    // el botón solo se muestra si lo eres — mismo criterio que la sección admin de Ajustes.
+    /** Wifi pendiente de confirmar para añadir a las "wifis de casa" del miembro; null = ninguna. */
+    var addWifiSsid by remember { mutableStateOf<String?>(null) }
+    var showUpdateInfo by remember { mutableStateOf(false) }
+    // Tocar las "wifis de casa" de otro es cosa de admins (el endpoint devuelve 403 al resto),
+    // así que eso solo se ofrece si lo eres — mismo criterio que la sección admin de Ajustes.
     var isAdmin by remember { mutableStateOf(false) }
     LaunchedEffect(Unit) {
         isAdmin = runCatching { locator.authRepository.me() }.getOrNull()?.is_admin == true
+        // Sus wifis de casa solo las mira un admin, y solo para no mandarle una repetida.
+        if (isAdmin) viewModel.loadKnownWifi()
     }
 
     var showEmergencyCompose by remember { mutableStateOf(false) }
@@ -201,8 +212,14 @@ fun MemberDetailScreen(
                 Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
                     Text(location.display_name, style = MaterialTheme.typography.titleLarge)
+                    // Hora exacta y "hace cuanto" juntos: la hora sola obliga a restar de
+                    // cabeza para saber si el dato es de ahora o de esta manana.
+                    val ago = stringResource(R.string.last_seen_ago, formatRelativeTime(location.timestamp))
                     Text(
-                        stringResource(R.string.last_seen_label, formatTimestamp(location.timestamp)),
+                        stringResource(
+                            R.string.last_seen_label,
+                            "${formatTimestamp(location.timestamp)} - $ago",
+                        ),
                         style = MaterialTheme.typography.bodyMedium,
                     )
                 }
@@ -226,11 +243,17 @@ fun MemberDetailScreen(
             Spacer(Modifier.height(24.dp))
 
             Row(verticalAlignment = Alignment.CenterVertically) {
-                Icon(Icons.Filled.BatteryFull, contentDescription = null, modifier = Modifier.size(20.dp))
+                val charging = location.is_charging == true
+                Icon(
+                    if (charging) Icons.Filled.BatteryChargingFull else Icons.Filled.BatteryFull,
+                    contentDescription = null,
+                    modifier = Modifier.size(20.dp),
+                )
                 Spacer(Modifier.width(8.dp))
                 Text(
-                    location.battery_level?.let { "$it% · ${stringResource(R.string.battery_label)}" + if (location.is_charging == true) " (${stringResource(R.string.charging_label)})" else "" }
-                        ?: stringResource(R.string.battery_unknown),
+                    location.battery_level?.let {
+                        "$it% · ${stringResource(if (charging) R.string.charging_label else R.string.battery_label)}"
+                    } ?: stringResource(R.string.battery_unknown),
                     style = MaterialTheme.typography.bodyMedium,
                 )
             }
@@ -263,6 +286,37 @@ fun MemberDetailScreen(
                     },
                     style = MaterialTheme.typography.bodyMedium,
                 )
+                // Solo admins: meter esta wifi en las "wifis de casa" del miembro sin tener que
+                // pedirle a él que entre en sus ajustes. Si ya la tiene (según su copia en la
+                // nube) no hay botón: mandarla otra vez no haría nada y confunde.
+                val ssid = location.wifi_ssid
+                if (isAdmin && location.wifi_connected == true && !ssid.isNullOrBlank() &&
+                    state.knownWifis?.contains(ssid) != true && state.knownWifiAdded != ssid
+                ) {
+                    IconButton(onClick = { addWifiSsid = ssid }, modifier = Modifier.size(32.dp)) {
+                        Icon(
+                            Icons.Filled.AddCircle,
+                            contentDescription = stringResource(R.string.wifi_add_known_button),
+                            modifier = Modifier.size(20.dp),
+                        )
+                    }
+                }
+            }
+            if (isAdmin && location.wifi_connected == true && !location.wifi_ssid.isNullOrBlank()) {
+                val ssid = location.wifi_ssid.orEmpty()
+                val note = when {
+                    state.knownWifis?.contains(ssid) == true -> R.string.wifi_add_known_already
+                    state.knownWifiAdded == ssid -> R.string.wifi_add_known_pending
+                    else -> null
+                }
+                note?.let {
+                    Text(
+                        stringResource(it),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier.padding(start = 28.dp),
+                    )
+                }
             }
             Spacer(Modifier.height(12.dp))
             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -291,6 +345,15 @@ fun MemberDetailScreen(
                         },
                     ),
                 )
+            }
+            // El ritmo elegido solo manda mientras esa persona se mueve: en reposo su móvil
+            // espacia a una cada 15 minutos. Aquí va el estado de ahora, y tocándolo sale la
+            // explicación entera (la misma ventana que en la lista de Gente).
+            UpdateStatusSummary(location, Modifier.padding(start = 28.dp, top = 4.dp)) {
+                showUpdateInfo = true
+            }
+            if (showUpdateInfo) {
+                UpdateStatusDialog(location, onDismiss = { showUpdateInfo = false })
             }
             Spacer(Modifier.height(12.dp))
             // Arreglar permisos solo tiene sentido en la ficha de uno mismo: en la de otro
@@ -357,26 +420,6 @@ fun MemberDetailScreen(
                 Text(stringResource(R.string.emergency_message_button))
             }
 
-            if (isAdmin) {
-                Spacer(Modifier.height(12.dp))
-                OutlinedButton(
-                    onClick = { showTestNotificationConfirm = true },
-                    modifier = Modifier.fillMaxWidth(),
-                    enabled = !state.sendingTestNotification,
-                ) {
-                    Icon(Icons.Filled.Notifications, contentDescription = null)
-                    Spacer(Modifier.width(8.dp))
-                    Text(stringResource(R.string.settings_send_test_notification))
-                }
-                if (state.testNotificationSent) {
-                    Spacer(Modifier.height(6.dp))
-                    Text(
-                        stringResource(R.string.settings_test_notification_sent),
-                        color = MaterialTheme.colorScheme.primary,
-                    )
-                }
-            }
-
             Spacer(Modifier.height(12.dp))
             OutlinedButton(
                 onClick = { LocationSharing.openInGoogleMaps(context, location.lat, location.lng, location.display_name) },
@@ -398,22 +441,36 @@ fun MemberDetailScreen(
         }
     }
 
-    if (showTestNotificationConfirm) {
+    addWifiSsid?.let { ssid ->
         AlertDialog(
-            onDismissRequest = { showTestNotificationConfirm = false },
-            title = { Text(stringResource(R.string.test_notification_confirm_title)) },
+            onDismissRequest = { addWifiSsid = null },
+            title = { Text(stringResource(R.string.wifi_add_known_title)) },
             text = {
-                Text(stringResource(R.string.test_notification_confirm_body, state.location?.display_name.orEmpty()))
+                Text(
+                    stringResource(R.string.wifi_add_known_body, ssid, state.location?.display_name.orEmpty()) +
+                        // Sin copia en la nube suya no hay forma de saber qué wifis tiene ya: se
+                        // dice, en vez de dar a entender que se ha comprobado.
+                        if (state.knownWifis == null) "\n\n" + stringResource(R.string.wifi_add_known_unknown) else "",
+                )
             },
             confirmButton = {
-                TextButton(onClick = { showTestNotificationConfirm = false; viewModel.sendTestNotification() }) {
+                TextButton(onClick = { addWifiSsid = null; viewModel.addKnownWifi(ssid) }) {
                     Text(stringResource(R.string.confirm))
                 }
             },
             dismissButton = {
-                TextButton(onClick = { showTestNotificationConfirm = false }) { Text(stringResource(R.string.cancel)) }
+                TextButton(onClick = { addWifiSsid = null }) { Text(stringResource(R.string.cancel)) }
             },
         )
+    }
+
+    // El cambio ocurre en el otro móvil (va por push), así que aquí solo se puede confirmar que
+    // la orden salió; si su móvil está apagado no llegará y habrá que repetirlo. El valor NO se
+    // limpia: es también lo que deja la línea de "orden enviada" bajo la wifi.
+    LaunchedEffect(state.knownWifiAdded) {
+        state.knownWifiAdded?.let {
+            Toast.makeText(context, context.getString(R.string.wifi_add_known_sent, it), Toast.LENGTH_LONG).show()
+        }
     }
 
     if (showRingConfirm) {

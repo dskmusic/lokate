@@ -184,7 +184,8 @@ fun ZonesScreen(
                                     )
                                 }
                                 Text(
-                                    "${zone.radius_m.toInt()} m",
+                                    if (zone.is_public) "${zone.radius_m.toInt()} m"
+                                    else stringResource(R.string.zone_private_badge, zone.radius_m.toInt()),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
                                     modifier = Modifier.weight(1f).padding(start = 12.dp),

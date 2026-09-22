@@ -10,6 +10,7 @@ import com.dskmusic.lokate.data.remote.ServerConfig
 import com.dskmusic.lokate.data.remote.createNominatimService
 import com.dskmusic.lokate.data.repository.AdminRepository
 import com.dskmusic.lokate.data.repository.AuthRepository
+import com.dskmusic.lokate.data.repository.BackupRepository
 import com.dskmusic.lokate.data.repository.GroupRepository
 import com.dskmusic.lokate.data.repository.LocationRepository
 import com.dskmusic.lokate.data.repository.MessageRepository
@@ -33,14 +34,17 @@ class ServiceLocator(context: Context) {
     }
 
     private val database by lazy { AppDatabase.getInstance(context) }
-    private val api: ApiService by lazy { NetworkModule.createApiService(session) }
+    private val api: ApiService by lazy { NetworkModule.createApiService(context.applicationContext, session) }
     val nominatim by lazy { createNominatimService() }
 
     val authRepository: AuthRepository by lazy { AuthRepository(api, session, settings, context.applicationContext) }
     val groupRepository: GroupRepository by lazy { GroupRepository(api) }
     val zoneRepository: ZoneRepository by lazy { ZoneRepository(api, database.zoneDao()) }
-    val locationRepository: LocationRepository by lazy { LocationRepository(api, database.locationHistoryDao()) }
+    val locationRepository: LocationRepository by lazy {
+        LocationRepository(api, database.locationHistoryDao(), database.pendingPingDao(), settings, context.applicationContext)
+    }
     val messageRepository: MessageRepository by lazy { MessageRepository(api) }
+    val backupRepository: BackupRepository by lazy { BackupRepository(api, settings) }
     val adminRepository: AdminRepository by lazy { AdminRepository(api) }
 
     companion object {

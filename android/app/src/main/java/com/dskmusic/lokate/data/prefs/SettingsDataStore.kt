@@ -2,7 +2,9 @@ package com.dskmusic.lokate.data.prefs
 
 import android.content.Context
 import androidx.datastore.preferences.core.booleanPreferencesKey
+import androidx.datastore.preferences.core.doublePreferencesKey
 import androidx.datastore.preferences.core.edit
+import androidx.datastore.preferences.core.floatPreferencesKey
 import androidx.datastore.preferences.core.intPreferencesKey
 import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
@@ -14,7 +16,10 @@ import com.dskmusic.lokate.util.MapStyle
 import com.dskmusic.lokate.util.ThemeMode
 import com.dskmusic.lokate.util.VibrationPattern
 import kotlinx.coroutines.flow.Flow
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.flow.map
+import org.json.JSONArray
+import org.json.JSONObject
 
 private val Context.dataStore by preferencesDataStore(name = com.dskmusic.lokate.util.Constants.PREFS_NAME)
 
@@ -39,6 +44,106 @@ class SettingsDataStore(private val context: Context) {
         val TEST_MODE_RECIPIENTS = stringPreferencesKey("test_mode_recipients")
         val MAP_CACHE_CLEARED_AT = longPreferencesKey("map_cache_cleared_at")
         val KNOWN_WIFI_SSIDS = stringSetPreferencesKey("known_wifi_ssids")
+        val BACKUP_LAST_AT = longPreferencesKey("backup_last_at")
+        val LAST_PING_OK_AT = longPreferencesKey("last_ping_ok_at")
+        val LAST_PING_WARN_AT = longPreferencesKey("last_ping_warn_at")
+    }
+
+    /** Ajustes que NO viajan en la copia, uno por uno y por un motivo:
+     *  - la URL del servidor: la copia se baja DEL servidor al que apuntas, restaurar otra te
+     *    dejaría hablando con quien no es;
+     *  - el onboarding: en un móvil nuevo los permisos hay que volver a pedirlos, y darlo por
+     *    hecho deja la app sin ubicación y sin explicación;
+     *  - lo demás son marcas de este móvil (cuándo se limpió la caché de mapas, a quién miraste
+     *    la última vez, cuándo se hizo la última copia), que no significan nada en otro. */
+    private val notBackedUp = setOf(
+        Keys.SERVER_BASE_URL.name,
+        Keys.ONBOARDING_DONE.name,
+        Keys.ONBOARDING_ASKED.name,
+        Keys.MAP_CACHE_CLEARED_AT.name,
+        Keys.LAST_HISTORY_USER_ID.name,
+        Keys.BACKUP_LAST_AT.name,
+        Keys.LAST_PING_OK_AT.name,
+        Keys.LAST_PING_WARN_AT.name,
+    )
+
+    /** Cuándo se entregó el último ping (epoch ms), 0 = nunca. Es el latido que vigila
+     * [com.dskmusic.lokate.location.LocationUpdateWorker] para avisar al dueño del móvil si
+     * esto lleva parado demasiado. Se escribe como mucho una vez por minuto (lo limita
+     * [com.dskmusic.lokate.data.repository.LocationRepository]): en tiempo real hay un ping
+     * cada 3 s y escribir en disco veinte veces por minuto para esto no tiene sentido. */
+    val lastPingOkAt: Flow<Long> = context.dataStore.data.map { it[Keys.LAST_PING_OK_AT] ?: 0L }
+    suspend fun setLastPingOkAt(epochMs: Long) {
+        context.dataStore.edit { it[Keys.LAST_PING_OK_AT] = epochMs }
+    }
+
+    /** Cuándo se avisó por última vez de ese parón, para no repetir el aviso cada 15 min. */
+    val lastPingWarnAt: Flow<Long> = context.dataStore.data.map { it[Keys.LAST_PING_WARN_AT] ?: 0L }
+    suspend fun setLastPingWarnAt(epochMs: Long) {
+        context.dataStore.edit { it[Keys.LAST_PING_WARN_AT] = epochMs }
+    }
+
+    /** Cuándo se subió la última copia automática (epoch ms), 0 = nunca. */
+    val backupLastAt: Flow<Long> = context.dataStore.data.map { it[Keys.BACKUP_LAST_AT] ?: 0L }
+    suspend fun setBackupLastAt(epochMs: Long) {
+        context.dataStore.edit { it[Keys.BACKUP_LAST_AT] = epochMs }
+    }
+
+    /**
+     * Todos los ajustes de este móvil en un JSON `{"clave": {"t": tipo, "v": valor}}`.
+     *
+     * Se recorre el DataStore entero en vez de enumerar los ajustes uno a uno: así un ajuste
+     * nuevo entra en la copia el día que se añade, sin que nadie se acuerde de tocar esto.
+     * El tipo se guarda porque al restaurar hay que volver a crear la clave tipada.
+     */
+    suspend fun exportJson(): String {
+        val json = JSONObject()
+        context.dataStore.data.first().asMap().forEach { (key, value) ->
+            if (key.name in notBackedUp) return@forEach
+            val type = when (value) {
+                is String -> "s"
+                is Boolean -> "b"
+                is Int -> "i"
+                is Long -> "l"
+                is Float -> "f"
+                is Double -> "d"
+                is Set<*> -> "ss"
+                else -> return@forEach
+            }
+            val stored = if (value is Set<*>) JSONArray(value.map { it.toString() }) else value
+            json.put(key.name, JSONObject().put("t", type).put("v", stored))
+        }
+        return json.toString()
+    }
+
+    /**
+     * Vuelca una copia de [exportJson] encima de los ajustes actuales. Solo pisa las claves que
+     * vengan en la copia: lo que no esté se queda como está (una copia vieja no debería borrar
+     * un ajuste que entonces no existía). Un valor con un tipo que no cuadra se salta: más vale
+     * perder un ajuste que dejar la app sin restaurar nada.
+     */
+    suspend fun importJson(payload: String) {
+        val parsed = JSONObject(payload)
+        context.dataStore.edit { prefs ->
+            parsed.keys().forEach { name ->
+                if (name in notBackedUp) return@forEach
+                val entry = parsed.optJSONObject(name) ?: return@forEach
+                runCatching {
+                    when (entry.getString("t")) {
+                        "s" -> prefs[stringPreferencesKey(name)] = entry.getString("v")
+                        "b" -> prefs[booleanPreferencesKey(name)] = entry.getBoolean("v")
+                        "i" -> prefs[intPreferencesKey(name)] = entry.getInt("v")
+                        "l" -> prefs[longPreferencesKey(name)] = entry.getLong("v")
+                        "f" -> prefs[floatPreferencesKey(name)] = entry.getDouble("v").toFloat()
+                        "d" -> prefs[doublePreferencesKey(name)] = entry.getDouble("v")
+                        "ss" -> {
+                            val array = entry.getJSONArray("v")
+                            prefs[stringSetPreferencesKey(name)] = (0 until array.length()).map { array.getString(it) }.toSet()
+                        }
+                    }
+                }
+            }
+        }
     }
 
     /** Cuándo se vació la caché de teselas del mapa por última vez (epoch ms) — la usa

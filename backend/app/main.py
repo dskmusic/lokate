@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import os
 from pathlib import Path
@@ -7,12 +8,12 @@ from fastapi.responses import FileResponse, RedirectResponse
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel
 
-from . import models
+from . import models, silence
 from .admin import register_admin
 from .auth import get_current_admin_user, hash_password
 from .database import Base, SessionLocal, engine
 from .i18n import LOCALE_COOKIE, detect_locale, set_current_locale
-from .routers import admin_api, auth, groups, locations, messages, zones
+from .routers import admin_api, auth, backup, groups, locations, messages, zones
 
 # uvicorn solo configura SUS loggers ("uvicorn", "uvicorn.access"...): los nuestros quedan sin
 # handler y caen en el de último recurso de Python, que descarta todo lo que no llegue a
@@ -31,7 +32,7 @@ def _add_missing_columns() -> None:
         return
     with engine.begin() as conn:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(users)")}
-        for column in ("location_frequency", "config_issues", "zone_channel_id", "hidden_group_ids"):
+        for column in ("location_frequency", "config_issues", "zone_channel_id", "hidden_group_ids", "update_mode"):
             if column not in columns:
                 conn.exec_driver_sql(f"ALTER TABLE users ADD COLUMN {column} VARCHAR")
 
@@ -45,6 +46,10 @@ def _add_missing_columns() -> None:
         zone_columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(zones)")}
         if "watched_ids" not in zone_columns:
             conn.exec_driver_sql("ALTER TABLE zones ADD COLUMN watched_ids VARCHAR")
+
+        # Las zonas que ya existian eran de todo el grupo: publicas.
+        if "is_public" not in zone_columns:
+            conn.exec_driver_sql("ALTER TABLE zones ADD COLUMN is_public BOOLEAN NOT NULL DEFAULT 1")
 
         # "De quién avisa esta zona" pasó de ser de la zona (una lista para todo el grupo) a ser
         # de cada usuario. La lista vieja de la zona se copia a las preferencias que ya existían
@@ -118,11 +123,28 @@ async def admin_no_cache_middleware(request, call_next):
     return response
 
 
+# ponytail: on_event sigue funcionando en FastAPI 0.115 y es una línea; migrar a lifespan
+# obligaría a reordenar el arranque entero de este módulo para nada.
+# Referencia viva de la tarea: el bucle de eventos solo la guarda con referencia debil y sin
+# esto el recolector puede llevarsela por delante, dejando al vigilante mudo sin ningun error.
+_silence_task: "asyncio.Task | None" = None
+
+
+@app.on_event("startup")
+async def _start_silence_watch():
+    """Vigilante de "sin señal" (ver silence.py). Vive dentro del proceso de la API porque
+    es lo único que ya está siempre en marcha: un cron aparte sería otro contenedor y otra
+    copia de la configuración para una consulta cada diez minutos."""
+    global _silence_task
+    _silence_task = asyncio.create_task(silence.watch_loop())
+
+
 app.include_router(auth.router)
 app.include_router(groups.router)
 app.include_router(locations.router)
 app.include_router(zones.router)
 app.include_router(messages.router)
+app.include_router(backup.router)
 app.include_router(admin_api.router)
 
 app.mount("/avatars", StaticFiles(directory="/data/avatars"), name="avatars")

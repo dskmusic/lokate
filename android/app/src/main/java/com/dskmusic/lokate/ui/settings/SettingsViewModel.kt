@@ -5,6 +5,7 @@ import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dskmusic.lokate.data.repository.AuthRepository
+import com.dskmusic.lokate.data.repository.BackupRepository
 import com.dskmusic.lokate.data.repository.GroupRepository
 import com.dskmusic.lokate.data.repository.LocationRepository
 import com.dskmusic.lokate.data.repository.ZoneRepository
@@ -30,7 +31,53 @@ class SettingsViewModel(
     private val groupRepository: GroupRepository,
     private val zoneRepository: ZoneRepository,
     private val locationRepository: LocationRepository,
+    private val backupRepository: BackupRepository,
 ) : ViewModel() {
+
+    /** Estado de la copia en la nube para la pantalla de ajustes. */
+    data class BackupUiState(
+        val working: Boolean = false,
+        /** Fecha ISO de la copia que hay en el servidor, null = no hay (o aún no se ha mirado). */
+        val savedAt: String? = null,
+        val checked: Boolean = false,
+        /** Mensaje de resultado (hecho / restaurada / el error), para enseñarlo y olvidarlo. */
+        val message: String? = null,
+        val failed: Boolean = false,
+    )
+
+    private val _backup = MutableStateFlow(BackupUiState())
+    val backup: StateFlow<BackupUiState> = _backup
+
+    fun loadBackupInfo() = viewModelScope.launch {
+        runCatching { backupRepository.fetch() }
+            .onSuccess { info -> _backup.value = _backup.value.copy(savedAt = info.updated_at, checked = true) }
+            .onFailure { _backup.value = _backup.value.copy(checked = true) }
+    }
+
+    fun backupNow() = viewModelScope.launch {
+        _backup.value = _backup.value.copy(working = true, message = null, failed = false)
+        runCatching { backupRepository.backupNow() }
+            .onSuccess { _backup.value = BackupUiState(savedAt = it, checked = true, message = DONE_BACKUP) }
+            .onFailure { _backup.value = _backup.value.copy(working = false, message = it.message, failed = true) }
+    }
+
+    /** Restaurar pisa los ajustes de este móvil con los de la copia (avisado en el diálogo). */
+    fun restoreBackup() = viewModelScope.launch {
+        _backup.value = _backup.value.copy(working = true, message = null, failed = false)
+        runCatching { backupRepository.restore() }
+            .onSuccess { restored ->
+                _backup.value = _backup.value.copy(
+                    working = false,
+                    message = if (restored) DONE_RESTORE else DONE_EMPTY,
+                    failed = !restored,
+                )
+            }
+            .onFailure { _backup.value = _backup.value.copy(working = false, message = it.message, failed = true) }
+    }
+
+    fun clearBackupMessage() {
+        _backup.value = _backup.value.copy(message = null, failed = false)
+    }
 
     private val _avatarUploading = MutableStateFlow(false)
     val avatarUploading: StateFlow<Boolean> = _avatarUploading
@@ -49,6 +96,13 @@ class SettingsViewModel(
     val updateFlagEnabled: StateFlow<Boolean?> = _updateFlagEnabled
     private val _updateFlagError = MutableStateFlow<String?>(null)
     val updateFlagError: StateFlow<String?> = _updateFlagError
+
+    companion object {
+        /** Claves internas que la pantalla traduce a texto: el ViewModel no toca recursos. */
+        const val DONE_BACKUP = "backup_done"
+        const val DONE_RESTORE = "restore_done"
+        const val DONE_EMPTY = "restore_empty"
+    }
 
     fun loadUpdateFlag() = viewModelScope.launch {
         runCatching { authRepository.checkForUpdate() }.onSuccess { _updateFlagEnabled.value = it }
@@ -155,6 +209,10 @@ class SettingsViewModel(
 
     fun logout(context: Context, onDone: () -> Unit) {
         viewModelScope.launch {
+            // Lo que quedó sin entregar era de la sesión que se cierra: mandarlo luego con el
+            // token del siguiente que inicie sesión le colgaría a esa persona las posiciones
+            // de la anterior.
+            locationRepository.clearPendingPings()
             authRepository.logout(context)
             onDone()
         }

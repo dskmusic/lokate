@@ -5,6 +5,7 @@ admin.py/routers/auth.py en vez de compartida: son dos superficies distintas (se
 del panel web vs. JWT de la app) y la duplicación aquí es más simple y clara que forzar una
 capa compartida para dos consumidores con formas de autenticarse distintas."""
 
+import json
 import secrets
 import string
 from collections import Counter
@@ -293,6 +294,61 @@ def notify_test(user_id: str, admin: models.User = Depends(get_current_admin_use
 @router.post("/users/{user_id}/locate", status_code=status.HTTP_204_NO_CONTENT)
 def locate_user(user_id: str, admin: models.User = Depends(get_current_admin_user), db: Session = Depends(get_db)):
     push.send_to_user(db, user_id, "Lokate", "Un administrador quiere localizar tu dispositivo", {"type": "ring"})
+
+
+@router.get("/users/{user_id}/known-wifi", response_model=schemas.AdminKnownWifiResponse)
+def list_known_wifi(
+    user_id: str,
+    admin: models.User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Las "wifis de casa" que ese usuario tiene ahora mismo, para no mandarle una que ya tenga.
+
+    La lista vive en su movil; lo que el servidor conoce es la copia en la nube de sus ajustes
+    (ver routers/backup.py), que su propio movil sube al aplicar un cambio de estos. Sin copia,
+    known=False: no se sabe, y el panel lo dice en vez de inventarselo.
+    """
+    backup = db.get(models.UserBackup, user_id)
+    if backup is None:
+        return schemas.AdminKnownWifiResponse(known=False)
+    try:
+        payload = json.loads(backup.payload)
+    except ValueError:
+        return schemas.AdminKnownWifiResponse(known=False)
+    entry = payload.get("known_wifi_ssids")
+    values = entry.get("v") if isinstance(entry, dict) else None
+    return schemas.AdminKnownWifiResponse(
+        known=True,
+        updated_at=backup.updated_at,
+        # Una copia antigua puede no traer la clave (nunca marco ninguna wifi): lista vacia.
+        ssids=[str(v) for v in values] if isinstance(values, list) else [],
+    )
+
+
+@router.post("/users/{user_id}/known-wifi", status_code=status.HTTP_204_NO_CONTENT)
+def add_known_wifi(
+    user_id: str,
+    body: schemas.AdminKnownWifiRequest,
+    admin: models.User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Añade una wifi a las "wifis de casa" de ese usuario desde su ficha.
+
+    Esa lista es un ajuste que vive en SU movil, asi que esto viaja por push igual que la
+    peticion de ubicacion puntual. ponytail: sin cola de pendientes — si el movil esta apagado,
+    el aviso se pierde y el admin lo repite; guardarlo en el servidor seria mantener dos listas
+    que se contradicen.
+    """
+    user = db.get(models.User, user_id)
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    # Silencioso: sin bloque "notification" (system_notification queda en False), como la
+    # peticion de ubicacion puntual. El titulo/cuerpo solo salen en los registros del servidor.
+    push.send_to_user(
+        db, user_id, "Lokate",
+        f"Añadir {body.ssid} a wifis de casa",
+        {"type": "add_known_wifi", "ssid": body.ssid},
+    )
 
 
 @router.post("/users/{user_id}/avatar", response_model=schemas.AvatarResponse)

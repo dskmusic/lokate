@@ -185,6 +185,46 @@ fun rememberEffectiveMapStyle(map: MapView, style: MapStyle, offlineFiles: List<
     return if (applied) style else style.online
 }
 
+/** Cada cuánto se comprueba si quedan teselas sin su versión buena. Lo bastante espaciado para
+ * no repintar sin parar y lo bastante corto para que el usuario no llegue a fijarse. */
+private const val TILE_RETRY_INTERVAL_MS = 1_500L
+
+/** Reintentos seguidos sin que baje el número de teselas a medias. Pasados estos, esas teselas
+ * es que no existen (mar, zoom más allá de lo que publica el proveedor) y seguir pidiéndolas
+ * solo gastaría datos y batería. El contador se pone a cero en cuanto hay cualquier avance o el
+ * usuario mueve el mapa. */
+private const val TILE_RETRY_MAX = 5
+
+/**
+ * Vuelve a pedir las teselas que se quedaron a medias (el mapa "pixelado" al abrirlo).
+ *
+ * osmdroid, mientras una tesela no está, dibuja la del zoom de arriba estirada — de ahí los
+ * cuadros gordos. La vuelve a pedir SOLO al dibujarse, así que si la descarga se le cayó de la
+ * cola con el mapa quieto, ahí se queda hasta que el usuario lo toca (por eso se arreglaba al
+ * hacer zoom). Repintar mientras queden teselas estiradas o ausentes las re-pide; en cuanto
+ * están todas, esto no hace nada.
+ */
+@Composable
+fun TileRetryEffect(map: MapView) {
+    LaunchedEffect(map) {
+        var pending = -1
+        var tries = 0
+        while (true) {
+            delay(TILE_RETRY_INTERVAL_MS)
+            // isDone: solo cuentan las cifras de una pasada de dibujado terminada.
+            val states = map.overlayManager.tilesOverlay?.tileStates?.takeIf { it.isDone } ?: continue
+            val missing = states.scaled + states.notFound
+            if (missing != pending) {
+                // Algo se ha movido (han llegado teselas, o el usuario ha cambiado la vista).
+                pending = missing
+                tries = 0
+            }
+            if (missing == 0 || tries++ >= TILE_RETRY_MAX) continue
+            map.invalidate()
+        }
+    }
+}
+
 /** Botón de capas con el menú de estilos, igual en el mapa principal y en el historial. */
 @Composable
 fun MapStyleMenuButton(onSelect: (MapStyle) -> Unit) {

@@ -30,8 +30,9 @@ class ZoneRepository(
         lat: Double,
         lng: Double,
         radiusM: Double,
+        isPublic: Boolean = true,
     ): ZoneDto = withContext(Dispatchers.IO) {
-        val zone = api.createZone(ZoneCreateRequestDto(name, lat, lng, radiusM))
+        val zone = api.createZone(ZoneCreateRequestDto(name, lat, lng, radiusM, isPublic))
         dao.upsertAll(listOf(zone.toEntity()))
         zone
     }
@@ -42,8 +43,9 @@ class ZoneRepository(
         lat: Double,
         lng: Double,
         radiusM: Double,
+        isPublic: Boolean = true,
     ): ZoneDto = withContext(Dispatchers.IO) {
-        val zone = api.updateZone(id, ZoneCreateRequestDto(name, lat, lng, radiusM))
+        val zone = api.updateZone(id, ZoneCreateRequestDto(name, lat, lng, radiusM, isPublic))
         dao.upsertAll(listOf(zone.toEntity()))
         zone
     }
@@ -72,6 +74,6 @@ class ZoneRepository(
     }
 }
 
-private fun ZoneEntity.toDto() = ZoneDto(id, name, lat, lng, radiusM)
+private fun ZoneEntity.toDto() = ZoneDto(id, name, lat, lng, radiusM, isPublic, createdBy)
 
-private fun ZoneDto.toEntity() = ZoneEntity(id, name, lat, lng, radius_m)
+private fun ZoneDto.toEntity() = ZoneEntity(id, name, lat, lng, radius_m, is_public, created_by)

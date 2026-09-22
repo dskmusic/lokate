@@ -8,6 +8,8 @@ import com.dskmusic.lokate.data.remote.dto.AdminDiskUsageDto
 import com.dskmusic.lokate.data.remote.dto.AdminFileDto
 import com.dskmusic.lokate.data.remote.dto.AdminGroupCreateRequestDto
 import com.dskmusic.lokate.data.remote.dto.AdminGroupDto
+import com.dskmusic.lokate.data.remote.dto.AdminKnownWifiDto
+import com.dskmusic.lokate.data.remote.dto.AdminKnownWifiRequestDto
 import com.dskmusic.lokate.data.remote.dto.AdminSimulateDto
 import com.dskmusic.lokate.data.remote.dto.AdminSimulateRequestDto
 import com.dskmusic.lokate.data.remote.dto.AdminUserCreateRequestDto
@@ -48,6 +50,13 @@ class AdminRepository(private val api: ApiService) {
     suspend fun deleteUser(id: String) = withContext(Dispatchers.IO) { api.adminDeleteUser(id) }
     suspend fun notifyTest(id: String) = withContext(Dispatchers.IO) { api.adminNotifyTest(id) }
     suspend fun locateUser(id: String) = withContext(Dispatchers.IO) { api.adminLocateUser(id) }
+
+    /** Las "wifis de casa" que ese usuario tiene según su última copia en la nube. */
+    suspend fun knownWifi(id: String): AdminKnownWifiDto = withContext(Dispatchers.IO) { api.adminKnownWifi(id) }
+
+    /** Le pide al móvil de ese usuario (por push) que añada esta wifi a sus "wifis de casa". */
+    suspend fun addKnownWifi(id: String, ssid: String) =
+        withContext(Dispatchers.IO) { api.adminAddKnownWifi(id, AdminKnownWifiRequestDto(ssid)) }
 
     suspend fun uploadAvatar(userId: String, imageFile: File): String = withContext(Dispatchers.IO) {
         val body = imageFile.asRequestBody("image/jpeg".toMediaType())

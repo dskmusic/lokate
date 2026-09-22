@@ -7,6 +7,7 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.MaterialTheme
@@ -27,10 +28,11 @@ import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dskmusic.lokate.R
 import com.dskmusic.lokate.di.ServiceLocator
+import com.dskmusic.lokate.util.formatTimestamp
 
 @Composable
 fun LoginScreen(locator: ServiceLocator, onLoggedIn: () -> Unit, onGoToRegister: () -> Unit) {
-    val viewModel = remember { AuthViewModel(locator.authRepository) }
+    val viewModel = remember { AuthViewModel(locator.authRepository, locator.backupRepository) }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
 
     var username by remember { mutableStateOf("") }
@@ -83,5 +85,26 @@ fun LoginScreen(locator: ServiceLocator, onLoggedIn: () -> Unit, onGoToRegister:
                 Text(stringResource(R.string.switch_to_register))
             }
         }
+    }
+
+    // Hay copia de sus ajustes arriba: se ofrece antes de entrar, que es cuando importa (móvil
+    // nuevo o app recién reinstalada). Decir que no entra con los ajustes de fábrica y no borra
+    // la copia: la siguiente copia automática la pisará cuando toque.
+    state.backupDate?.let { date ->
+        AlertDialog(
+            onDismissRequest = { viewModel.enterWithoutRestoring() },
+            title = { Text(stringResource(R.string.login_backup_title)) },
+            text = { Text(stringResource(R.string.login_backup_body, formatTimestamp(date))) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.restoreBackupAndEnter() }) {
+                    Text(stringResource(R.string.login_backup_restore))
+                }
+            },
+            dismissButton = {
+                TextButton(onClick = { viewModel.enterWithoutRestoring() }) {
+                    Text(stringResource(R.string.login_backup_skip))
+                }
+            },
+        )
     }
 }

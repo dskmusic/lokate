@@ -16,6 +16,8 @@ data class ZoneEditUiState(
     val lat: Double? = null,
     val lng: Double? = null,
     val radiusM: Double = 50.0,
+    /** true = la ve todo el grupo (por defecto); false = privada, solo de quien la crea. */
+    val isPublic: Boolean = true,
     val members: List<GroupMemberDto> = emptyList(),
     /** De quién quiero que me avisen en esta zona (solo mío). Se marca a todos al crearla. */
     val watchedIds: Set<String> = emptySet(),
@@ -40,6 +42,7 @@ class ZoneEditViewModel(
             lat = existingZone?.lat ?: MapCameraMemory.center?.latitude,
             lng = existingZone?.lng ?: MapCameraMemory.center?.longitude,
             radiusM = existingZone?.radius_m ?: 50.0,
+            isPublic = existingZone?.is_public ?: true,
         ),
     )
     val uiState: StateFlow<ZoneEditUiState> = _uiState
@@ -80,6 +83,10 @@ class ZoneEditViewModel(
         _uiState.value = _uiState.value.copy(name = name)
     }
 
+    fun updateVisibility(isPublic: Boolean) {
+        _uiState.value = _uiState.value.copy(isPublic = isPublic)
+    }
+
     fun updateRadius(radius: Double) {
         _uiState.value = _uiState.value.copy(radiusM = radius)
     }
@@ -102,11 +109,12 @@ class ZoneEditViewModel(
         viewModelScope.launch {
             runCatching {
                 val zone = if (existingZone != null) {
-                    zoneRepository.updateZone(existingZone.id, s.name, lat, lng, s.radiusM)
+                    zoneRepository.updateZone(existingZone.id, s.name, lat, lng, s.radiusM, s.isPublic)
                 } else {
-                    zoneRepository.createZone(s.name, lat, lng, s.radiusM)
+                    zoneRepository.createZone(s.name, lat, lng, s.radiusM, s.isPublic)
                 }
-                // La zona (sitio y radio) la ve todo el grupo; a quién vigila, solo este móvil.
+                // La zona (sitio y radio) la ve el grupo entero si es pública; a quién vigila,
+                // solo este móvil.
                 zoneRepository.updateNotificationPref(zone.id, notifyOnEnter, notifyOnExit, watched)
             }
                 .onSuccess { _uiState.value = _uiState.value.copy(saving = false, saved = true) }
