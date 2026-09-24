@@ -1,7 +1,6 @@
 package com.dskmusic.lokate.location
 
 import android.content.Context
-import android.os.SystemClock
 import androidx.work.CoroutineWorker
 import androidx.work.ExistingPeriodicWorkPolicy
 import androidx.work.NetworkType
@@ -16,7 +15,10 @@ import com.dskmusic.lokate.R
 import com.dskmusic.lokate.util.Constants
 import com.dskmusic.lokate.util.DeviceStatusUtils
 import com.dskmusic.lokate.util.PermissionUtils
+import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.LocationServices
+import com.google.android.gms.location.Priority
+import com.google.android.gms.tasks.CancellationTokenSource
 import com.google.android.gms.tasks.Tasks
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.flow.first
@@ -37,7 +39,8 @@ class LocationUpdateWorker(context: Context, params: WorkerParameters) : Corouti
         // Latido: re-registra token FCM, canal de notificaciones y estado del móvil. Es lo
         // único que corre en un móvil con el envío de ubicación desactivado, y lo que hace que
         // uno que acaba de actualizar la app registre su canal sin esperar a que alguien la abra.
-        runCatching { locator.authRepository.registerCurrentDeviceToken() }
+        // Se salta sola cuando no hay nada nuevo que contar y los pings ya van al día.
+        runCatching { locator.authRepository.refreshDeviceRegistration() }
 
         // Copia de ajustes en la nube, como mucho una al día (lo decide el repositorio). Va
         // aquí y no en un worker propio: este ya se despierta cada 15 min con red.
@@ -66,14 +69,14 @@ class LocationUpdateWorker(context: Context, params: WorkerParameters) : Corouti
     }
 
     /**
-     * Latido de posición: si hace un buen rato que no sale nada, manda la última ubicación que
-     * el sistema ya tiene guardada.
+     * Latido de posición: si hace un buen rato que no sale nada, manda la posición que el
+     * sistema ya tiene calculada, aunque sea la misma de antes.
      *
      * Hace falta porque el filtro de distancia vive ahora dentro del sistema
      * (setMinUpdateDistanceMeters): un móvil parado deja de recibir fixes, así que el servicio
-     * no tiene qué mandar y en el grupo esa persona se congelaría. Aquí no se enciende nada —
-     * lastLocation es la posición que el sistema ya calculó para otro—, así que el latido es
-     * gratis en batería.
+     * no tiene qué mandar y en el grupo esa persona se congelaría — indistinguible de un móvil
+     * apagado, que es justo lo que hay que poder distinguir. Sale casi gratis: se reaprovecha
+     * una posición ya hecha y, si no hay ninguna reciente, se pide sin encender el GPS.
      */
     private suspend fun heartbeat(locator: ServiceLocator) {
         val frequency = locator.settings.locationFrequency.first()
@@ -82,20 +85,26 @@ class LocationUpdateWorker(context: Context, params: WorkerParameters) : Corouti
         if (lastOk != 0L && System.currentTimeMillis() - lastOk < HEARTBEAT_AFTER_MS) return
         if (!PermissionUtils.hasForegroundLocationPermission(applicationContext)) return
 
+        // Vale cualquier posición que el sistema ya tenga de la última media hora, y eso es
+        // lo normal: el servicio le sigue pidiendo una cada 15 min aunque luego no se la
+        // entreguen por el filtro de distancia. Solo si no hay ninguna se calcula, y en
+        // "equilibrado", que es wifi y antenas — nunca el GPS. Sin edad máxima se mandaría la
+        // posición de hace horas con hora de ahora, que es peor que no mandar nada.
+        val request = CurrentLocationRequest.Builder()
+            .setPriority(Priority.PRIORITY_BALANCED_POWER_ACCURACY)
+            .setMaxUpdateAgeMillis(MAX_FIX_AGE_MS)
+            .setDurationMillis(LAST_LOCATION_TIMEOUT_S * 1000)
+            .build()
         val fix = withContext(Dispatchers.IO) {
             runCatching {
                 Tasks.await(
-                    LocationServices.getFusedLocationProviderClient(applicationContext).lastLocation,
-                    LAST_LOCATION_TIMEOUT_S,
+                    LocationServices.getFusedLocationProviderClient(applicationContext)
+                        .getCurrentLocation(request, CancellationTokenSource().token),
+                    LAST_LOCATION_TIMEOUT_S + 5,
                     TimeUnit.SECONDS,
                 )
             }.getOrNull()
         } ?: return
-
-        // Una posición de hace horas mandada como si fuera de ahora es peor que no mandar nada:
-        // el grupo vería hora fresca en un sitio equivocado. Mejor callar y que salte el
-        // vigilante de abajo, que es lo que de verdad pasa.
-        if (SystemClock.elapsedRealtimeNanos() - fix.elapsedRealtimeNanos > MAX_FIX_AGE_NS) return
 
         locator.locationRepository.ping(
             fix.latitude,
@@ -142,12 +151,17 @@ class LocationUpdateWorker(context: Context, params: WorkerParameters) : Corouti
     }
 
     companion object {
-        /** Cuánto tiene que llevar sin salir un ping para que el worker mande el latido. Es el
-         * mismo ritmo de "aquí no pasa nada" del servicio. */
-        private const val HEARTBEAT_AFTER_MS = 15 * 60_000L
+        /** Cuánto tiene que llevar sin salir un ping para que el worker mande el latido.
+         *
+         * Diez y no quince (el ritmo de reposo del servicio) porque el worker despierta cada 15
+         * min por su cuenta: puesto en quince, una pasada que cae a los catorce minutos del
+         * último ping se salta el latido y hay que esperar a la siguiente — media hora larga de
+         * silencio con el móvil perfectamente. No cuesta batería: el latido sale como mucho una
+         * vez por pasada, y la pasada ya se hace igual. */
+        private const val HEARTBEAT_AFTER_MS = 10 * 60_000L
 
-        /** Lo más vieja que puede ser la posición guardada del sistema para valer como latido. */
-        private const val MAX_FIX_AGE_NS = 20 * 60_000_000_000L
+        /** Lo más vieja que puede ser una posición ya calculada para valer como latido. */
+        private const val MAX_FIX_AGE_MS = 30 * 60_000L
 
         private const val LAST_LOCATION_TIMEOUT_S = 10L
 

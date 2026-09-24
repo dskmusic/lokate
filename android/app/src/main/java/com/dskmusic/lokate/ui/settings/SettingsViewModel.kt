@@ -209,10 +209,8 @@ class SettingsViewModel(
 
     fun logout(context: Context, onDone: () -> Unit) {
         viewModelScope.launch {
-            // Lo que quedó sin entregar era de la sesión que se cierra: mandarlo luego con el
-            // token del siguiente que inicie sesión le colgaría a esa persona las posiciones
-            // de la anterior.
-            locationRepository.clearPendingPings()
+            // El borrado de lo que era del usuario (pings sin entregar incluidos) va dentro de
+            // logout: tiene que pasar igual entrando con otra cuenta, no solo por este botón.
             authRepository.logout(context)
             onDone()
         }

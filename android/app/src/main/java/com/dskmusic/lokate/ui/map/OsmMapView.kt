@@ -188,7 +188,8 @@ fun OsmMapView(
         // La batería entra en la firma porque el anillo del marcador la pinta: si no, el
         // marcador se quedaría con el anillo del primer sondeo para siempre.
         members.forEach {
-            append(it.user_id).append(it.lat).append(',').append(it.lng).append('@').append(it.battery_level).append(';')
+            append(it.user_id).append(it.lat).append(',').append(it.lng)
+            append('@').append(it.battery_level).append(it.is_charging).append(';')
         }
         append('#')
         zones.forEach { append(it.id).append(it.lat).append(',').append(it.lng).append(it.radius_m).append(';') }
@@ -239,10 +240,13 @@ fun OsmMapView(
                     marker.setAnchor(Marker.ANCHOR_CENTER, Marker.ANCHOR_CENTER)
                     val avatarBitmap = avatarBitmaps[member.user_id]
                     val iconBitmap = if (avatarBitmap != null) {
-                        MarkerIconFactory.circularAvatarBitmap(avatarBitmap, MARKER_SIZE_PX, member.battery_level)
+                        MarkerIconFactory.circularAvatarBitmap(
+                            avatarBitmap, MARKER_SIZE_PX, member.battery_level, member.is_charging == true,
+                        )
                     } else {
                         MarkerIconFactory.initialsBitmap(
-                            member.display_name, member.user_id, MARKER_SIZE_PX, member.battery_level,
+                            member.display_name, member.user_id, MARKER_SIZE_PX,
+                            member.battery_level, member.is_charging == true,
                         )
                     }
                     marker.icon = BitmapDrawable(context.resources, iconBitmap)

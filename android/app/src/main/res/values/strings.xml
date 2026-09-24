@@ -38,6 +38,15 @@
     <string name="register_title">Crear cuenta</string>
     <string name="username_label">Nombre de usuario</string>
     <string name="password_label">Contraseña</string>
+    <string name="password_confirm_label">Repite la contraseña</string>
+    <string name="password_mismatch">Las dos contraseñas no coinciden</string>
+    <string name="password_show">Ver la contraseña</string>
+    <string name="password_hide">Ocultar la contraseña</string>
+    <string name="error_bad_credentials">Usuario o contraseña incorrectos</string>
+    <string name="error_username_taken">Ese nombre de usuario ya está cogido</string>
+    <string name="error_too_many_attempts">Demasiados intentos fallidos. Prueba otra vez dentro de unos minutos</string>
+    <string name="error_no_connection">No se ha podido conectar con el servidor. Revisa tu conexión y la dirección del servidor</string>
+    <string name="error_server">No se ha podido completar la operación. Inténtalo de nuevo</string>
     <string name="display_name_label">Tu nombre</string>
     <string name="profile_photo_label">Foto de perfil (obligatoria)</string>
     <string name="login_button">Entrar</string>
@@ -93,6 +102,7 @@
     <string name="follow_live_unconfirmed">No se ha podido activar el tiempo real: su móvil no responde (¿tiene la ubicación apagada?). Se sigue intentando</string>
     <string name="follow_live_chip_pending">Esperando a su móvil…</string>
     <string name="follow_live_chip_failed">Sin respuesta: no está en tiempo real</string>
+    <string name="follow_live_auto_stopped">Seguimiento en vivo soltado solo tras %1$d min, para no gastarle la batería. Vuelve a pulsarlo si lo necesitas</string>
     <string name="map_follow_you">%1$s (tú)</string>
     <string name="help_title">Ayuda</string>
 
@@ -137,7 +147,7 @@
     <string name="update_state_on_demand">Solo contesta si se lo piden</string>
     <string name="update_state_unknown">Desconocido</string>
     <string name="update_body_moving">Mientras se mueve, su móvil manda la posición al ritmo que tiene elegido. Puede llegar hasta un minuto más tarde: el sistema junta varias posiciones y las entrega de una vez, para no encender la radio a cada rato.</string>
-    <string name="update_body_still">Su móvil ha visto que lleva un rato sin moverse (por el sensor de actividad física, o porque su posición no cambia) y ha espaciado las actualizaciones a una cada 15 minutos, tenga el ritmo que tenga elegido. Además, estando parado solo manda posición si se desplaza más de 100 metros, para no dibujar paseos que no existen. En cuanto vuelva a moverse recupera su ritmo al instante.</string>
+    <string name="update_body_still">Su móvil ha visto que lleva un rato sin moverse (por el sensor de actividad física, o porque su posición no cambia) y ha espaciado las actualizaciones a una cada 15 minutos, tenga el ritmo que tenga elegido. Además, estando parado solo manda posición si se desplaza más de 100 metros, para no dibujar paseos que no existen. Aun así manda una señal de vida cada cuarto de hora repitiendo la posición que ya tenía, para que se distinga estar quieto de haberse quedado sin batería. En cuanto vuelva a moverse recupera su ritmo al instante.</string>
     <string name="update_body_home_wifi">Está conectado a una wifi que tiene marcada como sitio fijo (casa, trabajo, casa de los abuelos). Mientras siga ahí, su móvil actualiza una vez cada 15 minutos en lugar de a su ritmo: si no se está moviendo, preguntar cada minuto solo gasta batería. Al salir de esa wifi vuelve a su ritmo.</string>
     <string name="update_body_live">Alguien lo tiene en seguimiento en tiempo real: su móvil manda posición cada pocos segundos mientras dure, por encima del ritmo que tenga elegido.</string>
     <string name="update_body_on_demand">Su móvil no manda posición por su cuenta. Solo responde cuando alguien pulsa el botón de actualizar en su ficha, así que la hora que ves es la de la última vez que se la pidieron.</string>
@@ -312,9 +322,10 @@
     <string name="settings_notifications_zone">Alertas de zona</string>
     <string name="settings_notifications_system">Mensajes del sistema</string>
     <string name="settings_notifications_silent">Avisos de «sin señal»</string>
-    <string name="settings_notifications_silent_desc">Avisarme cuando alguien del grupo lleve mucho tiempo sin enviar ubicación. Persona a persona se apaga en su ficha.</string>
+    <string name="settings_notifications_silent_desc">Permite avisos de personas que lleven mucho tiempo sin enviar ubicación. Elige de quién quieres saberlo en su ficha: de serie no avisa de nadie.</string>
     <string name="settings_account">Cuenta</string>
     <string name="settings_logout">Cerrar sesión</string>
+    <string name="settings_logout_confirm">¿Seguro que quieres cerrar sesión? Se borrarán de este móvil las zonas y el historial descargados, y tendrás que volver a escribir tu contraseña para entrar.</string>
     <string name="settings_display_name">Nombre</string>
     <string name="settings_clear_local_data">Borrar datos locales</string>
     <string name="settings_clear_local_data_confirm">¿Borrar todos los datos guardados en este dispositivo (zonas y ajustes)? Esto no afecta a lo que hay en el servidor.</string>
@@ -335,7 +346,7 @@
     <string name="settings_test_notification_all_confirm_body">Todos los miembros del grupo recibirán una notificación de prueba en su móvil.</string>
     <string name="settings_test_notification_sent">Notificación de prueba enviada</string>
     <string name="settings_server_url">Dirección del servidor</string>
-    <string name="settings_server_url_hint">Ej: https://familia.dskmusic.com/</string>
+    <string name="settings_server_url_hint">Ej: https://mi-servidor.com/</string>
     <string name="settings_server_url_save">Guardar</string>
     <string name="settings_server_url_reset">Restaurar por defecto</string>
 

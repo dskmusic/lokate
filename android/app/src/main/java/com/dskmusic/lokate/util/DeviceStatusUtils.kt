@@ -1,6 +1,8 @@
 package com.dskmusic.lokate.util
 
 import android.content.Context
+import android.content.Intent
+import android.content.IntentFilter
 import android.net.ConnectivityManager
 import android.net.Network
 import android.net.NetworkCapabilities
@@ -25,7 +27,7 @@ object DeviceStatusUtils {
     fun read(context: Context): DeviceStatus {
         val batteryManager = context.getSystemService(Context.BATTERY_SERVICE) as? BatteryManager
         val level = batteryManager?.getIntProperty(BatteryManager.BATTERY_PROPERTY_CAPACITY)?.takeIf { it in 0..100 }
-        val isCharging = batteryManager?.isCharging
+        val isCharging = isCharging(context)
 
         val manager = context.getSystemService(ConnectivityManager::class.java)
         val active = manager?.activeNetwork?.let { manager.getNetworkCapabilities(it) }
@@ -37,6 +39,29 @@ object DeviceStatusUtils {
             wifiSsid = currentWifiSsid(context),
             configIssues = ConfigCheck.serialize(context),
         )
+    }
+
+    /**
+     * ¿Está el móvil en el cargador?
+     *
+     * Se mira en el aviso pegajoso de la batería y NO en BatteryManager.isCharging, que es lo
+     * que había: aquello lo contesta el servicio de estadísticas de batería y dice que no en
+     * cuanto el sistema pausa la carga — carga adaptativa parada en el 80 %, protección por
+     * temperatura, un cargador lento que no repone. O sea, justo cuando el móvil SÍ está
+     * enchufado, que es lo que el grupo quiere ver.
+     *
+     * [EXTRA_PLUGGED] es el que manda: dice si hay cable (o base inalámbrica) puesto, sin
+     * opinar sobre si la batería está subiendo. El estado se mira además por si algún
+     * fabricante no rellena el primero.
+     *
+     * null = el sistema no ha contestado. Mejor no decir nada que decir que no.
+     */
+    private fun isCharging(context: Context): Boolean? {
+        val battery = runCatching {
+            context.applicationContext.registerReceiver(null, IntentFilter(Intent.ACTION_BATTERY_CHANGED))
+        }.getOrNull() ?: return null
+        return battery.getIntExtra(BatteryManager.EXTRA_PLUGGED, 0) != 0 ||
+            battery.getIntExtra(BatteryManager.EXTRA_STATUS, -1) == BatteryManager.BATTERY_STATUS_CHARGING
     }
 
     /** SSID del wifi actual, o null si no hay wifi o el sistema no suelta el nombre. */

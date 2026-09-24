@@ -1,18 +1,40 @@
 package com.dskmusic.lokate.ui.auth
 
 import android.net.Uri
+import androidx.annotation.StringRes
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dskmusic.lokate.data.repository.AuthRepository
 import com.dskmusic.lokate.data.repository.BackupRepository
+import com.dskmusic.lokate.R
 import com.dskmusic.lokate.util.FileUtils
 import kotlinx.coroutines.flow.MutableStateFlow
 import kotlinx.coroutines.flow.StateFlow
 import kotlinx.coroutines.launch
+import retrofit2.HttpException
+import java.io.IOException
+
+/**
+ * El mensaje del servidor no se enseña nunca tal cual: viene solo en español y, cuando es una
+ * excepción de Retrofit, ni siquiera es una frase ("HTTP 401 Unauthorized"). Se traduce aquí el
+ * código a un texto de la app, que sí está en los dos idiomas.
+ */
+@StringRes
+internal fun Throwable.toAuthErrorRes(): Int = when {
+    this is HttpException -> when (code()) {
+        401 -> R.string.error_bad_credentials
+        409 -> R.string.error_username_taken
+        429 -> R.string.error_too_many_attempts
+        else -> R.string.error_server
+    }
+    // Sin red, servidor caído o dirección mal escrita: todo llega como IOException.
+    this is IOException -> R.string.error_no_connection
+    else -> R.string.error_server
+}
 
 data class AuthUiState(
     val loading: Boolean = false,
-    val error: String? = null,
+    @StringRes val error: Int? = null,
     /** Fecha ISO de la copia de ajustes que este usuario tiene en el servidor. Mientras no sea
      * null la pantalla pregunta si restaurarla, y la entrada a la app espera a la respuesta:
      * es el único momento en que ofrecerla tiene sentido (móvil nuevo o recién reinstalado). */
@@ -49,7 +71,7 @@ class AuthViewModel(
                         onSuccess()
                     }
                 }
-                .onFailure { _uiState.value = AuthUiState(error = it.message) }
+                .onFailure { _uiState.value = AuthUiState(error = it.toAuthErrorRes()) }
         }
     }
 
@@ -90,7 +112,7 @@ class AuthViewModel(
                     viewModelScope.launch { runCatching { authRepository.registerCurrentDeviceToken() } }
                     onSuccess()
                 }
-                .onFailure { _uiState.value = AuthUiState(error = it.message) }
+                .onFailure { _uiState.value = AuthUiState(error = it.toAuthErrorRes()) }
         }
     }
 }

@@ -38,6 +38,15 @@
     <string name="register_title">Create account</string>
     <string name="username_label">Username</string>
     <string name="password_label">Password</string>
+    <string name="password_confirm_label">Repeat the password</string>
+    <string name="password_mismatch">The two passwords do not match</string>
+    <string name="password_show">Show password</string>
+    <string name="password_hide">Hide password</string>
+    <string name="error_bad_credentials">Wrong username or password</string>
+    <string name="error_username_taken">That username is already taken</string>
+    <string name="error_too_many_attempts">Too many failed attempts. Try again in a few minutes</string>
+    <string name="error_no_connection">Could not reach the server. Check your connection and the server address</string>
+    <string name="error_server">Could not complete the request. Please try again</string>
     <string name="display_name_label">Your name</string>
     <string name="profile_photo_label">Profile photo (required)</string>
     <string name="login_button">Log in</string>
@@ -93,6 +102,7 @@
     <string name="follow_live_unconfirmed">Could not turn on real time: their phone is not answering (is their location off?). Still trying</string>
     <string name="follow_live_chip_pending">Waiting for their phone…</string>
     <string name="follow_live_chip_failed">No answer: not in real time</string>
+    <string name="follow_live_auto_stopped">Live follow released on its own after %1$d min to save their battery. Tap it again if you still need it</string>
     <string name="map_follow_you">%1$s (you)</string>
     <string name="help_title">Help</string>
 
@@ -135,7 +145,7 @@
     <string name="update_state_on_demand">Only answers when asked</string>
     <string name="update_state_unknown">Unknown</string>
     <string name="update_body_moving">While they are moving, their phone sends its position at the rate they chose. It can arrive up to a minute later: the system groups several positions and delivers them at once, so the radio does not wake up every few seconds.</string>
-    <string name="update_body_still">Their phone has noticed they have not moved for a while (from the physical activity sensor, or because their position is not changing) and has spaced updates out to one every 15 minutes, whatever rate they chose. On top of that, while stationary it only sends a position after moving more than 100 metres, so the map does not draw walks that never happened. As soon as they move again it goes back to their rate straight away.</string>
+    <string name="update_body_still">Their phone has noticed they have not moved for a while (from the physical activity sensor, or because their position is not changing) and has spaced updates out to one every 15 minutes, whatever rate they chose. On top of that, while stationary it only sends a position after moving more than 100 metres, so the map does not draw walks that never happened. It still sends a sign of life every quarter of an hour, repeating the position it already had, so that sitting still looks different from running out of battery. As soon as they move again it goes back to their rate straight away.</string>
     <string name="update_body_home_wifi">They are connected to a wifi network they marked as a fixed place (home, work, family homes). While they stay there, their phone updates once every 15 minutes instead of at their chosen rate: if they are not moving, asking every minute only drains the battery. Leaving that network restores their rate.</string>
     <string name="update_body_live">Someone is tracking them live: their phone sends its position every few seconds while it lasts, overriding whatever rate they chose.</string>
     <string name="update_body_on_demand">Their phone does not send its position on its own. It only answers when someone taps the refresh button on their card, so the time you see is the last time it was asked.</string>
@@ -309,9 +319,10 @@
     <string name="settings_notifications_zone">Zone alerts</string>
     <string name="settings_notifications_system">System messages</string>
     <string name="settings_notifications_silent">“No signal” alerts</string>
-    <string name="settings_notifications_silent_desc">Tell me when someone in the group has not sent their location for a long time. You can turn it off person by person on their card.</string>
+    <string name="settings_notifications_silent_desc">Allows alerts about people who have not sent their location for a long time. Choose who you want them for on their card: nobody by default.</string>
     <string name="settings_account">Account</string>
     <string name="settings_logout">Log out</string>
+    <string name="settings_logout_confirm">Log out for sure? The zones and history downloaded to this phone will be deleted, and you will have to type your password again to get back in.</string>
     <string name="settings_display_name">Name</string>
     <string name="settings_clear_local_data">Clear local data</string>
     <string name="settings_clear_local_data_confirm">Delete all data saved on this device (zones and settings)? This doesn\'t affect what\'s on the server.</string>
@@ -332,7 +343,7 @@
     <string name="settings_test_notification_all_confirm_body">Every group member will get a test notification on their phone.</string>
     <string name="settings_test_notification_sent">Test notification sent</string>
     <string name="settings_server_url">Server address</string>
-    <string name="settings_server_url_hint">E.g.: https://familia.dskmusic.com/</string>
+    <string name="settings_server_url_hint">E.g.: https://my-server.com/</string>
     <string name="settings_server_url_save">Save</string>
     <string name="settings_server_url_reset">Reset to default</string>
 

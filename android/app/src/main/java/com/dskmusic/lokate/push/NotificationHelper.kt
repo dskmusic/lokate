@@ -33,6 +33,10 @@ import java.util.concurrent.atomic.AtomicInteger
 
 const val RING_NOTIFICATION_ID = Constants.LOCATION_SERVICE_NOTIFICATION_ID + 3
 
+/** Id fijo para los avisos de "sin señal". Fijo a propósito: junto con la etiqueta (el id de
+ * la persona) hace que el aviso nuevo de alguien reemplace al suyo anterior. */
+const val SILENT_NOTIFICATION_ID = Constants.LOCATION_SERVICE_NOTIFICATION_ID + 4
+
 /** Grupos para que Android apile las notificaciones del mismo tipo en vez de llenar la barra. */
 private const val ZONE_GROUP = "lokate_zone_group"
 private const val SYSTEM_GROUP = "lokate_system_group"
@@ -45,7 +49,7 @@ private const val SYSTEM_GROUP = "lokate_system_group"
  *
  * La semilla depende de la hora para que, tras reiniciarse el proceso, el contador no vuelva a
  * empezar donde estaba y pise notificaciones aún visibles. Los ids fijos reservados
- * ([Constants.LOCATION_SERVICE_NOTIFICATION_ID] y siguientes, hasta [RING_NOTIFICATION_ID])
+ * ([Constants.LOCATION_SERVICE_NOTIFICATION_ID] y siguientes, hasta [SILENT_NOTIFICATION_ID])
  * quedan fuera del rango a propósito.
  */
 private val notificationIdCounter = AtomicInteger(2000 + (System.currentTimeMillis() % 100_000).toInt())
@@ -418,6 +422,32 @@ object NotificationHelper {
             .setAutoCancel(true)
             .build()
         NotificationManagerCompat.from(context).notify(nextNotificationId(), notification)
+    }
+
+    /**
+     * Aviso de "lleva X sin dar señal" de una persona. Es el único que NO se acumula: lleva el
+     * id de esa persona como etiqueta, así que un aviso suyo nuevo reemplaza al anterior en vez
+     * de sumarse. Sin esto, un móvil sin internet toda la noche (o varias) deja la barra llena
+     * de avisos que cuentan lo mismo. La etiqueta es también lo que permite retirarlo cuando
+     * vuelve, ver [cancelSilentNotification].
+     */
+    fun showSilentNotification(context: Context, userId: String, title: String, body: String) {
+        val notification = NotificationCompat.Builder(context, Constants.SYSTEM_CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setSmallIcon(R.drawable.ic_notification)
+            .setGroup(SYSTEM_GROUP)
+            .setAutoCancel(true)
+            .build()
+        NotificationManagerCompat.from(context).notify(userId, SILENT_NOTIFICATION_ID, notification)
+    }
+
+    /** El servidor avisa cuando esa persona vuelve a dar señal: el aviso de la madrugada ya no
+     * cuenta nada que no se vea en su ficha, así que se retira solo. Si no había ninguno, no
+     * pasa nada. */
+    fun cancelSilentNotification(context: Context, userId: String) {
+        NotificationManagerCompat.from(context).cancel(userId, SILENT_NOTIFICATION_ID)
     }
 
     /** A diferencia de las demás: toca la notificación, su botón "Detener", o descártala — las tres paran el sonido. */

@@ -1,9 +1,9 @@
 from pathlib import Path
 
-from fastapi import APIRouter, Depends, HTTPException, UploadFile, status
+from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, status
 from sqlalchemy.orm import Session
 
-from .. import models, schemas
+from .. import login_guard, models, schemas
 from ..auth import create_access_token, get_current_user, hash_password, verify_password
 from ..database import get_db
 
@@ -32,11 +32,22 @@ def register(body: schemas.RegisterRequest, db: Session = Depends(get_db)):
 
 
 @router.post("/login", response_model=schemas.TokenResponse)
-def login(body: schemas.LoginRequest, db: Session = Depends(get_db)):
+def login(body: schemas.LoginRequest, request: Request, db: Session = Depends(get_db)):
+    # Freno de fuerza bruta antes de tocar la base: ver app/login_guard.py. Se desbloquea solo
+    # a los 15 min, o a mano desde el panel (Admin -> Intentos de acceso).
+    remaining = login_guard.blocked_seconds(body.username)
+    if remaining:
+        raise HTTPException(
+            status.HTTP_429_TOO_MANY_REQUESTS,
+            f"Demasiados intentos fallidos. Vuelve a probar en {remaining // 60 + 1} min",
+        )
+
     user = db.query(models.User).filter(models.User.username == body.username.lower()).first()
     if not user or not verify_password(body.password, user.password_hash):
+        login_guard.record_failure(body.username, request.client.host if request.client else "")
         raise HTTPException(status.HTTP_401_UNAUTHORIZED, "Usuario o contraseña incorrectos")
 
+    login_guard.record_success(body.username)
     return schemas.TokenResponse(access_token=create_access_token(user.id), user=user)
 
 

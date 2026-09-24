@@ -3,6 +3,7 @@ package com.dskmusic.lokate.util
 import android.content.Context
 import android.location.LocationManager
 import android.os.Build
+import android.os.SystemClock
 import androidx.core.app.NotificationManagerCompat
 import androidx.core.location.LocationManagerCompat
 
@@ -34,7 +35,9 @@ object ConfigCheck {
     /** Orden fijo (de más grave a menos) para que la lista se lea igual siempre. */
     val ALL = listOf(LOCATION, BACKGROUND_LOCATION, NOTIFICATIONS, NOTIFICATION_CHANNEL, BATTERY, GPS_OFF, ACTIVITY, DND)
 
-    fun issues(context: Context): List<String> = buildList {
+    fun issues(context: Context): List<String> = computeIssues(context).also(::cache)
+
+    private fun computeIssues(context: Context): List<String> = buildList {
         if (!PermissionUtils.hasForegroundLocationPermission(context)) add(LOCATION)
         if (!PermissionUtils.hasBackgroundLocationPermission(context)) add(BACKGROUND_LOCATION)
         // areNotificationsEnabled cubre tanto el permiso denegado en Android 13+ como el
@@ -78,8 +81,37 @@ object ConfigCheck {
         return onboardableIssues(context).filterNot { it in alreadyAsked }
     }
 
-    /** Cadena lista para mandar al servidor. */
-    fun serialize(context: Context): String = issues(context).joinToString(",")
+    /**
+     * Cadena lista para mandar al servidor, cacheada: esto se calculaba EN CADA PING, y son
+     * media docena de consultas a servicios del sistema (permisos, canales de notificación,
+     * ubicación del sistema, optimización de batería) para contestar algo que solo cambia
+     * cuando el usuario se va a los ajustes del móvil a tocar un interruptor.
+     *
+     * El caché lo refresca [issues], al que la app llama cada vez que se abre — que es justo
+     * cuando se vuelve de haber tocado esos ajustes.
+     *
+     * ponytail: apagar el GPS puede tardar hasta [CACHE_TTL_MS] en verse desde fuera. Si alguna
+     * vez importa, invalidar el caché desde el ON_RESUME de MainActivity.
+     */
+    fun serialize(context: Context): String {
+        cached?.takeIf { SystemClock.elapsedRealtime() - cachedAt < CACHE_TTL_MS }?.let { return it }
+        return issues(context).joinToString(",")
+    }
+
+    @Volatile
+    private var cached: String? = null
+
+    @Volatile
+    private var cachedAt = 0L
+
+    private fun cache(found: List<String>) {
+        cached = found.joinToString(",")
+        // elapsedRealtime y no el reloj: cambiar la hora del móvil no puede dejar esto caducado
+        // (ni válido) para siempre.
+        cachedAt = SystemClock.elapsedRealtime()
+    }
+
+    private const val CACHE_TTL_MS = 15 * 60_000L
 
     /** Lo contrario: de la cadena del servidor a códigos conocidos. Se descarta lo que no
      * reconozcamos, por si un móvil con una versión más nueva manda códigos que aún no existen aquí. */

@@ -1,0 +1,63 @@
+{% extends "sqladmin/layout.html" %}
+{% block content %}
+<div class="col-12">
+  <div class="card">
+    <div class="card-header d-flex justify-content-between align-items-center flex-wrap gap-2">
+      <div>
+        <h3 class="card-title mb-0">{{ t('login_blocks_title') }}</h3>
+        <div class="text-secondary small">
+          {{ t('login_blocks_help', fails=max_fails, minutes=block_minutes) }}
+        </div>
+      </div>
+      {% if rows %}
+      <form method="post" action="{{ url_for('admin:login-blocks-unblock') }}">
+        <button type="submit" class="btn btn-sm btn-outline-secondary">
+          {{ t('login_blocks_unblock_all') }}
+        </button>
+      </form>
+      {% endif %}
+    </div>
+    <div class="table-responsive">
+      <table class="table card-table table-vcenter">
+        <thead>
+          <tr>
+            <th>{{ t('username') }}</th>
+            <th>{{ t('login_blocks_fails') }}</th>
+            <th>{{ t('login_blocks_ip') }}</th>
+            <th>{{ t('login_blocks_state') }}</th>
+            <th></th>
+          </tr>
+        </thead>
+        <tbody>
+          {% for row in rows %}
+          <tr>
+            <td>{{ row.username }}</td>
+            <td>{{ row.fails }}</td>
+            <td class="text-secondary">{{ row.ip or '—' }}</td>
+            <td>
+              {% if row.blocked_seconds %}
+              <span class="badge bg-red-lt">
+                {{ t('login_blocks_blocked', minutes=(row.blocked_seconds // 60) + 1) }}
+              </span>
+              {% else %}
+              <span class="text-secondary">{{ t('login_blocks_watching') }}</span>
+              {% endif %}
+            </td>
+            <td class="text-end">
+              <form method="post" action="{{ url_for('admin:login-blocks-unblock') }}" style="display:inline">
+                <input type="hidden" name="username" value="{{ row.username }}" />
+                <button type="submit" class="btn btn-sm btn-outline-primary">
+                  {{ t('login_blocks_unblock') }}
+                </button>
+              </form>
+            </td>
+          </tr>
+          {% else %}
+          <tr><td colspan="5" class="text-secondary">{{ t('login_blocks_none') }}</td></tr>
+          {% endfor %}
+        </tbody>
+      </table>
+    </div>
+  </div>
+</div>
+{% endblock %}

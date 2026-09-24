@@ -1,5 +1,10 @@
 package com.dskmusic.lokate.ui.map
 
+import androidx.compose.runtime.Composable
+import androidx.compose.runtime.DisposableEffect
+import androidx.compose.ui.platform.LocalLifecycleOwner
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleEventObserver
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
 import com.dskmusic.lokate.data.remote.dto.GroupDto
@@ -69,6 +74,16 @@ private const val FOLLOW_POLL_INTERVAL_MS = 3_000L
  * acelera el arranque cuando el primer push se pierde. */
 private const val LIVE_RENEW_MS = 30_000L
 
+/** Techo de un seguimiento en vivo. Es el gasto más caro que esta app puede provocar (GPS fino
+ * cada 3 s en el móvil del OTRO), así que no depende de que uno se acuerde de soltarlo: se suelta
+ * solo y se vuelve a pulsar si hace falta. Irse de la app ya lo suelta antes (ver
+ * [AppForeground]); esto cubre dejarla abierta y olvidarse. */
+const val FOLLOW_MAX_MS = 30 * 60_000L
+
+/** Lo que hay que contarle a quien está siguiendo: si prendió allí, si no contesta, o si se ha
+ * soltado solo por llevar demasiado rato. */
+enum class FollowFeedback { CONFIRMED, UNCONFIRMED, AUTO_STOPPED }
+
 /** Lo que esperamos a que el móvil seguido conteste antes de avisar de que no lo ha cogido. Da
  * de sobra para el push, levantar el servicio y el primer fix; pasado esto, o el push se perdió
  * o el sistema no dejó arrancar nada. Se sigue intentando igual, solo es el aviso. */
@@ -78,6 +93,22 @@ private const val FOLLOW_CONFIRM_TIMEOUT_MS = 20_000L
  * contestan de uno en uno, asi que la lista se refresca segun van llegando. */
 private const val REFRESH_ALL_POLL_MS = 2_500L
 private const val REFRESH_ALL_POLLS = 8
+
+/**
+ * Si la app se está viendo. La pone MainActivity en su onStart/onStop y la mira quien tenga algo
+ * caro en marcha que no tenga sentido con el móvil en el bolsillo.
+ *
+ * A nivel de proceso y no desde la pantalla a propósito: el composable del mapa se destruye al
+ * cambiar de pestaña, así que un observador puesto desde allí no se entera de que la app se va —
+ * y el mapa es justo quien puede dejar a OTRO móvil en tiempo real. Seguir a alguien, entrar en
+ * su ficha y bloquear el móvil dejaba su GPS a tope toda la noche.
+ *
+ * ponytail: un StateFlow suelto en vez de ProcessLifecycleOwner, que pide otra dependencia para
+ * contestar exactamente esto. Si algún día hacen falta más estados, esa es la sustitución.
+ */
+object AppForeground {
+    val visible = MutableStateFlow(true)
+}
 
 class MapViewModel(
     private val locationRepository: LocationRepository,
@@ -91,8 +122,8 @@ class MapViewModel(
     /** true = el seguimiento prendió de verdad en el otro móvil; false = no contesta. Evento de
      * un solo uso (la pantalla lo pinta como aviso), y por eso la cuenta atrás vive aquí: cambiar
      * de pestaña mata la pantalla, no el ViewModel, y el aviso llega igual al volver. */
-    private val _followFeedback = MutableSharedFlow<Boolean>(extraBufferCapacity = 1)
-    val followFeedback: SharedFlow<Boolean> = _followFeedback
+    private val _followFeedback = MutableSharedFlow<FollowFeedback>(extraBufferCapacity = 1)
+    val followFeedback: SharedFlow<FollowFeedback> = _followFeedback
 
     val zones = zoneRepository.observeZones()
 
@@ -110,6 +141,11 @@ class MapViewModel(
 
     init {
         refresh()
+        // Se queda escuchando mientras viva el ViewModel: es lo que hace que un seguimiento se
+        // suelte aunque la pantalla del mapa ya no exista.
+        viewModelScope.launch {
+            AppForeground.visible.collect { if (!it) onAppHidden() }
+        }
     }
 
     /** Se llama también al volver de Grupo/Zonas/Ajustes (onResume) por si el grupo cambió. */
@@ -153,6 +189,31 @@ class MapViewModel(
     }
 
     /**
+     * La pantalla deja de verse: se corta el sondeo. No lo hace el sistema por nosotros — con el
+     * servicio de ubicación en marcha el proceso nunca se congela, así que este bucle seguía
+     * pidiendo el grupo cada 15 s (cada 3 s siguiendo a alguien) con el móvil en el bolsillo y
+     * la pantalla apagada: 5.760 peticiones al día despertando la radio para nadie.
+     *
+     * El seguimiento en vivo NO se toca aquí a propósito: cambiar de pestaña no puede cortarlo.
+     */
+    fun pausePolling() {
+        pollingJob?.cancel()
+    }
+
+    /** Vuelve a verse. El bucle pide el grupo nada más entrar, así que esto ya trae lo fresco. */
+    fun resumePolling() {
+        if (_uiState.value.group != null) startPolling()
+    }
+
+    /** La app entera se va a segundo plano. Además de dejar de sondear se suelta a quien se
+     * estuviera siguiendo: nadie está mirando el mapa y al otro lo tenemos en tiempo real, que
+     * es lo más caro que se le puede hacer a la batería de un móvil. */
+    fun onAppHidden() {
+        setFollowing(null)
+        pausePolling()
+    }
+
+    /**
      * Seguir a alguien en el mapa le pone el móvil en tiempo real mientras dure, y lo devuelve a
      * su ritmo al soltarlo. La marca caduca sola en el servidor: si esta app se va sin avisar (o
      * el aviso se pierde), el otro móvil vuelve a lo suyo en un par de minutos igualmente.
@@ -186,12 +247,21 @@ class MapViewModel(
                     if (live == announced) continue
                     announced = live
                     _uiState.value = _uiState.value.copy(followUnconfirmed = !live)
-                    _followFeedback.tryEmit(live)
+                    _followFeedback.tryEmit(if (live) FollowFeedback.CONFIRMED else FollowFeedback.UNCONFIRMED)
                 }
             }
+            var running = 0L
             while (true) {
                 runCatching { locationRepository.setLiveTracking(userId, true) }
                 delay(LIVE_RENEW_MS)
+                running += LIVE_RENEW_MS
+                if (running >= FOLLOW_MAX_MS) {
+                    // El aviso antes de soltar: setFollowing cancela ESTE job, y tryEmit no
+                    // suspende, así que sale entero antes de que la cancelación llegue.
+                    _followFeedback.tryEmit(FollowFeedback.AUTO_STOPPED)
+                    setFollowing(null)
+                    return@launch
+                }
             }
         }
         startPolling(restart = true)
@@ -240,5 +310,35 @@ class MapViewModel(
         // del servidor caduca sola en 3 min sin renovaciones, que es justo el seguro que tiene.
         followJob?.cancel()
         super.onCleared()
+    }
+}
+
+/**
+ * Sondear solo mientras la pantalla se ve. El ciclo de vida de aquí dentro es el de la entrada
+ * del NavHost, o sea "ya no me estás mirando" — irse de la app lo lleva [AppForeground], que es
+ * otra cosa: cambiar de pestaña no puede cortar un seguimiento en vivo.
+ *
+ * addObserver reproduce los eventos que falten, así que registrarse con la pantalla ya visible
+ * llama solo a resumePolling; no hace falta arrancar el sondeo a mano.
+ */
+@Composable
+fun PollWhileVisible(viewModel: MapViewModel) {
+    val screen = LocalLifecycleOwner.current
+    DisposableEffect(screen) {
+        val onScreen = LifecycleEventObserver { _, event ->
+            when (event) {
+                Lifecycle.Event.ON_START -> viewModel.resumePolling()
+                Lifecycle.Event.ON_STOP -> viewModel.pausePolling()
+                else -> Unit
+            }
+        }
+        screen.lifecycle.addObserver(onScreen)
+        onDispose {
+            screen.lifecycle.removeObserver(onScreen)
+            // Y pausar también aquí: al navegar fuera, el ON_STOP de la entrada y la destrucción
+            // del composable caen en el mismo fotograma sin orden garantizado. Si gana la
+            // destrucción, sin esto el bucle se quedaba sondeando para siempre.
+            viewModel.pausePolling()
+        }
     }
 }

@@ -1,3 +1,5 @@
+import java.util.Properties
+
 plugins {
     alias(libs.plugins.android.application)
     alias(libs.plugins.kotlin.android)
@@ -17,9 +19,17 @@ android {
         versionCode = 1
         versionName = "1.0.0"
 
-        // Cambia esto por la URL real de tu backend desplegado, ej:
-        // buildConfigField("String", "API_BASE_URL", "\"https://familia.dskmusic.com/\"")
-        buildConfigField("String", "API_BASE_URL", "\"https://familia.dskmusic.com/\"")
+        // La URL del servidor no viaja en el codigo: cada quien pone la suya en local.properties
+        // (que git ignora) como  lokate.apiBaseUrl=https://mi-servidor.com/ , o con -PlokateApiBaseUrl
+        // o la variable de entorno LOKATE_API_BASE_URL para compilar en otra maquina. Sin ninguna
+        // de las tres la app se compila igual y pide el servidor en la pantalla de entrar.
+        val apiBaseUrl = Properties().apply {
+            rootProject.file("local.properties").takeIf { it.exists() }?.inputStream()?.use { load(it) }
+        }.getProperty("lokate.apiBaseUrl")
+            ?: project.findProperty("lokateApiBaseUrl") as String?
+            ?: System.getenv("LOKATE_API_BASE_URL")
+            ?: ""
+        buildConfigField("String", "API_BASE_URL", "\"${apiBaseUrl.trim()}\"")
     }
 
     buildTypes {

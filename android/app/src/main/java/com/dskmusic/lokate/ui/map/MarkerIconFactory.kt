@@ -30,9 +30,19 @@ object MarkerIconFactory {
     /** Borde blanco del círculo, por fuera de la foto (la foto se encoge para caber dentro). */
     private const val BORDER = 0.06f
 
+    /** Color de la pista del anillo mientras el móvil está cargando: el arco de nivel mantiene
+     * su color (rojo si va justo de batería), así que hace falta otro sitio donde decirlo. */
+    private const val CHARGING_TRACK = 0xE04CAF50
+
     fun colorFor(userId: String): Int = palette[(userId.hashCode().absoluteValue) % palette.size]
 
-    fun initialsBitmap(name: String, userId: String, sizePx: Int, batteryLevel: Int? = null): Bitmap {
+    fun initialsBitmap(
+        name: String,
+        userId: String,
+        sizePx: Int,
+        batteryLevel: Int? = null,
+        charging: Boolean = false,
+    ): Bitmap {
         val band = bandPx(sizePx, batteryLevel)
         val total = sizePx + band * 2
         val bitmap = Bitmap.createBitmap(total, total, Bitmap.Config.ARGB_8888)
@@ -45,7 +55,7 @@ object MarkerIconFactory {
         canvas.drawCircle(center, center, radius, Paint(Paint.ANTI_ALIAS_FLAG).apply { color = Color.WHITE })
         val backgroundPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply { color = colorFor(userId) }
         canvas.drawCircle(center, center, radius - border, backgroundPaint)
-        drawBatteryRing(canvas, total, sizePx, batteryLevel)
+        drawBatteryRing(canvas, total, sizePx, batteryLevel, charging)
 
         val initial = name.trim().firstOrNull()?.uppercaseChar()?.toString() ?: "?"
         val textPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
@@ -59,7 +69,12 @@ object MarkerIconFactory {
         return bitmap
     }
 
-    fun circularAvatarBitmap(source: Bitmap, sizePx: Int, batteryLevel: Int? = null): Bitmap {
+    fun circularAvatarBitmap(
+        source: Bitmap,
+        sizePx: Int,
+        batteryLevel: Int? = null,
+        charging: Boolean = false,
+    ): Bitmap {
         val band = bandPx(sizePx, batteryLevel)
         val total = sizePx + band * 2
         val output = Bitmap.createBitmap(total, total, Bitmap.Config.ARGB_8888)
@@ -85,7 +100,7 @@ object MarkerIconFactory {
         }
         val paint = Paint(Paint.ANTI_ALIAS_FLAG).apply { this.shader = shader }
         canvas.drawCircle(center, center, photoPx / 2f, paint)
-        drawBatteryRing(canvas, total, sizePx, batteryLevel)
+        drawBatteryRing(canvas, total, sizePx, batteryLevel, charging)
 
         return output
     }
@@ -96,9 +111,16 @@ object MarkerIconFactory {
     /**
      * Anillo de batería por fuera del círculo: pista blanca translúcida entera más un arco de
      * color proporcional al nivel (rojo ≤ 15%, ámbar ≤ 35%, verde el resto), empezando arriba y
-     * avanzando en el sentido del reloj como un indicador de carga.
+     * avanzando en el sentido del reloj como un indicador de carga. Cargando, la pista deja de
+     * ser blanca y se pone verde: el anillo entero se ve encendido desde lejos.
      */
-    private fun drawBatteryRing(canvas: Canvas, totalPx: Int, sizePx: Int, batteryLevel: Int?) {
+    private fun drawBatteryRing(
+        canvas: Canvas,
+        totalPx: Int,
+        sizePx: Int,
+        batteryLevel: Int?,
+        charging: Boolean = false,
+    ) {
         if (batteryLevel == null) return
         val level = batteryLevel.coerceIn(0, 100)
         val stroke = sizePx * RING_STROKE
@@ -107,7 +129,7 @@ object MarkerIconFactory {
         val radius = center - stroke / 2 - sizePx * 0.01f
 
         val trackPaint = Paint(Paint.ANTI_ALIAS_FLAG).apply {
-            color = Color.argb(140, 255, 255, 255)
+            color = if (charging) CHARGING_TRACK.toInt() else Color.argb(140, 255, 255, 255)
             style = Paint.Style.STROKE
             strokeWidth = stroke
         }

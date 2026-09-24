@@ -10,10 +10,10 @@ from fastapi import FastAPI, Request
 from markupsafe import Markup
 from sqladmin import Admin, BaseView, ModelView, action, expose
 from sqladmin.authentication import AuthenticationBackend
-from starlette.responses import FileResponse, RedirectResponse
+from starlette.responses import FileResponse, JSONResponse, RedirectResponse
 
 from . import backups as backups_module
-from . import managed_files, models, push
+from . import login_guard, managed_files, models, push
 from .auth import create_access_token
 from .database import SessionLocal, engine
 from .disk_usage import compute_disk_usage
@@ -181,6 +181,123 @@ class HistoryMapView(BaseView):
                 "points_json": json.dumps(points),
             },
         )
+
+
+# Quien manda desde el panel no es nadie del grupo: el aviso llega firmado así y no con el
+# nombre de un usuario, para que quien lo recibe sepa de dónde sale.
+ADMIN_SENDER_NAME = "Administración"
+
+
+def _live_map_members(db) -> list[dict]:
+    """Última posición conocida de cada usuario, en el formato que pinta el mapa.
+
+    ponytail: una consulta por usuario, igual que /locations/group/latest — son un puñado de
+    filas y el índice (user_id, timestamp) las devuelve directas. Con cientos de usuarios
+    tocaría una sola consulta con window function; aquí sería complicarlo por nada.
+    """
+    members = []
+    for user in db.query(models.User).order_by(models.User.display_name).all():
+        latest = (
+            db.query(models.LocationPing)
+            .filter(models.LocationPing.user_id == user.id)
+            .order_by(models.LocationPing.timestamp.desc())
+            .first()
+        )
+        ts = latest.timestamp if latest else None
+        if ts is not None and ts.tzinfo is None:
+            # Guardadas sin huso (SQLite): son UTC, y el navegador necesita que se lo digan
+            # para poder escribir "hace 5 minutos" en la hora de quien mira.
+            ts = ts.replace(tzinfo=timezone.utc)
+        members.append({
+            "id": user.id,
+            "name": user.display_name or user.username,
+            "avatar": user.avatar_url or "",
+            "group": user.group.name if user.group else "",
+            "battery": user.battery_level,
+            "charging": bool(user.is_charging),
+            "lat": latest.lat if latest else None,
+            "lng": latest.lng if latest else None,
+            "accuracy": latest.accuracy if latest else None,
+            "ts": ts.isoformat() if ts else None,
+        })
+    return members
+
+
+class LiveMapView(BaseView):
+    """Versión "light" de la app dentro del panel: dónde está cada uno y las dos acciones que
+    de verdad se usan con prisa (hacer sonar y mensaje prioritario).
+
+    La misma ruta devuelve JSON con ?json=1 para refrescar las posiciones sin recargar la
+    página: es la misma consulta y evita un router aparte solo para eso.
+    """
+
+    name = "Mapa"
+    icon = "fa-solid fa-map-location-dot"
+
+    @expose("/live-map", identity="live-map", methods=["GET"])
+    async def index(self, request: Request):
+        db = SessionLocal()
+        try:
+            members = _live_map_members(db)
+        finally:
+            db.close()
+        if request.query_params.get("json"):
+            return JSONResponse(members)
+        return await self.templates.TemplateResponse(
+            request,
+            "live_map.html",
+            {"title": t("live_map_title"), "members": members},
+        )
+
+
+class LiveMapActionView(BaseView):
+    """Ruta propia (oculta) por la misma razón que BackupsView explica arriba. Las tres acciones
+    van por la misma ruta con un campo "action": una sola @expose por vista."""
+
+    name = "Acción del mapa"
+
+    def is_visible(self, request: Request) -> bool:
+        return False
+
+    @expose("/live-map/{user_id}/action", identity="live-map-action", methods=["POST"])
+    async def act(self, request: Request):
+        form = await request.form()
+        action = str(form.get("action") or "")
+        text = str(form.get("text") or "").strip()
+        db = SessionLocal()
+        try:
+            target = db.query(models.User).filter(models.User.id == request.path_params["user_id"]).first()
+            if target is None:
+                return JSONResponse({"ok": False, "error": "usuario no encontrado"}, status_code=404)
+            if action == "ring":
+                push.send_to_users(
+                    db, [target.id], "Lokate",
+                    f"{ADMIN_SENDER_NAME} quiere localizar tu dispositivo",
+                    {"type": "ring"},
+                )
+            elif action == "stop_ring":
+                push.send_to_users(db, [target.id], "Lokate", "Parar alarma", {"type": "stop_ring"})
+            elif action == "message":
+                if not text:
+                    return JSONResponse({"ok": False, "error": "mensaje vacío"}, status_code=400)
+                # Mismo payload que /messages/emergency: la app ya sabe pintarlo (suena y vibra
+                # pase lo que pase). Sin adjunto — para eso está la app.
+                push.send_to_users(
+                    db, [target.id], f"⚠️ {ADMIN_SENDER_NAME}", text,
+                    {
+                        "type": "emergency_message",
+                        "from_user_id": "",
+                        "from_display_name": ADMIN_SENDER_NAME,
+                        "text": text,
+                        "attachment_url": "",
+                        "attachment_kind": "",
+                    },
+                )
+            else:
+                return JSONResponse({"ok": False, "error": "acción desconocida"}, status_code=400)
+        finally:
+            db.close()
+        return JSONResponse({"ok": True})
 
 
 class BackupsView(BaseView):
@@ -583,6 +700,48 @@ class LocationPingAdmin(ModelView, model=models.LocationPing):
     name_plural = "Historial de ubicaciones"
 
 
+class LoginBlocksView(BaseView):
+    """Quién lleva contraseñas falladas y a quién le ha saltado el freno de fuerza bruta (ver
+    app/login_guard.py), con el botón para soltarlo sin esperar los 15 minutos — que es lo que
+    hace falta cuando la que se ha equivocado cinco veces es de la familia."""
+
+    name = "Intentos de acceso"
+    icon = "fa-solid fa-user-lock"
+
+    @expose("/login-blocks", identity="login-blocks", methods=["GET"])
+    async def index(self, request: Request):
+        return await self.templates.TemplateResponse(
+            request,
+            "login_blocks.html",
+            {
+                "title": t("login_blocks_title"),
+                "rows": login_guard.entries(),
+                "max_fails": login_guard.MAX_FAILS,
+                "block_minutes": login_guard.BLOCK_S // 60,
+            },
+        )
+
+
+class LoginUnblockView(BaseView):
+    """Ruta propia (oculta) por la misma razón que BackupsView explica arriba. Sin nombre en el
+    formulario, suelta a todos."""
+
+    name = "Desbloquear acceso"
+
+    def is_visible(self, request: Request) -> bool:
+        return False
+
+    @expose("/login-blocks/unblock", identity="login-blocks-unblock", methods=["POST"])
+    async def unblock(self, request: Request):
+        form = await request.form()
+        username = str(form.get("username") or "")
+        if username:
+            login_guard.unblock(username)
+        else:
+            login_guard.unblock_all()
+        return RedirectResponse(str(request.url_for("admin:login-blocks")), status_code=303)
+
+
 def register_admin(app: FastAPI) -> None:
     admin = Admin(
         app,
@@ -596,6 +755,9 @@ def register_admin(app: FastAPI) -> None:
     admin.templates.env.globals["ui_dict_es"] = UI_DICT_ES
 
     admin.add_view(DashboardView)
+    # Segundo del menú a propósito: es lo que se mira con prisa.
+    admin.add_view(LiveMapView)
+    admin.add_view(LiveMapActionView)
     admin.add_view(HistoryMapView)
     admin.add_view(BackupsView)
     admin.add_view(BackupDownloadView)
@@ -608,6 +770,8 @@ def register_admin(app: FastAPI) -> None:
     admin.add_view(UserAdmin)
     admin.add_view(LocationsPurgeView)
     admin.add_view(UserAvatarUploadView)
+    admin.add_view(LoginBlocksView)
+    admin.add_view(LoginUnblockView)
     admin.add_view(SetLocaleView)
     admin.add_view(ZoneAdmin)
     admin.add_view(LocationPingAdmin)

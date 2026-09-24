@@ -105,6 +105,19 @@
     box-shadow: 0 12px 34px -6px rgba(91, 124, 240, 0.7);
   }
   .cta svg { width: 20px; height: 20px; }
+  /* El segundo botón (entrar por web) en hueco: el primario sigue siendo descargar la app. */
+  .cta.secondary {
+    background: var(--surface);
+    border: 1px solid var(--border);
+    color: var(--text);
+    box-shadow: none;
+    margin-left: 12px;
+  }
+  .cta.secondary:hover { border-color: var(--accent); }
+  @media (max-width: 520px) {
+    .cta { width: 100%; justify-content: center; }
+    .cta.secondary { margin: 12px 0 0; }
+  }
   .features {
     margin-top: 56px;
     display: grid;
@@ -150,6 +163,13 @@
           <path d="M12 3v12"/><path d="M7 10l5 5 5-5"/><path d="M5 21h14"/>
         </svg>
         Descargar la app (APK)
+      </a>
+
+      <a class="cta secondary" href="/lokate/">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M15 3h4a2 2 0 0 1 2 2v14a2 2 0 0 1-2 2h-4"/><path d="M10 17l5-5-5-5"/><path d="M15 12H3"/>
+        </svg>
+        Entrar desde el navegador
       </a>
 
       <div class="features">

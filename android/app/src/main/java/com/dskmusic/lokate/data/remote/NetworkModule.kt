@@ -28,7 +28,7 @@ object NetworkModule {
         // Retrofit solo necesita ESTA base para resolver las rutas relativas de @GET/@POST;
         // el servidor real que se usa en cada petición lo decide ServerConfig vía el interceptor de arriba.
         return Retrofit.Builder()
-            .baseUrl(BuildConfig.API_BASE_URL)
+            .baseUrl(ServerConfig.baseUrl)
             .client(client)
             .addConverterFactory(GsonConverterFactory.create())
             .build()

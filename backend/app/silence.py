@@ -56,6 +56,19 @@ def silence_limit(frequency: str | None) -> int | None:
     return max(interval * SILENCE_FACTOR, MIN_SILENCE_S)
 
 
+def episode_action(silent_for: float, limit: int, alerted_at, now) -> str | None:
+    """Qué toca hacer con esta persona en esta pasada: avisar, retirar el aviso, o nada.
+
+    Un episodio de silencio avisa UNA vez y, si sigue callado, se repite cada REPEAT_AFTER_S.
+    "recovered" solo sale si antes se avisó: de quien nunca se calló no hay nada que retirar.
+    """
+    if silent_for < limit:
+        return "recovered" if alerted_at is not None else None
+    if alerted_at is not None and (now - alerted_at).total_seconds() < REPEAT_AFTER_S:
+        return None
+    return "alert"
+
+
 def humanize(seconds: float) -> str:
     """"45 minutos", "3 horas", "2 días" — el aviso lo lee una persona, no un log."""
     minutes = int(seconds // 60)
@@ -91,27 +104,47 @@ def check_silent_members() -> None:
             if last.tzinfo is None:
                 last = last.replace(tzinfo=timezone.utc)
             silent_for = (now - last).total_seconds()
-            if silent_for < limit:
-                # Ha vuelto: se cierra el episodio y el próximo silencio sí volverá a avisar.
+            action = episode_action(silent_for, limit, _alerted.get(user.id), now)
+            if action == "recovered":
+                # Ha vuelto: se cierra el episodio (el próximo silencio sí volverá a avisar) y se
+                # retira de los móviles del grupo el aviso que ya no cuenta nada.
                 _alerted.pop(user.id, None)
-                continue
-            alerted_at = _alerted.get(user.id)
-            if alerted_at is not None and (now - alerted_at).total_seconds() < REPEAT_AFTER_S:
-                continue
-            _alerted[user.id] = now
-            _notify_group(db, user, silent_for)
+                _notify_recovered(db, user)
+            elif action == "alert":
+                _alerted[user.id] = now
+                _notify_group(db, user, silent_for)
     finally:
         db.close()
 
 
-def _notify_group(db, user: models.User, silent_for: float) -> None:
+def _group_recipients(db, user: models.User) -> list[str]:
     members = (
         db.query(models.User)
         .filter(models.User.group_id == user.group_id, models.User.id != user.id)
         .all()
     )
     # Quien se esconde en ese grupo no existe para los demás, tampoco para esto.
-    recipients = [m.id for m in members if not user.hidden_from(m)]
+    return [m.id for m in members if not user.hidden_from(m)]
+
+
+def _notify_recovered(db, user: models.User) -> None:
+    """Retira el aviso de "sin señal" de los móviles del grupo en cuanto esa persona vuelve.
+
+    El caso que esto arregla: alguien que apaga los datos por la noche. El aviso salta a las
+    tantas, y por la mañana, cuando vuelve a haber internet, lo único que queda es una
+    notificación vieja que ya no es verdad. Se manda a TODO el grupo sin mirar quién tenía el
+    aviso encendido: al que no lo tuviera, la app no le encuentra nada que borrar.
+    """
+    recipients = _group_recipients(db, user)
+    if not recipients:
+        return
+    # Sin texto a propósito: la app no pinta nada con esto, solo borra (ver
+    # LokateFirebaseMessagingService, "member_silent_over").
+    push.send_to_users(db, recipients, "Lokate", "", {"type": "member_silent_over", "user_id": user.id})
+
+
+def _notify_group(db, user: models.User, silent_for: float) -> None:
+    recipients = _group_recipients(db, user)
     if not recipients:
         return
     # Se nombra la causa probable en el propio aviso: quien lo recibe casi siempre puede
@@ -166,4 +199,18 @@ if __name__ == "__main__":
     assert humanize(3600) == "1 hora"
     assert humanize(5 * 3600) == "5 horas"
     assert humanize(3 * 24 * 3600) == "3 días"
+
+    # El episodio: avisa una vez, calla mientras siga callado, y al volver manda retirar el aviso.
+    from datetime import timedelta
+    now = datetime.now(timezone.utc)
+    assert episode_action(10 * 60, MIN_SILENCE_S, None, now) is None
+    assert episode_action(60 * 60, MIN_SILENCE_S, None, now) == "alert"
+    assert episode_action(60 * 60, MIN_SILENCE_S, now, now) is None
+    assert episode_action(
+        60 * 60, MIN_SILENCE_S, now - timedelta(seconds=REPEAT_AFTER_S + 1), now
+    ) == "alert"
+    # La noche sin datos de la hija: se avisó de madrugada y por la mañana vuelve.
+    assert episode_action(60, MIN_SILENCE_S, now - timedelta(hours=8), now) == "recovered"
+    # Y de quien nunca se calló no hay nada que retirar (esto no manda pushes a diario).
+    assert episode_action(60, MIN_SILENCE_S, None, now) is None
     print("ok")

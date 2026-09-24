@@ -27,6 +27,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.CheckCircle
+import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.HelpOutline
 import androidx.compose.material.icons.filled.History
 import androidx.compose.material.icons.filled.Map
@@ -78,6 +79,7 @@ import com.dskmusic.lokate.util.ConfigCheck
 import com.dskmusic.lokate.util.FileUtils
 import com.dskmusic.lokate.util.LocationFrequency
 import com.dskmusic.lokate.util.LocationSharing
+import com.dskmusic.lokate.util.MediaSaver
 import com.dskmusic.lokate.util.distanceMeters
 import com.dskmusic.lokate.util.formatDistance
 import com.dskmusic.lokate.util.formatRelativeTime
@@ -104,13 +106,14 @@ fun MemberDetailScreen(
     }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val scope = rememberCoroutineScope()
-    val notifySilent by locator.settings.notifySilentEnabled.collectAsStateWithLifecycle(initialValue = false)
-    val silentMuted by locator.settings.silentMutedUserIds.collectAsStateWithLifecycle(initialValue = emptySet())
+    val notifySilent by locator.settings.notifySilentEnabled.collectAsStateWithLifecycle(initialValue = true)
+    val silentAlertUsers by locator.settings.silentAlertUserIds.collectAsStateWithLifecycle(initialValue = emptySet())
     var showRingConfirm by remember { mutableStateOf(false) }
     var showStopRingConfirm by remember { mutableStateOf(false) }
     /** Wifi pendiente de confirmar para añadir a las "wifis de casa" del miembro; null = ninguna. */
     var addWifiSsid by remember { mutableStateOf<String?>(null) }
     var showUpdateInfo by remember { mutableStateOf(false) }
+    var showPhoto by remember { mutableStateOf(false) }
     // Tocar las "wifis de casa" de otro es cosa de admins (el endpoint devuelve 403 al resto),
     // así que eso solo se ofrece si lo eres — mismo criterio que la sección admin de Ajustes.
     var isAdmin by remember { mutableStateOf(false) }
@@ -231,8 +234,9 @@ fun MemberDetailScreen(
             Row(verticalAlignment = Alignment.CenterVertically) {
                 AsyncImage(
                     model = absoluteAvatarUrl(location.avatar_url),
-                    contentDescription = null,
-                    modifier = Modifier.size(72.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant),
+                    contentDescription = stringResource(R.string.people_photo_view_title),
+                    modifier = Modifier.size(72.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant)
+                        .clickable { showPhoto = true },
                 )
                 Spacer(Modifier.width(16.dp))
                 Column(Modifier.weight(1f)) {
@@ -451,8 +455,9 @@ fun MemberDetailScreen(
                         color = MaterialTheme.colorScheme.onSurfaceVariant,
                     )
                 }
+                Spacer(Modifier.width(16.dp))
                 Switch(
-                    checked = notifySilent && location.user_id !in silentMuted,
+                    checked = notifySilent && location.user_id in silentAlertUsers,
                     // Apagado el ajuste general, esto no decide nada: se enseña apagado y no se
                     // deja tocar, en vez de mentir con un interruptor encendido que no avisa.
                     enabled = notifySilent,
@@ -471,6 +476,15 @@ fun MemberDetailScreen(
                 Text(it, color = MaterialTheme.colorScheme.error)
             }
         }
+    }
+
+    // Solo con posicion hay foto que mirar: sin ella esta pantalla ni llega a pintar el avatar.
+    state.location?.takeIf { showPhoto }?.let { photoOf ->
+        AvatarPreviewDialog(
+            name = photoOf.display_name,
+            avatarUrl = absoluteAvatarUrl(photoOf.avatar_url),
+            onDismiss = { showPhoto = false },
+        )
     }
 
     addWifiSsid?.let { ssid ->
@@ -746,4 +760,58 @@ private fun ConfigStatusRow(raw: String?, onFix: (() -> Unit)? = null) {
             }
         }
     }
+}
+
+@Composable
+private fun AvatarPreviewDialog(name: String, avatarUrl: String?, onDismiss: () -> Unit) {
+    val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    var saving by remember { mutableStateOf(false) }
+    var saveMessage by remember { mutableStateOf<String?>(null) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        title = { Text(stringResource(R.string.people_photo_view_title)) },
+        text = {
+            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
+                AsyncImage(
+                    model = avatarUrl,
+                    contentDescription = null,
+                    modifier = Modifier.size(240.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant),
+                )
+                if (saving) {
+                    Spacer(Modifier.width(8.dp))
+                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
+                }
+                saveMessage?.let {
+                    Spacer(Modifier.width(8.dp))
+                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
+                }
+            }
+        },
+        confirmButton = {
+            OutlinedButton(
+                onClick = {
+                    val url = avatarUrl ?: return@OutlinedButton
+                    saving = true
+                    scope.launch {
+                        val ok = runCatching {
+                            val file = MediaSaver.downloadToCache(context, url, "$name.jpg")
+                            MediaSaver.saveToDevice(context, file, "image/jpeg", "$name.jpg")
+                        }.getOrDefault(false)
+                        saveMessage = context.getString(if (ok) R.string.emergency_media_saved else R.string.emergency_media_error)
+                        saving = false
+                    }
+                },
+                enabled = avatarUrl != null && !saving,
+            ) {
+                Icon(Icons.Filled.Download, contentDescription = null)
+                Spacer(Modifier.width(8.dp))
+                Text(stringResource(R.string.emergency_save_button))
+            }
+        },
+        dismissButton = {
+            TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) }
+        },
+    )
 }

@@ -126,6 +126,7 @@ fun MapScreen(
     val viewModel: MapViewModel = viewModel {
         MapViewModel(locator.locationRepository, locator.zoneRepository, locator.groupRepository)
     }
+    PollWhileVisible(viewModel)
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     val zones by viewModel.zones.collectAsStateWithLifecycle(initialValue = emptyList())
     val avatarBitmaps = rememberAvatarBitmaps(state.members)
@@ -157,12 +158,15 @@ fun MapScreen(
     // Acuse de recibo del "seguir": el "en vivo" solo llega cuando el otro móvil está pingando
     // de verdad, así que sirve para decir si la orden prendió allí o se quedó por el camino.
     LaunchedEffect(Unit) {
-        viewModel.followFeedback.collect { confirmed ->
-            Toast.makeText(
-                context,
-                if (confirmed) R.string.follow_live_confirmed else R.string.follow_live_unconfirmed,
-                if (confirmed) Toast.LENGTH_SHORT else Toast.LENGTH_LONG,
-            ).show()
+        viewModel.followFeedback.collect { feedback ->
+            val text = when (feedback) {
+                FollowFeedback.CONFIRMED -> context.getString(R.string.follow_live_confirmed)
+                FollowFeedback.UNCONFIRMED -> context.getString(R.string.follow_live_unconfirmed)
+                FollowFeedback.AUTO_STOPPED ->
+                    context.getString(R.string.follow_live_auto_stopped, FOLLOW_MAX_MS / 60_000L)
+            }
+            val length = if (feedback == FollowFeedback.CONFIRMED) Toast.LENGTH_SHORT else Toast.LENGTH_LONG
+            Toast.makeText(context, text, length).show()
         }
     }
 

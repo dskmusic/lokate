@@ -44,13 +44,15 @@ class SettingsDataStore(private val context: Context) {
         val MAP_SHOW_ACCURACY = booleanPreferencesKey("map_show_accuracy")
         val MAP_ACCURACY_INTENSITY = intPreferencesKey("map_accuracy_intensity")
         val NOTIFY_SILENT = booleanPreferencesKey("notify_silent")
-        val SILENT_MUTED_USER_IDS = stringSetPreferencesKey("silent_muted_user_ids")
+        val SILENT_ALERT_USER_IDS = stringSetPreferencesKey("silent_alert_user_ids")
         val TEST_MODE_RECIPIENTS = stringPreferencesKey("test_mode_recipients")
         val MAP_CACHE_CLEARED_AT = longPreferencesKey("map_cache_cleared_at")
         val KNOWN_WIFI_SSIDS = stringSetPreferencesKey("known_wifi_ssids")
         val BACKUP_LAST_AT = longPreferencesKey("backup_last_at")
         val LAST_PING_OK_AT = longPreferencesKey("last_ping_ok_at")
         val LAST_PING_WARN_AT = longPreferencesKey("last_ping_warn_at")
+        val LAST_DEVICE_REGISTER_AT = longPreferencesKey("last_device_register_at")
+        val LAST_REGISTERED_TOKEN = stringPreferencesKey("last_registered_token")
     }
 
     /** Ajustes que NO viajan en la copia, uno por uno y por un motivo:
@@ -69,6 +71,8 @@ class SettingsDataStore(private val context: Context) {
         Keys.BACKUP_LAST_AT.name,
         Keys.LAST_PING_OK_AT.name,
         Keys.LAST_PING_WARN_AT.name,
+        Keys.LAST_DEVICE_REGISTER_AT.name,
+        Keys.LAST_REGISTERED_TOKEN.name,
     )
 
     /** Cuándo se entregó el último ping (epoch ms), 0 = nunca. Es el latido que vigila
@@ -79,6 +83,18 @@ class SettingsDataStore(private val context: Context) {
     val lastPingOkAt: Flow<Long> = context.dataStore.data.map { it[Keys.LAST_PING_OK_AT] ?: 0L }
     suspend fun setLastPingOkAt(epochMs: Long) {
         context.dataStore.edit { it[Keys.LAST_PING_OK_AT] = epochMs }
+    }
+
+    /** Cuándo se registró este móvil en el servidor y con qué token FCM, para que el latido de
+     * cada 15 minutos no repita la llamada sin tener nada nuevo que contar. Ver
+     * [com.dskmusic.lokate.data.repository.AuthRepository.refreshDeviceRegistration]. */
+    val lastDeviceRegisterAt: Flow<Long> = context.dataStore.data.map { it[Keys.LAST_DEVICE_REGISTER_AT] ?: 0L }
+    val lastRegisteredToken: Flow<String> = context.dataStore.data.map { it[Keys.LAST_REGISTERED_TOKEN].orEmpty() }
+    suspend fun setDeviceRegistered(token: String, epochMs: Long) {
+        context.dataStore.edit {
+            it[Keys.LAST_REGISTERED_TOKEN] = token
+            it[Keys.LAST_DEVICE_REGISTER_AT] = epochMs
+        }
     }
 
     /** Cuándo se avisó por última vez de ese parón, para no repetir el aviso cada 15 min. */
@@ -287,22 +303,24 @@ class SettingsDataStore(private val context: Context) {
         context.dataStore.edit { it[Keys.MAP_ACCURACY_INTENSITY] = percent.coerceIn(10, 100) }
     }
 
-    /** Avisos de "lleva X sin dar señal" de los demás. Apagado por defecto: un móvil callado
-     * casi siempre es cobertura mala o batería agotada, así que de serie avisa más veces de las
-     * que hace falta. Quien lo quiera lo enciende, y luego lo afina persona a persona. */
-    val notifySilentEnabled: Flow<Boolean> = context.dataStore.data.map { it[Keys.NOTIFY_SILENT] ?: false }
+    /** Interruptor general de los avisos de "lleva X sin dar señal". Encendido de serie, pero
+     * por sí solo no manda nada: hay que elegir de quién se quiere saber en su ficha (ver
+     * [silentAlertUserIds]). Así está disponible sin buscarlo y a la vez nadie recibe avisos
+     * que no ha pedido. */
+    val notifySilentEnabled: Flow<Boolean> = context.dataStore.data.map { it[Keys.NOTIFY_SILENT] ?: true }
     suspend fun setNotifySilentEnabled(enabled: Boolean) {
         context.dataStore.edit { it[Keys.NOTIFY_SILENT] = enabled }
     }
 
-    /** De quiénes NO se quiere ese aviso. Lista de silenciados y no de permitidos a propósito:
-     * así quien entra nuevo en el grupo avisa desde el primer día sin tocar nada. */
-    val silentMutedUserIds: Flow<Set<String>> =
-        context.dataStore.data.map { it[Keys.SILENT_MUTED_USER_IDS] ?: emptySet() }
+    /** De quiénes SÍ se quiere ese aviso. Lista de elegidos y no de silenciados a propósito:
+     * un móvil callado casi siempre es cobertura mala o batería agotada, así que avisar de todo
+     * el grupo de serie sería ruido. Vacía por defecto: se enciende a quien de verdad importe. */
+    val silentAlertUserIds: Flow<Set<String>> =
+        context.dataStore.data.map { it[Keys.SILENT_ALERT_USER_IDS] ?: emptySet() }
     suspend fun setSilentAlertForUser(userId: String, enabled: Boolean) {
         context.dataStore.edit {
-            val current = it[Keys.SILENT_MUTED_USER_IDS] ?: emptySet()
-            it[Keys.SILENT_MUTED_USER_IDS] = if (enabled) current - userId else current + userId
+            val current = it[Keys.SILENT_ALERT_USER_IDS] ?: emptySet()
+            it[Keys.SILENT_ALERT_USER_IDS] = if (enabled) current + userId else current - userId
         }
     }
 
@@ -323,6 +341,29 @@ class SettingsDataStore(private val context: Context) {
 
     suspend fun clearAll() {
         context.dataStore.edit { it.clear() }
+    }
+
+    /**
+     * Lo que estos ajustes saben de la PERSONA que estaba dentro: los nombres de sus wifis de
+     * casa, a quién tenía en avisos silenciosos, a quién miró el historial... Se borra al salir
+     * y al entrar con otra cuenta. Lo del APARATO (tema, idioma, servidor, estilo de mapa,
+     * frecuencia) se queda: no dice nada de nadie y volver a configurarlo sería un fastidio.
+     */
+    suspend fun clearUserScoped() {
+        context.dataStore.edit { prefs ->
+            listOf(
+                Keys.KNOWN_WIFI_SSIDS,
+                Keys.SILENT_ALERT_USER_IDS,
+                Keys.LAST_HISTORY_USER_ID,
+                Keys.TEST_MODE_RECIPIENTS,
+                Keys.ONBOARDING_ASKED,
+                Keys.BACKUP_LAST_AT,
+                Keys.LAST_PING_OK_AT,
+                Keys.LAST_PING_WARN_AT,
+                Keys.LAST_DEVICE_REGISTER_AT,
+                Keys.LAST_REGISTERED_TOKEN,
+            ).forEach { prefs.remove(it) }
+        }
     }
 
     companion object {

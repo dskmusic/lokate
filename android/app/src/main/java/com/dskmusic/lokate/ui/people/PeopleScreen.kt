@@ -19,7 +19,6 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.BatteryChargingFull
-import androidx.compose.material.icons.filled.Download
 import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Refresh
@@ -27,33 +26,30 @@ import androidx.compose.material.icons.filled.Search
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiOff
 import androidx.compose.material.icons.outlined.Info
-import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.CircularProgressIndicator
 import androidx.compose.material3.FilterChip
 import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
+import androidx.compose.material3.LocalContentColor
 import androidx.compose.material3.MaterialTheme
-import androidx.compose.material3.OutlinedButton
 import androidx.compose.material3.Scaffold
 import androidx.compose.material3.Text
-import androidx.compose.material3.TextButton
 import androidx.compose.material3.TopAppBar
 import androidx.compose.runtime.Composable
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
-import androidx.compose.runtime.rememberCoroutineScope
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.layout.ContentScale
-import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextDecoration
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.viewmodel.compose.viewModel
 import coil.compose.AsyncImage
 import com.dskmusic.lokate.R
 import com.dskmusic.lokate.data.remote.absoluteAvatarUrl
@@ -65,12 +61,11 @@ import com.dskmusic.lokate.ui.common.isOverdue
 import com.dskmusic.lokate.ui.common.rememberMyLocation
 import com.dskmusic.lokate.ui.common.updateModeShortLabel
 import com.dskmusic.lokate.ui.map.MapViewModel
-import com.dskmusic.lokate.util.MediaSaver
+import com.dskmusic.lokate.ui.map.PollWhileVisible
 import com.dskmusic.lokate.util.distanceMeters
 import com.dskmusic.lokate.util.formatDistance
 import com.dskmusic.lokate.util.parseIsoDate
 import com.dskmusic.lokate.util.formatRelativeTime
-import kotlinx.coroutines.launch
 
 private enum class PeopleSort { NAME, DISTANCE, RECENT }
 
@@ -91,9 +86,14 @@ fun PeopleScreen(
     onSelectMember: (String) -> Unit,
     onOpenDetail: (String) -> Unit,
 ) {
-    val viewModel = remember { MapViewModel(locator.locationRepository, locator.zoneRepository, locator.groupRepository) }
+    // viewModel() y no remember{}: a un ViewModel hecho con remember no se le llama nunca a
+    // onCleared, así que su bucle de sondeo no se cancela jamás y CADA visita a esta pestaña
+    // dejaba uno nuevo pidiendo el grupo cada 15 s para siempre. Mismo caso que MapScreen.
+    val viewModel: MapViewModel = viewModel {
+        MapViewModel(locator.locationRepository, locator.zoneRepository, locator.groupRepository)
+    }
+    PollWhileVisible(viewModel)
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    var photoMember by remember { mutableStateOf<Person?>(null) }
     var sort by remember { mutableStateOf(PeopleSort.NAME) }
     // null = buscador cerrado; "" = abierto y vacío.
     var query by remember { mutableStateOf<String?>(null) }
@@ -218,17 +218,12 @@ fun PeopleScreen(
                             member.location?.let { distanceMeters(me.latitude, me.longitude, it.lat, it.lng) }
                         },
                         onClick = { onSelectMember(member.id) },
-                        onAvatarClick = { photoMember = member },
                         onOpenDetail = { onOpenDetail(member.id) },
                     )
                     HorizontalDivider()
                 }
             }
         }
-    }
-
-    photoMember?.let { member ->
-        AvatarPreviewDialog(member = member, onDismiss = { photoMember = null })
     }
 }
 
@@ -237,7 +232,6 @@ private fun PersonRow(
     member: Person,
     distance: Float?,
     onClick: () -> Unit,
-    onAvatarClick: () -> Unit,
     onOpenDetail: () -> Unit,
 ) {
     var showUpdateInfo by remember { mutableStateOf(false) }
@@ -249,8 +243,7 @@ private fun PersonRow(
             model = absoluteAvatarUrl(member.avatarUrl),
             contentDescription = null,
             contentScale = ContentScale.Crop,
-            modifier = Modifier.size(64.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant)
-                .clickable(onClick = onAvatarClick),
+            modifier = Modifier.size(64.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant),
         )
         Spacer(Modifier.width(16.dp))
         Column(Modifier.weight(1f)) {
@@ -264,10 +257,14 @@ private fun PersonRow(
             } else {
                 Spacer(Modifier.width(2.dp))
                 Row(verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(4.dp)) {
+                    // A 16 dp el icono de cargando y el de batería llena se distinguen poco:
+                    // lo que se ve de un vistazo en una lista es el color, no el dibujo.
+                    val charging = location.is_charging == true
                     Icon(
-                        if (location.is_charging == true) Icons.Filled.BatteryChargingFull else Icons.Filled.BatteryFull,
+                        if (charging) Icons.Filled.BatteryChargingFull else Icons.Filled.BatteryFull,
                         contentDescription = null,
                         modifier = Modifier.size(16.dp),
+                        tint = if (charging) MaterialTheme.colorScheme.primary else LocalContentColor.current,
                     )
                     Text(
                         location.battery_level?.let { "$it%" } ?: stringResource(R.string.battery_unknown),
@@ -334,57 +331,3 @@ private fun PersonRow(
     }
 }
 
-@Composable
-private fun AvatarPreviewDialog(member: Person, onDismiss: () -> Unit) {
-    val context = LocalContext.current
-    val scope = rememberCoroutineScope()
-    var saving by remember { mutableStateOf(false) }
-    var saveMessage by remember { mutableStateOf<String?>(null) }
-    val avatarUrl = absoluteAvatarUrl(member.avatarUrl)
-
-    AlertDialog(
-        onDismissRequest = onDismiss,
-        title = { Text(stringResource(R.string.people_photo_view_title)) },
-        text = {
-            Column(horizontalAlignment = Alignment.CenterHorizontally, modifier = Modifier.fillMaxWidth()) {
-                AsyncImage(
-                    model = avatarUrl,
-                    contentDescription = null,
-                    modifier = Modifier.size(240.dp).clip(CircleShape).background(MaterialTheme.colorScheme.surfaceVariant),
-                )
-                if (saving) {
-                    Spacer(Modifier.width(8.dp))
-                    CircularProgressIndicator(modifier = Modifier.size(24.dp))
-                }
-                saveMessage?.let {
-                    Spacer(Modifier.width(8.dp))
-                    Text(it, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.primary)
-                }
-            }
-        },
-        confirmButton = {
-            OutlinedButton(
-                onClick = {
-                    val url = avatarUrl ?: return@OutlinedButton
-                    saving = true
-                    scope.launch {
-                        val ok = runCatching {
-                            val file = MediaSaver.downloadToCache(context, url, "${member.displayName}.jpg")
-                            MediaSaver.saveToDevice(context, file, "image/jpeg", "${member.displayName}.jpg")
-                        }.getOrDefault(false)
-                        saveMessage = context.getString(if (ok) R.string.emergency_media_saved else R.string.emergency_media_error)
-                        saving = false
-                    }
-                },
-                enabled = avatarUrl != null && !saving,
-            ) {
-                Icon(Icons.Filled.Download, contentDescription = null)
-                Spacer(Modifier.width(8.dp))
-                Text(stringResource(R.string.emergency_save_button))
-            }
-        },
-        dismissButton = {
-            TextButton(onClick = onDismiss) { Text(stringResource(R.string.close)) }
-        },
-    )
-}

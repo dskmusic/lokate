@@ -25,8 +25,11 @@ import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalLifecycleOwner
 import androidx.compose.ui.res.stringResource
+import androidx.lifecycle.Lifecycle
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
+import androidx.lifecycle.repeatOnLifecycle
 import com.dskmusic.lokate.R
 import com.dskmusic.lokate.data.offline.OfflineMaps
 import com.dskmusic.lokate.util.MapStyle
@@ -206,21 +209,28 @@ private const val TILE_RETRY_MAX = 5
  */
 @Composable
 fun TileRetryEffect(map: MapView) {
-    LaunchedEffect(map) {
-        var pending = -1
-        var tries = 0
-        while (true) {
-            delay(TILE_RETRY_INTERVAL_MS)
-            // isDone: solo cuentan las cifras de una pasada de dibujado terminada.
-            val states = map.overlayManager.tilesOverlay?.tileStates?.takeIf { it.isDone } ?: continue
-            val missing = states.scaled + states.notFound
-            if (missing != pending) {
-                // Algo se ha movido (han llegado teselas, o el usuario ha cambiado la vista).
-                pending = missing
-                tries = 0
+    val lifecycleOwner = LocalLifecycleOwner.current
+    LaunchedEffect(map, lifecycleOwner) {
+        // Solo mientras el mapa está delante: el bucle no termina nunca (cuando no falta nada
+        // sigue mirando, porque el usuario puede mover el mapa en cualquier momento), así que
+        // sin esto seguía despertando cada segundo y medio con la app en segundo plano — y ahí
+        // no hay nada que repintar ni proceso que se congele, que el servicio lo mantiene vivo.
+        lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
+            var pending = -1
+            var tries = 0
+            while (true) {
+                delay(TILE_RETRY_INTERVAL_MS)
+                // isDone: solo cuentan las cifras de una pasada de dibujado terminada.
+                val states = map.overlayManager.tilesOverlay?.tileStates?.takeIf { it.isDone } ?: continue
+                val missing = states.scaled + states.notFound
+                if (missing != pending) {
+                    // Algo se ha movido (han llegado teselas, o el usuario ha cambiado la vista).
+                    pending = missing
+                    tries = 0
+                }
+                if (missing == 0 || tries++ >= TILE_RETRY_MAX) continue
+                map.invalidate()
             }
-            if (missing == 0 || tries++ >= TILE_RETRY_MAX) continue
-            map.invalidate()
         }
     }
 }

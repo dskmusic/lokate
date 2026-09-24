@@ -30,6 +30,7 @@ import com.google.android.gms.location.LocationResult
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Job
 import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.cancel
 import kotlinx.coroutines.delay
@@ -75,6 +76,15 @@ class LocationForegroundService : Service() {
     /** Velocidad del último fix en m/s (0 si el chip no la da). Ver [movingIntervalMs]. */
     private var lastSpeed = 0f
 
+    /** Detector de quieto POR POSICIÓN: desde dónde y desde cuándo el móvil no cambia de sitio.
+     * Es la tercera señal de reposo y la única que no depende de nada externo — ni del permiso
+     * de actividad, ni de estar en un wifi marcado. Ver [stationary]. */
+    private var stillAnchor: Location? = null
+    private var stillAnchorAt = 0L
+
+    /** La espera que vuelve a mirar si el móvil se ha parado. Ver [applyLocationRequest]. */
+    private var stillCheckJob: Job? = null
+
     /** Zonas del grupo, cacheadas en Room. Solo se usan para decidir el ritmo: quien decide de
      * verdad si se entra o se sale sigue siendo el servidor. */
     private var zones: List<ZoneDto> = emptyList()
@@ -94,6 +104,10 @@ class LocationForegroundService : Service() {
      * lo consulta [worthSending], que se aplica a cada fix suelto. */
     private var idle = false
 
+    /** El modo que el grupo YA sabe, para avisar solo cuando cambia. null = aún no se ha dicho
+     * nada. Ver el ping de [applyLocationRequest]. */
+    private var announcedMode: String? = null
+
     private val locationCallback = object : LocationCallback() {
         override fun onLocationResult(result: LocationResult) {
             // Con entrega en bloque (setMaxUpdateDelayMillis) aquí llegan varios fixes de golpe:
@@ -102,6 +116,7 @@ class LocationForegroundService : Service() {
             result.locations.lastOrNull()?.let {
                 lastFix = it
                 lastSpeed = if (it.hasSpeed()) it.speed else 0f
+                trackStillness(it)
             }
             val toSend = result.locations.filter(::worthSending)
             // Momento barato para enterarse de que se ha entrado o salido de un wifi conocido:
@@ -150,10 +165,46 @@ class LocationForegroundService : Service() {
         }
     }
 
+    /**
+     * Enchufar o quitar el cargador no mueve el móvil, así que no llega ningún fix y el grupo se
+     * entera en el siguiente ping — que estando en casa cargando es justo el caso más lento (en
+     * reposo, hasta 15 minutos). El aviso se manda con la última posición que YA se tenía: no se
+     * enciende nada, solo viaja el estado del móvil pegado a ella.
+     *
+     * ponytail: eso deja un punto repetido en el historial por cada vez que se enchufa. Si
+     * alguna vez molesta, el arreglo es un endpoint que mande solo estado, sin posición.
+     */
+    private val powerReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            serviceScope.launch { pingDeviceStatus() }
+        }
+    }
+
+    private suspend fun pingDeviceStatus() {
+        val fix = lastFix ?: return
+        runCatching {
+            locator.locationRepository.ping(
+                fix.latitude,
+                fix.longitude,
+                fix.accuracy,
+                DeviceStatusUtils.read(applicationContext),
+                locator.settings.locationFrequency.first(),
+            )
+        }
+    }
+
     override fun onCreate() {
         super.onCreate()
         fusedClient = LocationServices.getFusedLocationProviderClient(this)
         locator = ServiceLocator.getInstance(applicationContext)
+        // Dinámico y no del manifiesto: solo interesa mientras el servicio viva, y estas dos son
+        // emisiones protegidas del sistema (por eso NOT_EXPORTED es lo correcto aquí).
+        ContextCompat.registerReceiver(
+            this,
+            powerReceiver,
+            IntentFilter(Intent.ACTION_POWER_CONNECTED).apply { addAction(Intent.ACTION_POWER_DISCONNECTED) },
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
         serviceScope.launch {
             // Conectarse o salir de un wifi cambia el estado de reposo sin que llegue ninguna
             // ubicación: sin esto, salir de casa no se notaría hasta el siguiente fix (hasta 15
@@ -240,8 +291,18 @@ class LocationForegroundService : Service() {
      * use wifi sigue ahorrando por el sensor.
      */
     private fun applyLocationRequest() {
+        // Todo lo que decide el ritmo llega de fuera (un fix, un cambio de wifi, de zonas o de
+        // seguimiento) menos una cosa: que NO pase nada. Un móvil encima de la mesa deja de
+        // recibir fixes (los filtra el sistema por distancia), así que nadie volvería a entrar
+        // aquí a darse cuenta de que lleva media hora parado. De ahí esta espera, que es lo que
+        // trae el ahorro en el caso más común de todos. Es un delay, no una alarma: si el móvil
+        // está en sueño profundo salta al despertar, y eso ya es bastante pronto.
+        stillCheckJob?.cancel()
         if (liveActive) {
             idle = false
+            // Sin ping de aviso: en vivo sale uno cada pocos segundos y el modo va en todos. Se
+            // apunta para que al ACABAR el seguimiento se note el cambio y salga el aviso.
+            announcedMode = UpdateMode.LIVE
             startLocationUpdates(LocationFrequency.REAL_TIME.intervalMs)
             return
         }
@@ -253,9 +314,42 @@ class LocationForegroundService : Service() {
             return
         }
         val onKnownWifi = currentSsid?.let { it in knownWifiSsids } == true
-        idle = isStill || onKnownWifi
-        UpdateMode.setIdle(still = isStill, homeWifi = onKnownWifi)
-        startLocationUpdates(if (idle) maxOf(configuredIntervalMs, IDLE_INTERVAL_MS) else movingIntervalMs())
+        // Tres señales, cualquiera vale: el sensor de actividad, el wifi de casa y la posición
+        // que no se mueve. Antes solo había dos, y un móvil con datos móviles cuyo dueño no
+        // concedió el permiso de actividad (o simplemente lo va cogiendo cada poco) no entraba
+        // nunca en reposo: se pasaba el día entero pidiendo posición al ritmo de moverse.
+        val notMoving = isStill || stationary
+        idle = notMoving || onKnownWifi
+        UpdateMode.setIdle(still = notMoving, homeWifi = onKnownWifi)
+        // El reposo deducido de la propia posición se despacha más corto que el confirmado por
+        // el sensor o por el wifi: es el único que no puede enterarse EN EL ACTO de que el móvil
+        // ha vuelto a arrancar (el sensor manda su transición de salida y el wifi avisa al
+        // desconectarse; aquí hay que esperar al siguiente fix, y en reposo el siguiente fix
+        // tarda). Cinco minutos acotan ese hueco y siguen siendo diez veces menos gasto.
+        val idleInterval = if (isStill || onKnownWifi) IDLE_INTERVAL_MS else STATIONARY_INTERVAL_MS
+        startLocationUpdates(if (idle) maxOf(configuredIntervalMs, idleInterval) else movingIntervalMs())
+        // El modo viaja pegado a cada ping, y los cambios de modo son justo lo que deja de
+        // mandar pings: sin este aviso el grupo se queda con el modo del último, viendo una hora
+        // que no avanza — la pinta exacta de que algo se ha roto. Pasa al entrar en reposo y
+        // también al SALIR de un seguimiento en vivo, que además esperaba pings cada pocos
+        // segundos y pintaba "sin señal" al minuto. Va con la última posición conocida, no
+        // enciende nada. El modo se calcula igual que [UpdateMode.forPing], que es quien lo
+        // manda de verdad.
+        val mode = when {
+            onKnownWifi -> UpdateMode.HOME_WIFI
+            notMoving -> UpdateMode.STILL
+            else -> UpdateMode.MOVING
+        }
+        if (mode != announcedMode && lastFix != null) {
+            announcedMode = mode
+            serviceScope.launch { pingDeviceStatus() }
+        }
+        if (!idle) {
+            stillCheckJob = serviceScope.launch {
+                delay(STILL_AFTER_MS)
+                applyLocationRequest()
+            }
+        }
     }
 
     /**
@@ -284,8 +378,11 @@ class LocationForegroundService : Service() {
         }
         val toEdge = metersToNearestZoneEdge()
         if (toEdge != null) {
-            // Por debajo de MIN_MOVE_FROM_INTERVAL_MS el sistema pasa solo a GPS fino y deja de
-            // agrupar entregas: no hace falta tocar la prioridad a mano.
+            // NEAR_ZONE_INTERVAL_MS no baja de MIN_MOVE_FROM_INTERVAL_MS a propósito: por debajo
+            // de ese umbral el sistema enciende el GPS fino, deja de agrupar entregas y deja de
+            // filtrar por distancia, las tres cosas a la vez. Y "cerca del borde" se mide en
+            // valor absoluto, así que estar EN CASA cumple la condición — con 20 s aquí, un
+            // móvil con una zona en casa se pasaba la tarde entera con el GPS fino encendido.
             if (toEdge <= NEAR_ZONE_METERS) {
                 interval = minOf(interval, NEAR_ZONE_INTERVAL_MS)
             } else if (relaxable && toEdge >= FAR_ZONE_METERS) {
@@ -295,6 +392,37 @@ class LocationForegroundService : Service() {
             }
         }
         return interval
+    }
+
+    /**
+     * El móvil lleva [STILL_AFTER_MS] sin cambiar de sitio, lo diga o no el sensor de actividad.
+     *
+     * Es la señal de reposo de la que no se puede prescindir: el sensor necesita un permiso que
+     * se puede denegar y se pierde en cuanto coges el móvil de la mesa, y el wifi de casa no
+     * existe si se va con datos. Sin ninguna de las dos, "reposo" no se activaba nunca.
+     */
+    private val stationary: Boolean
+        get() = stillAnchor != null && System.currentTimeMillis() - stillAnchorAt >= STILL_AFTER_MS
+
+    /**
+     * Mueve el ancla del detector solo cuando el móvil se ha ido de verdad: el listón es el
+     * mismo ruido de fondo que ya se asume en reposo ([IDLE_MIN_MOVE_METERS]), porque ahí la
+     * posición la ponen wifi y antenas y baila sola sin que nadie se mueva.
+     *
+     * Se recupera solo: en reposo el sistema ya no entrega nada hasta que el móvil se aleja
+     * 100 m, y ese fix es justo el que mueve el ancla y devuelve el ritmo normal.
+     *
+     * Y el listón nunca baja del margen de error del propio fix: sin wifi la posición la ponen
+     * las antenas y llega con cientos de metros de margen, así que un salto de 300 m entre dos
+     * fixes de 800 m de error no es haberse movido, es la misma mesa vista desde otra antena.
+     * Sin esto, un móvil con datos móviles no llegaba a declararse quieto NUNCA.
+     */
+    private fun trackStillness(fix: Location) {
+        val anchor = stillAnchor
+        if (anchor == null || fix.distanceTo(anchor) >= maxOf(IDLE_MIN_MOVE_METERS, fix.accuracy)) {
+            stillAnchor = fix
+            stillAnchorAt = System.currentTimeMillis()
+        }
     }
 
     /**
@@ -386,7 +514,7 @@ class LocationForegroundService : Service() {
     }
 
     private fun startLocationUpdates(intervalMs: Long) {
-        if (currentIntervalMs == intervalMs) return
+        if (!worthReRequesting(intervalMs)) return
         currentIntervalMs = intervalMs
 
         // Con fixes cada pocos segundos el GPS no llega a apagarse entre uno y otro, así que la
@@ -435,6 +563,25 @@ class LocationForegroundService : Service() {
         }
     }
 
+    /**
+     * Rehacer la petición NO es gratis: [startLocationUpdates] retira la que había y pide otra,
+     * y eso tira la sesión de satélites en marcha y reinicia el lote de entregas. El ritmo por
+     * velocidad da un número distinto en casi cada fix ([movingIntervalMs]), así que yendo por
+     * la calle se rehacía la petición cada vez que llegaba una posición: el receptor no llegaba
+     * nunca a la parte barata del ciclo.
+     *
+     * Así que un cambio pequeño no se aplica, se espera al siguiente. Lo que sí se aplica
+     * siempre es cruzar [MIN_MOVE_FROM_INTERVAL_MS], porque ahí no cambia solo el ritmo:
+     * cambian la prioridad, el filtro de distancia y el lote.
+     */
+    private fun worthReRequesting(intervalMs: Long): Boolean {
+        val current = currentIntervalMs
+        if (current <= 0L) return true
+        if (current == intervalMs) return false
+        if ((current < MIN_MOVE_FROM_INTERVAL_MS) != (intervalMs < MIN_MOVE_FROM_INTERVAL_MS)) return true
+        return maxOf(current, intervalMs).toFloat() / minOf(current, intervalMs) >= INTERVAL_CHANGE_RATIO
+    }
+
     private fun startActivityTransitions() {
         if (transitionsRegistered || !PermissionUtils.hasActivityRecognitionPermission(this)) return
 
@@ -478,6 +625,7 @@ class LocationForegroundService : Service() {
 
     override fun onDestroy() {
         fusedClient.removeLocationUpdates(locationCallback)
+        runCatching { unregisterReceiver(powerReceiver) }
         if (transitionsRegistered) {
             runCatching {
                 ActivityRecognition.getClient(this).removeActivityTransitionUpdates(transitionPendingIntent())
@@ -527,13 +675,17 @@ class LocationForegroundService : Service() {
         const val POINT_EVERY_METERS = 100f
         const val MIN_SPEED_MPS = 0.8f
 
-        /** Lo más rápido que el ritmo por velocidad puede pedir posición. */
-        const val MIN_SPEED_INTERVAL_MS = 20_000L
+        /** Lo más rápido que el ritmo por velocidad puede pedir posición. No baja de
+         * [MIN_MOVE_FROM_INTERVAL_MS]: por debajo se enciende el GPS fino sin agrupar entregas,
+         * y eso en un trayecto largo en coche es media batería. El precio es un punto cada 30 s
+         * en vez de cada 20 en carretera; para ver el punto moverse de verdad están "tiempo
+         * real" y el seguimiento en vivo, que sí encienden el GPS fino. */
+        const val MIN_SPEED_INTERVAL_MS = 30_000L
 
         /** Cerca del borde de una zona: ritmo corto (y con él, GPS fino). Lejos de todas:
          * ritmo largo, porque ahí fallar cien metros no cambia nada. */
         const val NEAR_ZONE_METERS = 300f
-        const val NEAR_ZONE_INTERVAL_MS = 20_000L
+        const val NEAR_ZONE_INTERVAL_MS = 30_000L
         const val FAR_ZONE_METERS = 1_000f
         const val FAR_ZONE_INTERVAL_MS = 5 * 60_000L
 
@@ -542,5 +694,20 @@ class LocationForegroundService : Service() {
          * haya movido (para que el grupo vea hora fresca) y el tope de lo que se puede retrasar
          * un lote. Subirlo ahorra más y enseña posiciones más viejas. */
         const val IDLE_INTERVAL_MS = 15 * 60_000L
+
+        /** Cuánto tiene que llevar el móvil en el mismo sitio para darlo por parado sin ayuda
+         * del sensor de actividad (ver [stationary]). Cinco minutos = dos o tres fixes del ritmo
+         * normal: suficiente para no confundir un semáforo en rojo con estar en casa, y bastante
+         * antes de que el resto del grupo empiece a dar por perdido a un móvil que solo está
+         * quieto (ese listón lo pone UpdateStatus.kt, que copia este número). */
+        const val STILL_AFTER_MS = 5 * 60_000L
+
+        /** El ritmo de ese reposo deducido, más corto que [IDLE_INTERVAL_MS] porque nadie va a
+         * avisar de que el móvil ha echado a andar: es el propio fix el que tiene que notarlo. */
+        const val STATIONARY_INTERVAL_MS = 5 * 60_000L
+
+        /** Cuánto tiene que cambiar el intervalo para que compense rehacer la petición al
+         * sistema (ver [worthReRequesting]). 1,5 = de 60 s a 90 s sí, de 60 a 75 no. */
+        const val INTERVAL_CHANGE_RATIO = 1.5f
     }
 }

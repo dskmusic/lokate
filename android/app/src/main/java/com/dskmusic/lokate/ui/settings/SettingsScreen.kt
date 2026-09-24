@@ -106,7 +106,7 @@ fun SettingsScreen(
         .collectAsStateWithLifecycle(initialValue = null)
     val notifyZone by locator.settings.notifyZoneEnabled.collectAsStateWithLifecycle(initialValue = true)
     val notifySystem by locator.settings.notifySystemEnabled.collectAsStateWithLifecycle(initialValue = true)
-    val notifySilent by locator.settings.notifySilentEnabled.collectAsStateWithLifecycle(initialValue = false)
+    val notifySilent by locator.settings.notifySilentEnabled.collectAsStateWithLifecycle(initialValue = true)
     val serverUrlOverride by locator.settings.serverBaseUrlOverride.collectAsStateWithLifecycle(initialValue = null)
     val testNotificationSent by viewModel.testNotificationSent.collectAsStateWithLifecycle()
     val ringSoundUri by locator.settings.ringSoundUri.collectAsStateWithLifecycle(initialValue = null)
@@ -140,6 +140,7 @@ fun SettingsScreen(
 
     var showColorPicker by remember { mutableStateOf(false) }
     var showClearDataConfirm by remember { mutableStateOf(false) }
+    var showLogoutConfirm by remember { mutableStateOf(false) }
     var showResetZoomConfirm by remember { mutableStateOf(false) }
     var showDisableUpdatesConfirm by remember { mutableStateOf(false) }
     var showTestNotificationPicker by remember { mutableStateOf(false) }
@@ -189,7 +190,7 @@ fun SettingsScreen(
                         size = 64.dp,
                         onCropped = { viewModel.uploadAvatar(it, context); currentAvatarUrl = it.toString() },
                     )
-                    TextButton(onClick = { viewModel.logout(context) { onLoggedOut() } }) {
+                    TextButton(onClick = { showLogoutConfirm = true }) {
                         Text(stringResource(R.string.settings_logout))
                     }
                 }
@@ -802,6 +803,25 @@ fun SettingsScreen(
             },
             dismissButton = {
                 TextButton(onClick = { showResetZoomConfirm = false }) { Text(stringResource(R.string.cancel)) }
+            },
+        )
+    }
+
+    // Salir borra de este móvil el historial y las zonas descargadas, y volver a entrar exige
+    // la contraseña: no es un botón para pulsar sin querer al lado de la foto de perfil.
+    if (showLogoutConfirm) {
+        AlertDialog(
+            onDismissRequest = { showLogoutConfirm = false },
+            title = { Text(stringResource(R.string.settings_logout)) },
+            text = { Text(stringResource(R.string.settings_logout_confirm)) },
+            confirmButton = {
+                TextButton(onClick = {
+                    showLogoutConfirm = false
+                    viewModel.logout(context) { onLoggedOut() }
+                }) { Text(stringResource(R.string.settings_logout)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { showLogoutConfirm = false }) { Text(stringResource(R.string.cancel)) }
             },
         )
     }

@@ -33,12 +33,19 @@ import com.dskmusic.lokate.util.parseIsoDate
  * traduce a algo que se pueda leer.
  */
 
-/** Los dos números del móvil del OTRO, que es de quien hablamos aquí; por eso no se leen de
+/** Los números del móvil del OTRO, que es de quien hablamos aquí; por eso no se leen de
  * LocationForegroundService, que son los de este. Coinciden salvo que esa persona tenga una
  * versión distinta de la app, y entonces lo único que pasa es que el aviso de "no da señales"
  * llega algo antes o algo después. */
 private const val IDLE_INTERVAL_MS = 15 * 60_000L
 private const val MAX_BATCH_DELAY_MS = 60_000L
+private const val STILL_AFTER_MS = 5 * 60_000L
+private const val MIN_MOVE_FROM_INTERVAL_MS = 30_000L
+
+/** Margen del latido de "sigo aquí": lo manda un worker que despierta cada 15 minutos, y el
+ * sistema decide cuándo le deja correr. Contar los 15 minutos pelados sacaba el rojo en móviles
+ * que funcionaban de sobra, solo por llegar el latido tarde. */
+private const val HEARTBEAT_SLACK_MS = 5 * 60_000L
 
 /** Cuánto hay que pasarse de lo esperado para dar la voz de alarma. Un ping que falla no se
  * reintenta (el siguiente sale al terminar el intervalo), así que perder uno suelto es normal y
@@ -54,9 +61,20 @@ fun expectedGapMs(frequency: LocationFrequency?, mode: String?): Long? {
     return when (mode) {
         // En vivo el móvil manda cada pocos segundos; el margen es para el camino.
         UpdateMode.LIVE -> 30_000L
-        UpdateMode.STILL, UpdateMode.HOME_WIFI -> IDLE_INTERVAL_MS
+        UpdateMode.STILL, UpdateMode.HOME_WIFI -> IDLE_INTERVAL_MS + HEARTBEAT_SLACK_MS
         // El lote es lo que el sistema puede retrasar la entrega juntando varios fixes.
-        UpdateMode.MOVING -> frequency?.intervalMs?.takeIf { it > 0L }?.plus(MAX_BATCH_DELAY_MS)
+        UpdateMode.MOVING -> frequency?.intervalMs?.takeIf { it > 0L }?.let { interval ->
+            val expected = interval + MAX_BATCH_DELAY_MS
+            // De medio minuto en adelante su móvil filtra por distancia, así que "en movimiento"
+            // y parado en una mesa es silencio total hasta que se declara en reposo, y eso tarda
+            // [STILL_AFTER_MS]. Sin este suelo, dejar el móvil quieto saca "no da señales" a los
+            // pocos minutos y el aviso deja de significar nada.
+            if (interval >= MIN_MOVE_FROM_INTERVAL_MS) {
+                maxOf(expected, STILL_AFTER_MS + MAX_BATCH_DELAY_MS)
+            } else {
+                expected
+            }
+        }
         else -> null
     }
 }
@@ -75,6 +93,10 @@ fun isOverdue(location: LocationDto): Boolean {
 private fun modeOf(location: LocationDto): String? = when {
     location.live_seconds > 0 -> UpdateMode.LIVE
     frequencyOf(location)?.sendsPeriodicUpdates == false -> UpdateMode.ON_DEMAND
+    // Un "live" sin seguimiento en curso es el modo del último ping de cuando sí lo había: su
+    // móvil ya ha vuelto a su ritmo normal. Darlo por bueno esperaba un ping cada 30 s y sacaba
+    // "no da señales" al minuto de soltar el seguimiento, con el móvil perfectamente.
+    location.update_mode == UpdateMode.LIVE -> UpdateMode.MOVING
     else -> location.update_mode
 }
 

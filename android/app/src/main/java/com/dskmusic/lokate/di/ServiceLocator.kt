@@ -15,6 +15,7 @@ import com.dskmusic.lokate.data.repository.GroupRepository
 import com.dskmusic.lokate.data.repository.LocationRepository
 import com.dskmusic.lokate.data.repository.MessageRepository
 import com.dskmusic.lokate.data.repository.ZoneRepository
+import com.dskmusic.lokate.ui.map.MapCameraMemory
 import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.runBlocking
 
@@ -37,7 +38,25 @@ class ServiceLocator(context: Context) {
     private val api: ApiService by lazy { NetworkModule.createApiService(context.applicationContext, session) }
     val nominatim by lazy { createNominatimService() }
 
-    val authRepository: AuthRepository by lazy { AuthRepository(api, session, settings, context.applicationContext) }
+    val authRepository: AuthRepository by lazy {
+        AuthRepository(api, session, settings, context.applicationContext, ::clearLocalUserData)
+    }
+
+    /**
+     * Todo lo que este móvil guardó por cuenta de quien estaba dentro: zonas, historial de
+     * posiciones, pings sin entregar y los ajustes que hablan de personas. Lo llama el cierre de
+     * sesión y también el inicio de sesión cuando la cuenta no es la misma de antes, que es el
+     * hueco de verdad: sin eso, quien entrara después en este móvil veía las zonas y el
+     * historial del anterior aunque no compartieran grupo.
+     */
+    private suspend fun clearLocalUserData() {
+        zoneRepository.clearLocalCache()
+        locationRepository.clearLocalHistory()
+        locationRepository.clearPendingPings()
+        settings.clearUserScoped()
+        MapCameraMemory.reset()
+    }
+
     val groupRepository: GroupRepository by lazy { GroupRepository(api) }
     val zoneRepository: ZoneRepository by lazy { ZoneRepository(api, database.zoneDao()) }
     val locationRepository: LocationRepository by lazy {

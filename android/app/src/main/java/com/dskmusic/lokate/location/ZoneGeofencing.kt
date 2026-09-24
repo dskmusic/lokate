@@ -29,9 +29,22 @@ import kotlinx.coroutines.withContext
  */
 object ZoneGeofencing {
 
+    /** Cuándo se hizo el último re-registro de rutina. En memoria a propósito: si el proceso ha
+     * muerto (que es justo cuando un fabricante puede haberse cargado las geocercas) vuelve a
+     * cero y el primer worker las registra otra vez sin esperar. */
+    @Volatile
+    private var lastRoutineRefreshAt = 0L
+
     /** Vuelve a registrarlas leyendo la caché de Room. Para quien no tiene ya la lista a mano
-     * (el worker de respaldo, el arranque del móvil). */
+     * (el worker de respaldo, el arranque del móvil).
+     *
+     * Como mucho una vez por hora: el worker pasa cada 15 minutos y esto no es una comprobación
+     * barata (borra y vuelve a registrar la lista entera en Play Services). Un cambio de zonas
+     * de verdad no pasa por aquí — llega por el otro [refresh], con la lista ya en la mano. */
     suspend fun refresh(context: Context) {
+        val now = System.currentTimeMillis()
+        if (now - lastRoutineRefreshAt < ROUTINE_MIN_GAP_MS) return
+        lastRoutineRefreshAt = now
         val zones = runCatching {
             ServiceLocator.getInstance(context).zoneRepository.observeZones().first()
         }.getOrNull() ?: return
@@ -92,5 +105,6 @@ object ZoneGeofencing {
     /** Tope del sistema: 100 geocercas por app. */
     private const val MAX_FENCES = 100
     private const val MIN_RADIUS_M = 100.0
+    private const val ROUTINE_MIN_GAP_MS = 60 * 60_000L
     private const val RESPONSIVENESS_MS = 60_000
 }

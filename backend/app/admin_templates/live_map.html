@@ -1,0 +1,272 @@
+{% extends "sqladmin/layout.html" %}
+{# Misma razón que en history_map.html: la tarjeta trae su propio título y la cabecera vacía
+   dejaba un hueco entre el menú y el contenido. #}
+{% block content_header %}{% endblock %}
+{% block head %}
+{{ super() }}
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  /* Chincheta con la foto, como los marcadores de la app. */
+  .lokate-pin { background: none; border: 0; }
+  .lokate-pin > div {
+    width: 40px; height: 40px; border-radius: 50%; border: 3px solid #4A6FE3; background: #2A3F9E;
+    overflow: hidden; display: flex; align-items: center; justify-content: center;
+    color: #fff; font-weight: 600; box-shadow: 0 2px 6px rgba(0,0,0,.45);
+  }
+  .lokate-pin img { width: 100%; height: 100%; object-fit: cover; }
+  .lokate-pin.selected > div { border-color: #F5A623; width: 48px; height: 48px; }
+  /* Alto en vh y no en px: en el móvil de la PWA una altura fija deja el mapa fuera de pantalla. */
+  #live-map { height: 65vh; min-height: 300px; border-radius: 8px; }
+  #member-list { max-height: 65vh; overflow-y: auto; }
+  @media (max-width: 991.98px) {
+    #live-map { height: 55vh; }
+    #member-list { max-height: 38vh; }
+  }
+  .member-item.active { border-left: 3px solid #F5A623; }
+</style>
+{% endblock %}
+{% block content %}
+<div class="col-12">
+  <div class="card">
+    <div class="card-header d-flex align-items-center justify-content-between">
+      <h3 class="card-title">{{ t('live_map_title') }}</h3>
+      <span class="text-secondary small" id="live-map-updated"></span>
+    </div>
+    <div class="card-body">
+      <div class="row g-3">
+        <div class="col-12 col-lg-4">
+          <div class="list-group" id="member-list"></div>
+        </div>
+        <div class="col-12 col-lg-8">
+          <div id="live-map"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="modal modal-blur fade" id="member-modal" tabindex="-1">
+  <div class="modal-dialog modal-sm modal-dialog-centered">
+    <div class="modal-content">
+      <div class="modal-header">
+        <h5 class="modal-title" id="member-modal-title"></h5>
+        <button type="button" class="btn-close" id="member-modal-close" data-bs-dismiss="modal"></button>
+      </div>
+      <div class="modal-body">
+        <div class="text-secondary mb-3" id="member-modal-sub"></div>
+        <button type="button" class="btn btn-primary w-100 mb-2" id="btn-ring">{{ t('live_map_ring') }}</button>
+        <button type="button" class="btn btn-outline-secondary w-100 mb-2" id="btn-stop">{{ t('live_map_stop_ring') }}</button>
+        <button type="button" class="btn btn-danger w-100" id="btn-message">{{ t('live_map_message') }}</button>
+        <div class="mt-3 small text-secondary" id="member-modal-status"></div>
+      </div>
+    </div>
+  </div>
+</div>
+{% endblock %}
+{% block tail %}
+{{ super() }}
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function () {
+  // tojson y no json.dumps: el nombre lo elige cada usuario, y uno con una etiqueta de
+  // cierre de script dentro cerraría este bloque. tojson escapa < > & al volcarlo.
+  // (Y por lo mismo, ese texto no se escribe aquí ni en un comentario: el navegador cierra
+  // el bloque igual, sin mirar si está comentado.)
+  var members = {{ members | tojson }};
+  var LOCALE = '{{ request.state.locale }}';
+  var ACTION_URL = {{ url_for('admin:live-map-action', user_id='__ID__') | string | tojson }};
+  var T = {
+    noLocation: {{ t('live_map_no_location') | tojson }},
+    noMembers: {{ t('live_map_no_members') | tojson }},
+    updated: {{ t('live_map_updated') | tojson }},
+    ringConfirm: {{ t('live_map_ring_confirm') | tojson }},
+    messagePrompt: {{ t('live_map_message_prompt') | tojson }},
+    sent: {{ t('live_map_sent') | tojson }},
+    error: {{ t('live_map_error') | tojson }},
+    battery: {{ t('live_map_battery') | tojson }},
+    charging: {{ t('live_map_charging') | tojson }}
+  };
+
+  var map = L.map('live-map');
+  L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+    attribution: '&copy; OpenStreetMap contributors'
+  }).addTo(map);
+  map.setView([40.4168, -3.7038], 5);
+
+  var markers = {};
+  var selectedId = null;
+  var modal = new bootstrap.Modal(document.getElementById('member-modal'));
+  // La X se cierra a mano en vez de fiarse de data-bs-dismiss: la plantilla carga dos copias
+  // de Bootstrap (la que trae tabler.min.js y bootstrap.min.js), y la que atiende el clic no
+  // es la misma que creó este diálogo, así que le manda cerrar a una instancia recién hecha
+  // que no sabe que hay nada abierto. El atributo se deja puesto por si algún día sobra una.
+  document.getElementById('member-modal-close').addEventListener('click', function () {
+    modal.hide();
+  });
+  var listEl = document.getElementById('member-list');
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  // "hace 5 minutos" en el idioma del panel sin tabla de traducciones propia: lo escribe el
+  // navegador. Intl existe en todo lo que puede instalar una PWA.
+  var rtf = new Intl.RelativeTimeFormat(LOCALE, { numeric: 'auto' });
+  function ago(iso) {
+    if (!iso) return T.noLocation;
+    var minutes = Math.round((Date.now() - new Date(iso).getTime()) / 60000);
+    if (minutes < 60) return rtf.format(-minutes, 'minute');
+    if (minutes < 60 * 24) return rtf.format(-Math.round(minutes / 60), 'hour');
+    return rtf.format(-Math.round(minutes / 1440), 'day');
+  }
+
+  function subtitle(m) {
+    var parts = [ago(m.ts)];
+    if (m.battery != null) parts.push(T.battery + ' ' + m.battery + '%' + (m.charging ? ' (' + T.charging + ')' : ''));
+    if (m.group) parts.push(m.group);
+    return parts.join(' · ');
+  }
+
+  function initial(m) {
+    return esc((m.name || '?').charAt(0).toUpperCase());
+  }
+
+  function iconFor(m, selected) {
+    var inner = m.avatar ? '<img src="' + esc(m.avatar) + '" alt="" />' : initial(m);
+    return L.divIcon({
+      className: 'lokate-pin' + (selected ? ' selected' : ''),
+      html: '<div>' + inner + '</div>',
+      iconSize: selected ? [48, 48] : [40, 40],
+      iconAnchor: selected ? [24, 24] : [20, 20]
+    });
+  }
+
+  function renderList() {
+    if (!members.length) {
+      listEl.innerHTML = '<div class="list-group-item text-secondary">' + esc(T.noMembers) + '</div>';
+      return;
+    }
+    listEl.innerHTML = members.map(function (m) {
+      var avatar = m.avatar
+        ? '<span class="avatar avatar-sm rounded-circle" style="background-image:url(' + esc(m.avatar) + ')"></span>'
+        : '<span class="avatar avatar-sm rounded-circle bg-secondary-lt">' + initial(m) + '</span>';
+      return '<a href="#" class="list-group-item list-group-item-action member-item' +
+        (m.id === selectedId ? ' active' : '') + '" data-id="' + esc(m.id) + '">' +
+        '<div class="row align-items-center">' +
+        '<div class="col-auto">' + avatar + '</div>' +
+        '<div class="col text-truncate">' +
+        '<div class="text-truncate">' + esc(m.name) + '</div>' +
+        '<div class="text-secondary small text-truncate">' + esc(subtitle(m)) + '</div>' +
+        '</div></div></a>';
+    }).join('');
+  }
+
+  function find(id) {
+    return members.filter(function (m) { return m.id === id; })[0];
+  }
+
+  function syncMarkers() {
+    members.forEach(function (m) {
+      if (m.lat == null || m.lng == null) return;
+      var selected = m.id === selectedId;
+      if (markers[m.id]) {
+        markers[m.id].setLatLng([m.lat, m.lng]).setIcon(iconFor(m, selected));
+      } else {
+        markers[m.id] = L.marker([m.lat, m.lng], { icon: iconFor(m, selected) })
+          .addTo(map)
+          .on('click', function () { select(m.id); openActions(m.id); });
+      }
+    });
+  }
+
+  function select(id) {
+    selectedId = id;
+    renderList();
+    syncMarkers();
+    var m = find(id);
+    if (m && m.lat != null) map.setView([m.lat, m.lng], Math.max(map.getZoom(), 16));
+  }
+
+  function openActions(id) {
+    var m = find(id);
+    if (!m) return;
+    document.getElementById('member-modal-title').textContent = m.name;
+    document.getElementById('member-modal-sub').textContent = subtitle(m);
+    document.getElementById('member-modal-status').textContent = '';
+    modal.show();
+  }
+
+  function status(text) {
+    document.getElementById('member-modal-status').textContent = text;
+  }
+
+  function act(action, extra) {
+    var m = find(selectedId);
+    if (!m) return;
+    var body = new URLSearchParams(Object.assign({ action: action }, extra || {}));
+    fetch(ACTION_URL.replace('__ID__', encodeURIComponent(m.id)), {
+      method: 'POST',
+      credentials: 'same-origin',
+      headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
+      body: body
+    })
+      .then(function (r) { return r.json(); })
+      .then(function (d) { status(d && d.ok ? T.sent : T.error); })
+      .catch(function () { status(T.error); });
+  }
+
+  listEl.addEventListener('click', function (e) {
+    var item = e.target.closest('.member-item');
+    if (!item) return;
+    e.preventDefault();
+    var id = item.dataset.id;
+    select(id);
+    // Sin posición no hay nada que centrar: se va directo a las acciones, que es lo único
+    // que se puede hacer con esa persona.
+    var m = find(id);
+    if (!m || m.lat == null) openActions(id);
+  });
+
+  document.getElementById('btn-ring').addEventListener('click', function () {
+    var m = find(selectedId);
+    if (m && confirm(T.ringConfirm.replace('{name}', m.name))) act('ring');
+  });
+  document.getElementById('btn-stop').addEventListener('click', function () { act('stop_ring'); });
+  document.getElementById('btn-message').addEventListener('click', function () {
+    var m = find(selectedId);
+    if (!m) return;
+    var text = prompt(T.messagePrompt.replace('{name}', m.name), '');
+    if (text && text.trim()) act('message', { text: text.trim() });
+  });
+
+  function fitAll() {
+    var located = members.filter(function (m) { return m.lat != null; });
+    if (located.length) {
+      map.fitBounds(located.map(function (m) { return [m.lat, m.lng]; }), { padding: [40, 40] });
+    }
+  }
+
+  function refresh() {
+    fetch('?json=1', { credentials: 'same-origin' })
+      .then(function (r) { return r.json(); })
+      .then(function (data) {
+        members = data;
+        renderList();
+        syncMarkers();
+        document.getElementById('live-map-updated').textContent =
+          T.updated + ' ' + new Date().toLocaleTimeString(LOCALE);
+      })
+      .catch(function () {});
+  }
+
+  renderList();
+  syncMarkers();
+  fitAll();
+  // Cada 30 s, como el mapa de la app. Solo mueve marcadores: no recarga la página ni cierra
+  // el diálogo que se tenga abierto.
+  setInterval(refresh, 30000);
+})();
+</script>
+{% endblock %}

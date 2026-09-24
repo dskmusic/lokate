@@ -24,12 +24,13 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.res.stringResource
-import androidx.compose.ui.text.input.PasswordVisualTransformation
+import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dskmusic.lokate.R
 import com.dskmusic.lokate.di.ServiceLocator
 import com.dskmusic.lokate.ui.common.AvatarPicker
+import com.dskmusic.lokate.ui.common.PasswordField
 
 @Composable
 fun RegisterScreen(locator: ServiceLocator, onRegistered: () -> Unit, onGoToLogin: () -> Unit) {
@@ -39,6 +40,7 @@ fun RegisterScreen(locator: ServiceLocator, onRegistered: () -> Unit, onGoToLogi
 
     var username by remember { mutableStateOf("") }
     var password by remember { mutableStateOf("") }
+    var password2 by remember { mutableStateOf("") }
     var displayName by remember { mutableStateOf("") }
     var avatarUri by remember { mutableStateOf<Uri?>(null) }
 
@@ -77,18 +79,38 @@ fun RegisterScreen(locator: ServiceLocator, onRegistered: () -> Unit, onGoToLogi
                 singleLine = true,
             )
             Spacer(Modifier.height(12.dp))
-            OutlinedTextField(
+            PasswordField(
                 value = password,
                 onValueChange = { password = it },
-                label = { Text(stringResource(R.string.password_label)) },
+                label = stringResource(R.string.password_label),
                 modifier = Modifier.fillMaxWidth(),
-                singleLine = true,
-                visualTransformation = PasswordVisualTransformation(),
             )
+            Spacer(Modifier.height(12.dp))
+            // Escrita a ciegas y sin poder recuperarla luego: si las dos no coinciden, no se crea
+            // la cuenta. El aviso solo sale cuando ya hay algo escrito en la segunda.
+            PasswordField(
+                value = password2,
+                onValueChange = { password2 = it },
+                label = stringResource(R.string.password_confirm_label),
+                modifier = Modifier.fillMaxWidth(),
+                isError = password2.isNotEmpty() && password2 != password,
+            )
+            if (password2.isNotEmpty() && password2 != password) {
+                Text(
+                    stringResource(R.string.password_mismatch),
+                    color = MaterialTheme.colorScheme.error,
+                    style = MaterialTheme.typography.bodySmall,
+                )
+            }
 
             state.error?.let {
                 Spacer(Modifier.height(8.dp))
-                Text(it, color = MaterialTheme.colorScheme.error)
+                Text(
+                    stringResource(it),
+                    color = MaterialTheme.colorScheme.error,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
 
             Spacer(Modifier.height(24.dp))
@@ -100,7 +122,8 @@ fun RegisterScreen(locator: ServiceLocator, onRegistered: () -> Unit, onGoToLogi
                         viewModel.register(username.trim(), password, displayName.trim(), avatarUri, context, onRegistered)
                     },
                     modifier = Modifier.fillMaxWidth(),
-                    enabled = username.isNotBlank() && password.length >= 8 && displayName.isNotBlank() && avatarUri != null,
+                    enabled = username.isNotBlank() && password.length >= 8 && password == password2 &&
+                        displayName.isNotBlank() && avatarUri != null,
                 ) {
                     Text(stringResource(R.string.register_button))
                 }

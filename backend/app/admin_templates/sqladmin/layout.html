@@ -6,10 +6,39 @@
 {{ super() }}
 <link rel="manifest" href="/manifest.json">
 <meta name="theme-color" content="#2A3F9E">
+{# El panel se usa como app desde el movil: nada de recargar tirando hacia abajo, ni de hacer
+   zoom a la interfaz con dos dedos (el zoom que interesa es el del mapa en vivo), ni de sacar
+   el menu del navegador al dejar pulsado. Este viewport pisa al de sqladmin/base.html: cuando
+   hay dos, el navegador se queda con la ultima definicion de cada propiedad. #}
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover">
+<style>
+  html, body { overscroll-behavior: none; }
+  body { touch-action: manipulation; -webkit-touch-callout: none; }
+</style>
+<script>
+  // Se deja fuera lo que se escribe, que ahi el menu hace falta para pegar. El texto sigue
+  // siendo seleccionable (en el panel se copian codigos de invitacion, ids...).
+  document.addEventListener('contextmenu', function (e) {
+    if (!e.target.closest('input, textarea')) e.preventDefault();
+  });
+</script>
+<script>
+  // El tema, aquí arriba y no con el resto del JS al final del <body>: si no, la página se
+  // pinta entera en claro y cambia a oscuro delante del usuario.
+  // Las DOS cosas hacen falta: "theme-dark" es lo único que entiende esta versión de Tabler
+  // (tarjetas, listas, bordes, variables de color), y data-bs-theme lo entienden Bootstrap y
+  // select2. Con solo data-bs-theme pasaba justo lo peor: el texto se volvía claro pero las
+  // tarjetas seguían blancas, así que los números del panel desaparecían.
+  (function () {
+    var theme = localStorage.getItem('lokate-admin-theme') || 'dark';
+    document.documentElement.setAttribute('data-bs-theme', theme);
+    document.documentElement.classList.toggle('theme-dark', theme === 'dark');
+  })();
+</script>
 {% endblock %}
 {% block body %}
 <div class="wrapper">
-  <aside class="navbar navbar-expand-lg navbar-vertical navbar-expand-md navbar-dark">
+  <aside class="navbar navbar-expand-lg navbar-vertical navbar-dark">
     <div class="container-fluid d-flex align-items-center flex-wrap">
       <button id="lokate-nav-toggle" class="navbar-toggler order-1 me-2" type="button"
         aria-controls="navbarSupportedContent" aria-expanded="false" aria-label="Toggle navigation">
@@ -108,10 +137,38 @@
    hace nada porque el menú ya estaba visible de por sí. */
 @media (max-width: 991.98px) {
   .wrapper { flex-direction: column !important; }
-  aside.navbar-vertical { width: 100% !important; min-height: auto !important; }
+  /* En barra de arriba, no en columna lateral: posicion normal en el flujo y alto el suyo.
+     Ojo con position/bottom/height — el <aside> lleva "position: fixed; top:0; bottom:0" de
+     Tabler, y sin anularlos, ensancharlo al 100% lo convierte en una capa opaca a pantalla
+     completa (z-index 1030) que tapa el contenido: la página se pintaba con sus datos y
+     desaparecían en cuanto llegaba el CSS. */
+  aside.navbar-vertical {
+    position: relative !important;
+    width: 100% !important;
+    height: auto !important;
+    min-height: auto !important;
+    bottom: auto !important;
+    overflow-y: visible !important;
+  }
   .page-wrapper { margin-left: 0 !important; }
   #navbarSupportedContent { display: none !important; }
   #navbarSupportedContent.lokate-nav-open { display: block !important; }
+}
+
+/* En escritorio ese mismo <aside> es una columna (Tabler le pone flex-direction: column al
+   contenedor a partir de 992px), y ahí el flex-grow-1 del título deja de repartir espacio a lo
+   ancho para comérselo a lo alto: el título se queda flotando a media altura y los botones y
+   el menú caen al fondo de la pantalla. Lo que en móvil empuja a la derecha, en escritorio
+   empuja hacia abajo. Se le quita ahí el crecimiento y se devuelve al contenedor lo que
+   align-items-center/flex-wrap le pisan. */
+@media (min-width: 992px) {
+  aside.navbar-vertical > .container-fluid {
+    align-items: stretch !important;
+    align-content: flex-start !important;
+    justify-content: flex-start !important;
+    flex-wrap: nowrap !important;
+  }
+  aside.navbar-vertical .navbar-brand { flex-grow: 0 !important; }
 }
 
 /* Select2 (usado por sqladmin en selects de relación y de tamaño de página) no es consciente
@@ -170,8 +227,7 @@
 <script>
 (function () {
   var KEY = 'lokate-admin-theme';
-  var saved = localStorage.getItem(KEY) || 'dark';
-  document.documentElement.setAttribute('data-bs-theme', saved);
+  var saved = localStorage.getItem(KEY) || 'dark';  // ya aplicado arriba, en el <head>
 
   var btn = document.createElement('button');
   btn.textContent = saved === 'dark' ? '☀️' : '🌙';
@@ -181,6 +237,7 @@
   btn.onclick = function () {
     var next = document.documentElement.getAttribute('data-bs-theme') === 'dark' ? 'light' : 'dark';
     document.documentElement.setAttribute('data-bs-theme', next);
+    document.documentElement.classList.toggle('theme-dark', next === 'dark');
     localStorage.setItem(KEY, next);
     btn.textContent = next === 'dark' ? '☀️' : '🌙';
   };
@@ -230,6 +287,65 @@
     });
   }
   translate(document.body);
+
+  // --------------------------------------------------------------- boton atras del movil
+  // Sin esto, atras con un dialogo abierto se lleva la pagina entera por delante, y en el panel
+  // instalado como app cierra la app a la primera. Se pone una entrada de mas en el historial:
+  // el atras del usuario se la come, y aqui se decide que deshacer — primero lo que este
+  // abierto encima (dialogo, menu lateral, desplegable) y si no hay nada, la pagina anterior.
+  var backArmed = false;
+
+  function armBack() {
+    if (backArmed) return;
+    backArmed = true;
+    history.pushState({ lokate: 'back' }, '');
+  }
+
+  function closeTopLayer() {
+    var modal = document.querySelector('.modal.show');
+    if (modal) {
+      var dismiss = modal.querySelector('[data-bs-dismiss="modal"]');
+      if (dismiss) dismiss.click();
+      else if (window.bootstrap) window.bootstrap.Modal.getOrCreateInstance(modal).hide();
+      return true;
+    }
+    var dropdown = document.querySelector('.dropdown-menu.show');
+    if (dropdown) { dropdown.classList.remove('show'); return true; }
+    if (navContent && navContent.classList.contains('lokate-nav-open')) {
+      navToggle.click();
+      return true;
+    }
+    return false;
+  }
+
+  function hint(text) {
+    var box = document.createElement('div');
+    box.textContent = text;
+    box.style.cssText = 'position:fixed;left:50%;bottom:24px;transform:translateX(-50%);z-index:' +
+      '10000;background:#000c;color:#fff;border-radius:10px;padding:10px 16px;max-width:90vw;' +
+      'font-size:14px;';
+    document.body.appendChild(box);
+    setTimeout(function () { box.remove(); }, 3000);
+  }
+
+  // El inicio del panel es el final del camino: de ahi para atras se sale. En cualquier otra
+  // pagina atras sigue siendo atras, que es lo que se espera. El resumen (/admin/dashboard) es
+  // el inicio de verdad: /admin redirige ahi, asi que entrar deja las dos en el historial.
+  var path = location.pathname.replace(/\/+$/, '');
+  var atHome = path.endsWith('/admin') || path.endsWith('/admin/dashboard');
+  var exitHinted = false;
+
+  window.addEventListener('popstate', function () {
+    backArmed = false;
+    if (closeTopLayer()) { armBack(); return; }
+    if (!atHome) { history.back(); return; }
+    if (exitHinted) return;  // dos atras seguidos: se sale de verdad
+    exitHinted = true;
+    hint("{{ t('back_exit_hint') }}");
+    setTimeout(function () { exitHinted = false; armBack(); }, 3000);
+  });
+
+  armBack();
 
   if ('serviceWorker' in navigator) {
     navigator.serviceWorker.register('/sw.js', { scope: '/admin' }).catch(function () {});

@@ -208,6 +208,32 @@ def set_update_flag(body: UpdateFlagRequest, admin: models.User = Depends(get_cu
 # como tal y lo guarda como "lokate.apk.zip" en vez de "lokate.apk".
 # Sirve desde "apk/" (carpeta montada entera en docker-compose.yml), no desde un archivo
 # suelto montado directo — así reemplazar el .apk en el servidor se nota sin reiniciar nada.
+# El service worker, servido a mano y sin cachear: si el navegador se queda con una copia
+# vieja de este archivo, sigue gobernando las peticiones del panel con reglas que ya se
+# cambiaron aqui, y eso no se arregla desplegando.
+@app.get("/sw.js")
+def service_worker():
+    return FileResponse(
+        "web_inicial/sw.js",
+        media_type="application/javascript",
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+# La app web, con ruta propia por lo mismo que el service worker: va todo (HTML, estilos y
+# lógica) en un solo archivo, así que una copia cacheada por el navegador es una versión vieja
+# entera que no se arregla desplegando. StaticFiles no manda Cache-Control y el navegador se la
+# queda a su aire; "no-cache" le obliga a preguntar siempre (y sigue pudiendo responder 304).
+@app.get("/lokate", include_in_schema=False)
+@app.get("/lokate/", include_in_schema=False)
+def lokate_web():
+    return FileResponse(
+        "web_inicial/lokate/index.html",
+        media_type="text/html",
+        headers={"Cache-Control": "no-cache"},
+    )
+
+
 @app.get("/lokate.apk")
 def download_apk():
     return FileResponse(

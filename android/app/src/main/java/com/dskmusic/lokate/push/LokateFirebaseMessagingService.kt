@@ -5,6 +5,7 @@ import com.dskmusic.lokate.di.ServiceLocator
 import com.dskmusic.lokate.location.LiveTracking
 import com.dskmusic.lokate.location.LocationServiceController
 import com.dskmusic.lokate.util.DeviceStatusUtils
+import com.google.android.gms.location.CurrentLocationRequest
 import com.google.android.gms.location.LocationServices
 import com.google.android.gms.location.Priority
 import com.google.android.gms.tasks.CancellationTokenSource
@@ -134,11 +135,16 @@ class LokateFirebaseMessagingService : FirebaseMessagingService() {
             // aquí: el servidor no sabe —ni tiene por qué— quién quiere saber de quién.
             "member_silent" -> {
                 val silentUserId = message.data["user_id"].orEmpty()
-                val muted = runBlocking { locator.settings.silentMutedUserIds.first() }
+                val wanted = runBlocking { locator.settings.silentAlertUserIds.first() }
                 val notifySilent = runBlocking { locator.settings.notifySilentEnabled.first() }
-                if (notifySystem && notifySilent && silentUserId !in muted) {
-                    NotificationHelper.showSystemNotification(this, title, body)
+                if (notifySystem && notifySilent && silentUserId in wanted) {
+                    NotificationHelper.showSilentNotification(this, silentUserId, title, body)
                 }
+            }
+            // Ya vuelve a dar señal: se retira su aviso sin mirar ningún ajuste — borrar lo que
+            // ya no es verdad no es notificar. Si no había aviso suyo, no hace nada.
+            "member_silent_over" -> {
+                NotificationHelper.cancelSilentNotification(this, message.data["user_id"].orEmpty())
             }
             else -> if (notifySystem) {
                 NotificationHelper.showSystemNotification(this, title, body)
@@ -147,13 +153,28 @@ class LokateFirebaseMessagingService : FirebaseMessagingService() {
     }
 }
 
+/** Lo que se está dispuesto a esperar a un fix, y lo viejo que puede ser uno ya hecho para
+ * darlo por bueno sin encender nada. */
+private const val ONE_SHOT_TIMEOUT_MS = 20_000L
+private const val ONE_SHOT_MAX_AGE_MS = 30_000L
+
 private suspend fun fetchOneShotLocation(context: android.content.Context): android.location.Location? =
     suspendCancellableCoroutine { continuation ->
         val client = LocationServices.getFusedLocationProviderClient(context)
         val cancellationSource = CancellationTokenSource()
         continuation.invokeOnCancellation { cancellationSource.cancel() }
+        // Con tope y con edad máxima, que antes no llevaba ninguno de los dos: bajo techo y sin
+        // ver el cielo el GPS se puede quedar buscando un buen rato sin llegar a nada, y aceptar
+        // una posición de hace menos de medio minuto hace que pedir ubicación a todo el grupo dos
+        // veces seguidas no vuelva a encender el GPS de nadie. Los 20 s son lo que espera quien
+        // la pide (ver MemberDetailViewModel.LOCATION_REQUEST_TIMEOUT_MS): pasados, ya no mira.
+        val request = CurrentLocationRequest.Builder()
+            .setPriority(Priority.PRIORITY_HIGH_ACCURACY)
+            .setDurationMillis(ONE_SHOT_TIMEOUT_MS)
+            .setMaxUpdateAgeMillis(ONE_SHOT_MAX_AGE_MS)
+            .build()
         try {
-            client.getCurrentLocation(Priority.PRIORITY_HIGH_ACCURACY, cancellationSource.token)
+            client.getCurrentLocation(request, cancellationSource.token)
                 .addOnSuccessListener { location -> continuation.resume(location) }
                 .addOnFailureListener { e -> continuation.resumeWithException(e) }
         } catch (e: SecurityException) {

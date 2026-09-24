@@ -19,6 +19,7 @@ import com.dskmusic.lokate.util.Constants
 import com.dskmusic.lokate.di.ServiceLocator
 import com.dskmusic.lokate.location.LocationServiceController
 import com.dskmusic.lokate.location.LocationUpdateWorker
+import com.dskmusic.lokate.ui.map.AppForeground
 import com.dskmusic.lokate.ui.navigation.LokateNavHost
 import com.dskmusic.lokate.ui.navigation.Routes
 import com.dskmusic.lokate.ui.theme.LokateTheme
@@ -120,6 +121,20 @@ class MainActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    // Lo que mira el resto de la app para saber si hay alguien delante. onStart/onStop y no
+    // onResume/onPause: un diálogo del sistema por encima no es irse de la app.
+    override fun onStart() {
+        super.onStart()
+        AppForeground.visible.value = true
+    }
+
+    override fun onStop() {
+        super.onStop()
+        // Girar el móvil, cambiar el tema o el idioma también pasa por aquí, y eso no es irse de
+        // la app: sin esta condición, cambiar de tema soltaría el seguimiento en vivo en marcha.
+        if (!isChangingConfigurations) AppForeground.visible.value = false
     }
 
     // launchMode="singleTop": tocar otra notificación con la app ya abierta entrega el intent

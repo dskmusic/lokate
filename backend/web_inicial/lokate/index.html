@@ -1,0 +1,789 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1, maximum-scale=1, user-scalable=no, viewport-fit=cover" />
+<title>Lokate by DSK</title>
+<meta name="robots" content="noindex" />
+<meta name="theme-color" content="#2A3F9E" />
+<link rel="icon" href="/favicon.svg" type="image/svg+xml" />
+<link rel="apple-touch-icon" href="/icons/icon-192.png" />
+<link rel="manifest" href="/lokate/manifest.json" />
+<link rel="stylesheet" href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css" />
+<style>
+  /* Mismos colores que la web de aterrizaje (web_inicial/index.html): es la misma casa. */
+  :root {
+    --bg: #0a0d16; --surface: #121628; --surface-2: #1a2036; --border: #262d4a;
+    --accent: #5b7cf0; --accent-dark: #2a3f9e; --text: #eef0f8; --text-dim: #9ba3c2;
+    --danger: #e2574c; --ok: #49b675; --warn: #f5a623;
+  }
+  * { box-sizing: border-box; }
+  /* Esto se usa como app, no como pagina: nada de recargar tirando hacia abajo (se pierde el
+     seguimiento en vivo) ni de hacer zoom a la interfaz con dos dedos: el zoom es del mapa. */
+  html, body { height: 100%; margin: 0; overscroll-behavior: none; }
+  body {
+    background: var(--bg); color: var(--text); display: flex; flex-direction: column;
+    font: 15px/1.45 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    touch-action: manipulation; -webkit-touch-callout: none;
+    -webkit-user-select: none; user-select: none;
+  }
+  input, textarea { -webkit-user-select: text; user-select: text; }
+  button, input, textarea, select { font: inherit; }
+  .btn {
+    background: var(--accent-dark); color: #fff; border: 0; border-radius: 10px;
+    padding: 11px 14px; cursor: pointer; width: 100%; text-align: left;
+  }
+  .btn:hover { background: var(--accent); }
+  .btn.ghost { background: var(--surface-2); border: 1px solid var(--border); }
+  .btn.danger { background: #7a2b26; }
+  .btn.on { background: var(--warn); color: #241a00; font-weight: 600; }
+  .row { display: flex; gap: 8px; align-items: center; }
+
+  /* ---------------------------------------------------------------- login */
+  #login { margin: auto; padding: 24px; width: 100%; max-width: 360px; }
+  #login h1 { font-size: 26px; margin: 0 0 4px; }
+  #login p.sub { color: var(--text-dim); margin: 0 0 20px; }
+  #login input {
+    width: 100%; margin-bottom: 10px; padding: 12px; border-radius: 10px;
+    border: 1px solid var(--border); background: var(--surface); color: var(--text);
+  }
+  #login .btn { text-align: center; margin-top: 6px; }
+  #login-error { color: var(--danger); min-height: 20px; margin-top: 10px; font-size: 14px; }
+  #login .foot { margin-top: 18px; font-size: 13px; color: var(--text-dim); }
+  #login .foot a { color: var(--accent); }
+
+  /* ---------------------------------------------------------------- app */
+  #app { display: none; flex: 1; flex-direction: column; min-height: 0; }
+  header {
+    display: flex; align-items: center; gap: 10px; padding: 10px 14px;
+    background: var(--surface); border-bottom: 1px solid var(--border);
+    padding-top: calc(10px + env(safe-area-inset-top));
+  }
+  header .brand { font-weight: 700; }
+  header .group { color: var(--text-dim); font-size: 13px; flex: 1; }
+  header button {
+    background: none; border: 1px solid var(--border); color: var(--text-dim);
+    border-radius: 8px; padding: 5px 9px; cursor: pointer;
+  }
+  main { flex: 1; display: flex; flex-direction: column; min-height: 0; }
+  #map { flex: 1; min-height: 240px; background: var(--surface-2); }
+  #list { max-height: 38vh; overflow-y: auto; background: var(--surface); }
+  @media (min-width: 900px) {
+    main { flex-direction: row-reverse; }
+    #list { max-height: none; width: 340px; border-left: 1px solid var(--border); }
+  }
+  .member {
+    display: flex; gap: 10px; align-items: center; width: 100%; text-align: left;
+    padding: 10px 14px; background: none; border: 0; border-bottom: 1px solid var(--border);
+    color: var(--text); cursor: pointer;
+  }
+  .member.sel { background: var(--surface-2); }
+  .member .av {
+    width: 38px; height: 38px; border-radius: 50%; flex: none; background: var(--accent-dark);
+    display: flex; align-items: center; justify-content: center; font-weight: 600;
+    background-size: cover; background-position: center;
+  }
+  .member .nm { font-weight: 600; }
+  .member .sb { color: var(--text-dim); font-size: 13px; }
+  .member .sb.bad { color: var(--danger); }
+
+  /* Chincheta con la foto, igual que en el mapa del panel y en la app. */
+  .lokate-pin { background: none; border: 0; }
+  .lokate-pin > div {
+    width: 40px; height: 40px; border-radius: 50%; border: 3px solid var(--accent);
+    background: var(--accent-dark); overflow: hidden; display: flex; align-items: center;
+    justify-content: center; color: #fff; font-weight: 600; box-shadow: 0 2px 6px rgba(0,0,0,.45);
+    background-size: cover; background-position: center;
+  }
+  .lokate-pin.sel > div { border-color: var(--warn); width: 48px; height: 48px; }
+
+  /* ---------------------------------------------------------------- panel */
+  #sheet {
+    position: fixed; inset: auto 0 0 0; z-index: 1000; display: none;
+    background: var(--surface); border-top: 1px solid var(--border);
+    border-radius: 16px 16px 0 0; padding: 14px;
+    padding-bottom: calc(14px + env(safe-area-inset-bottom));
+    max-height: 60vh; overflow-y: auto; box-shadow: 0 -6px 24px rgba(0,0,0,.5);
+  }
+  @media (min-width: 900px) { #sheet { inset: auto auto 16px 16px; width: 360px; border-radius: 16px; } }
+  #sheet h2 { margin: 0; font-size: 18px; }
+  #sheet .sub { color: var(--text-dim); font-size: 13px; margin: 2px 0 12px; }
+  #sheet .btn { margin-bottom: 8px; }
+  #sheet-close { background: none; border: 0; color: var(--text-dim); font-size: 22px; cursor: pointer; }
+  #msg { display: none; }
+  #msg textarea {
+    width: 100%; min-height: 70px; padding: 10px; border-radius: 10px; resize: vertical;
+    border: 1px solid var(--border); background: var(--surface-2); color: var(--text);
+  }
+  #msg input[type=file] { width: 100%; margin: 8px 0; color: var(--text-dim); font-size: 13px; }
+  #sheet-status { font-size: 13px; color: var(--text-dim); min-height: 18px; }
+
+  #toast {
+    position: fixed; left: 50%; bottom: 24px; transform: translateX(-50%); z-index: 2000;
+    background: #000c; border: 1px solid var(--border); border-radius: 10px; padding: 10px 16px;
+    max-width: 90vw; display: none;
+  }
+</style>
+</head>
+<body>
+
+<div id="login">
+  <h1>Lokate</h1>
+  <p class="sub" data-i18n="login_sub"></p>
+  <form id="login-form">
+    <input id="u" autocomplete="username" autocapitalize="none" spellcheck="false" required />
+    <input id="p" type="password" autocomplete="current-password" required />
+    <button class="btn" type="submit" data-i18n="login_submit"></button>
+  </form>
+  <div id="login-error"></div>
+  <div class="foot">
+    <a href="/" data-i18n="login_back"></a> ·
+    <a href="#" id="lang-login">English / Español</a>
+  </div>
+</div>
+
+<div id="app">
+  <header>
+    <span class="brand">Lokate</span>
+    <span class="group" id="group-name"></span>
+    <button id="lang-app">ES/EN</button>
+    <button id="logout" data-i18n="logout"></button>
+  </header>
+  <main>
+    <div id="map"></div>
+    <div id="list"></div>
+  </main>
+</div>
+
+<div id="sheet">
+  <div class="row">
+    <h2 id="sheet-name" style="flex:1"></h2>
+    <button id="sheet-close" aria-label="cerrar">&times;</button>
+  </div>
+  <div class="sub" id="sheet-sub"></div>
+  <button class="btn ghost" id="a-center" data-i18n="act_center"></button>
+  <button class="btn" id="a-precise" data-i18n="act_precise"></button>
+  <button class="btn" id="a-follow"></button>
+  <button class="btn ghost" id="a-history"></button>
+  <button class="btn ghost" id="a-ring" data-i18n="act_ring"></button>
+  <button class="btn danger" id="a-msg" data-i18n="act_message"></button>
+  <div id="msg">
+    <textarea id="msg-text"></textarea>
+    <input type="file" id="msg-file" />
+    <button class="btn danger" id="msg-send" data-i18n="msg_send"></button>
+  </div>
+  <div id="sheet-status"></div>
+</div>
+
+<div id="toast"></div>
+
+<script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+<script>
+(function () {
+  'use strict';
+
+  // ------------------------------------------------------------------ idioma
+  var I18N = {
+    es: {
+      login_sub: 'Entra con la misma cuenta de la app',
+      login_user: 'Usuario', login_pass: 'Contraseña', login_submit: 'Entrar',
+      login_bad: 'Usuario o contraseña incorrectos',
+      login_down: 'No se pudo conectar con el servidor',
+      login_back: 'Volver a la web',
+      logout: 'Salir',
+      no_group: 'Todavía no perteneces a ningún grupo. Únete o crea uno desde la app.',
+      no_location: 'sin ubicación todavía',
+      st_moving: 'en movimiento', st_still: 'en reposo', st_home_wifi: 'en casa (wifi)',
+      st_live: 'en tiempo real', st_on_demand: 'bajo demanda', st_overdue: 'sin señal',
+      act_center: 'Centrar en el mapa',
+      act_precise: 'Pedir ubicación precisa',
+      act_follow: 'Seguir en vivo',
+      act_follow_stop: 'Dejar de seguir ({min} min)',
+      act_history: 'Ver recorrido (24 h)',
+      act_history_off: 'Ocultar recorrido',
+      act_ring: 'Hacer sonar el móvil',
+      act_message: 'Mensaje de emergencia',
+      msg_send: 'Enviar', msg_placeholder: 'Escribe el mensaje…',
+      ring_confirm: '¿Hacer sonar el móvil de {name}? Sonará a todo volumen aunque lo tenga en silencio.',
+      sent_precise: 'Petición enviada: su móvil mandará su posición en unos segundos',
+      sent_ring: 'Sonando',
+      sent_msg: 'Mensaje enviado',
+      err: 'No se pudo enviar',
+      err_empty: 'Escribe algo o adjunta un archivo',
+      err_big: 'El archivo no puede superar 25 MB',
+      follow_on: 'Siguiendo en vivo a {name}',
+      follow_off: 'Seguimiento soltado',
+      follow_auto: 'Seguimiento soltado solo tras {min} min para no gastarle la batería',
+      history_empty: 'Sin recorrido en las últimas 24 horas',
+      session_over: 'Tu sesión ha caducado, vuelve a entrar',
+      exit_hint: 'Pulsa atrás otra vez para salir'
+    },
+    en: {
+      login_sub: 'Sign in with your app account',
+      login_user: 'Username', login_pass: 'Password', login_submit: 'Sign in',
+      login_bad: 'Wrong username or password',
+      login_down: 'Could not reach the server',
+      login_back: 'Back to the website',
+      logout: 'Sign out',
+      no_group: "You don't belong to a group yet. Join or create one from the app.",
+      no_location: 'no location yet',
+      st_moving: 'moving', st_still: 'not moving', st_home_wifi: 'at a home wifi',
+      st_live: 'live tracking', st_on_demand: 'on demand', st_overdue: 'no signal',
+      act_center: 'Centre on the map',
+      act_precise: 'Request a precise location',
+      act_follow: 'Follow live',
+      act_follow_stop: 'Stop following ({min} min)',
+      act_history: 'Show trail (24 h)',
+      act_history_off: 'Hide trail',
+      act_ring: 'Ring their phone',
+      act_message: 'Emergency message',
+      msg_send: 'Send', msg_placeholder: 'Type your message…',
+      ring_confirm: "Ring {name}'s phone? It will ring at full volume even if it is on silent.",
+      sent_precise: 'Request sent: their phone will report its position in a few seconds',
+      sent_ring: 'Ringing',
+      sent_msg: 'Message sent',
+      err: 'Could not send it',
+      err_empty: 'Type something or attach a file',
+      err_big: 'The file cannot be larger than 25 MB',
+      follow_on: 'Following {name} live',
+      follow_off: 'Follow released',
+      follow_auto: 'Follow released on its own after {min} min to save their battery',
+      history_empty: 'No trail in the last 24 hours',
+      session_over: 'Your session expired, sign in again',
+      exit_hint: 'Press back again to exit'
+    }
+  };
+  var lang = localStorage.getItem('lokate_lang') ||
+    ((navigator.language || 'es').slice(0, 2) === 'en' ? 'en' : 'es');
+
+  function T(key, vars) {
+    var s = (I18N[lang] || I18N.es)[key] || key;
+    if (vars) for (var k in vars) s = s.replace('{' + k + '}', vars[k]);
+    return s;
+  }
+
+  function applyLang() {
+    document.documentElement.lang = lang;
+    var nodes = document.querySelectorAll('[data-i18n]');
+    for (var i = 0; i < nodes.length; i++) nodes[i].textContent = T(nodes[i].dataset.i18n);
+    $('u').placeholder = T('login_user');
+    $('p').placeholder = T('login_pass');
+    $('msg-text').placeholder = T('msg_placeholder');
+    renderSheet();
+    render();
+  }
+
+  // ------------------------------------------------------------------ utilidades
+  function $(id) { return document.getElementById(id); }
+
+  function esc(s) {
+    return String(s == null ? '' : s).replace(/[&<>"']/g, function (c) {
+      return { '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' }[c];
+    });
+  }
+
+  // El servidor manda las horas en UTC pero SIN zona ("2026-09-22T15:45:17.123456"): sin la Z
+  // el navegador las tomaría como hora local y todo saldría movido por el huso horario.
+  function parseTs(iso) {
+    if (!iso) return null;
+    var d = new Date(/([zZ]|[+-]\d{2}:?\d{2})$/.test(iso) ? iso : iso + 'Z');
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  var rtf = new Intl.RelativeTimeFormat(lang, { numeric: 'auto' });
+  function ago(iso) {
+    var d = parseTs(iso);
+    if (!d) return T('no_location');
+    var minutes = Math.round((Date.now() - d.getTime()) / 60000);
+    if (minutes < 60) return rtf.format(-minutes, 'minute');
+    if (minutes < 60 * 24) return rtf.format(-Math.round(minutes / 60), 'hour');
+    return rtf.format(-Math.round(minutes / 1440), 'day');
+  }
+
+  var toastTimer = null;
+  function toast(text) {
+    $('toast').textContent = text;
+    $('toast').style.display = 'block';
+    clearTimeout(toastTimer);
+    toastTimer = setTimeout(function () { $('toast').style.display = 'none'; }, 4000);
+  }
+
+  // ------------------------------------------------------------------ estado de actualización
+  // Traducción literal de ui/common/UpdateStatus.kt: los mismos números y las mismas reglas,
+  // para que una persona salga igual aquí y en la app. Si se tocan allí, se tocan aquí.
+  var IDLE_INTERVAL_MS = 15 * 60000, MAX_BATCH_DELAY_MS = 60000;
+  var STILL_AFTER_MS = 5 * 60000, MIN_MOVE_FROM_INTERVAL_MS = 30000, OVERDUE_FACTOR = 2;
+  var FREQ_MS = {
+    REAL_TIME: 3000, EVERY_30_SEC: 30000, EVERY_1_MIN: 60000,
+    BALANCED: 120000, EVERY_5_MIN: 300000, BATTERY_SAVER: 600000,
+    ON_DEMAND: 0, DISABLED: 0
+  };
+
+  function modeOf(m) {
+    if (m.live_seconds > 0) return 'live';
+    if (FREQ_MS[m.location_frequency] === 0) return 'on_demand';
+    // Un "live" sin seguimiento en curso es el modo del último ping de cuando sí lo había.
+    if (m.update_mode === 'live') return 'moving';
+    return m.update_mode;
+  }
+
+  function expectedGapMs(m) {
+    var mode = modeOf(m);
+    if (mode === 'live') return 30000;
+    if (mode === 'still' || mode === 'home_wifi') return IDLE_INTERVAL_MS;
+    if (mode !== 'moving') return null;
+    var interval = FREQ_MS[m.location_frequency];
+    if (!interval) return null;
+    var expected = interval + MAX_BATCH_DELAY_MS;
+    return interval >= MIN_MOVE_FROM_INTERVAL_MS
+      ? Math.max(expected, STILL_AFTER_MS + MAX_BATCH_DELAY_MS)
+      : expected;
+  }
+
+  function isOverdue(m) {
+    if (m.live_seconds > 0) return false;
+    var expected = expectedGapMs(m);
+    var d = parseTs(m.timestamp);
+    if (!expected || !d) return false;
+    return Date.now() - d.getTime() > expected * OVERDUE_FACTOR;
+  }
+
+  function statusLabel(m) {
+    if (!m.timestamp) return null;
+    if (isOverdue(m)) return T('st_overdue');
+    var key = { moving: 'st_moving', still: 'st_still', home_wifi: 'st_home_wifi',
+                live: 'st_live', on_demand: 'st_on_demand' }[modeOf(m)];
+    return key ? T(key) : null;
+  }
+
+  // ------------------------------------------------------------------ API
+  var token = localStorage.getItem('lokate_token') || '';
+
+  function api(path, opts) {
+    opts = opts || {};
+    opts.headers = opts.headers || {};
+    opts.headers.Authorization = 'Bearer ' + token;
+    return fetch(path, opts).then(function (r) {
+      if (r.status === 401) { logout(T('session_over')); throw new Error('401'); }
+      if (!r.ok) throw r;
+      return r.status === 204 ? null : r.json();
+    });
+  }
+
+  // ------------------------------------------------------------------ mapa
+  var map = null, markers = {}, members = [], directory = {}, selected = null;
+  var trail = null, trailFor = null;
+
+  function initMap() {
+    if (map) return;
+    map = L.map('map', { zoomControl: true });
+    L.tileLayer('https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png', {
+      maxZoom: 19, attribution: '&copy; OpenStreetMap'
+    }).addTo(map);
+    map.setView([40.4168, -3.7038], 5);
+    // Tocar el mapa cierra el panel (Leaflet no propaga los clics de las chinchetas ni los
+    // de arrastrar, asi que solo salta al tocar el mapa a secas).
+    map.on('click', function () { if (selected) closeSheet(); });
+  }
+
+  // Pixeles de mapa que tapa el panel de acciones. En pantalla ancha es una tarjeta lateral
+  // que no estorba, asi que ahi no tapa nada.
+  function sheetCover() {
+    var s = $('sheet');
+    return (s.style.display === 'block' && window.innerWidth < 900) ? s.offsetHeight : 0;
+  }
+
+  // Centrar con el panel abierto deja a la persona justo debajo del panel. Se sube la vista
+  // media altura de panel, sin pasarse de la mitad del mapa para no sacarla por arriba.
+  function centerOn(m) {
+    if (!m || m.lat == null) return;
+    map.setView([m.lat, m.lng], Math.max(map.getZoom(), 16));
+    var up = Math.min(sheetCover() / 2, map.getSize().y / 2 - 40);
+    if (up > 0) map.panBy([0, up], { animate: false });
+  }
+
+  function iconFor(m, sel) {
+    var inner = m.avatar_url
+      ? '<div style="background-image:url(' + esc(m.avatar_url) + ')"></div>'
+      : '<div>' + esc((m.display_name || '?').charAt(0).toUpperCase()) + '</div>';
+    return L.divIcon({
+      className: 'lokate-pin' + (sel ? ' sel' : ''), html: inner,
+      iconSize: sel ? [48, 48] : [40, 40], iconAnchor: sel ? [24, 24] : [20, 20]
+    });
+  }
+
+  function syncMarkers() {
+    var seen = {};
+    members.forEach(function (m) {
+      if (m.lat == null) return;
+      seen[m.user_id] = true;
+      var sel = m.user_id === selected;
+      if (markers[m.user_id]) {
+        markers[m.user_id].setLatLng([m.lat, m.lng]).setIcon(iconFor(m, sel));
+      } else {
+        markers[m.user_id] = L.marker([m.lat, m.lng], { icon: iconFor(m, sel) })
+          .addTo(map).on('click', function () { select(m.user_id); });
+      }
+    });
+    for (var id in markers) if (!seen[id]) { map.removeLayer(markers[id]); delete markers[id]; }
+  }
+
+  function find(id) {
+    return members.filter(function (m) { return m.user_id === id; })[0];
+  }
+
+  function subtitle(m) {
+    if (!m.timestamp) return T('no_location');
+    var parts = [ago(m.timestamp)];
+    var label = statusLabel(m);
+    if (label) parts.push(label);
+    if (m.battery_level != null) {
+      parts.push(m.battery_level + '%' + (m.is_charging ? ' ⚡' : ''));
+    }
+    return parts.join(' · ');
+  }
+
+  function render() {
+    if (!members.length) { $('list').innerHTML = ''; return; }
+    $('list').innerHTML = members.map(function (m) {
+      var av = m.avatar_url
+        ? '<span class="av" style="background-image:url(' + esc(m.avatar_url) + ')"></span>'
+        : '<span class="av">' + esc((m.display_name || '?').charAt(0).toUpperCase()) + '</span>';
+      return '<button class="member' + (m.user_id === selected ? ' sel' : '') +
+        '" data-id="' + esc(m.user_id) + '">' + av +
+        '<span><span class="nm">' + esc(m.display_name) + '</span><br>' +
+        '<span class="sb' + (isOverdue(m) ? ' bad' : '') + '">' + esc(subtitle(m)) + '</span>' +
+        '</span></button>';
+    }).join('');
+  }
+
+  // ------------------------------------------------------------------ datos
+  var pollTimer = null;
+
+  function refresh() {
+    return api('/location/group/latest').then(function (data) {
+      // Quien todavía no ha mandado ninguna posición no sale en esa lista, pero sí tiene que
+      // salir en la de gente: se rellena con el directorio del grupo.
+      var byId = {};
+      data.forEach(function (m) { byId[m.user_id] = m; });
+      members = data.slice();
+      for (var id in directory) {
+        if (!byId[id]) {
+          members.push({ user_id: id, display_name: directory[id].display_name,
+                         avatar_url: directory[id].avatar_url, live_seconds: 0 });
+        }
+      }
+      members.sort(function (a, b) { return (b.timestamp || '') < (a.timestamp || '') ? -1 : 1; });
+      render();
+      syncMarkers();
+      renderSheet();
+    });
+  }
+
+  function schedule() {
+    clearTimeout(pollTimer);
+    if (document.hidden) return;
+    // Siguiendo a alguien su móvil manda cada pocos segundos: de nada sirve preguntar cada 20.
+    pollTimer = setTimeout(tick, follow.id ? 5000 : 20000);
+  }
+
+  function tick() {
+    refresh().catch(function () {}).then(schedule);
+  }
+
+  function fitAll() {
+    var located = members.filter(function (m) { return m.lat != null; });
+    if (located.length) {
+      map.fitBounds(located.map(function (m) { return [m.lat, m.lng]; }), { padding: [40, 40], maxZoom: 16 });
+    }
+  }
+
+  // ------------------------------------------------------------------ seguimiento en vivo
+  // Los mismos topes que la app (ver ui/map/MapViewModel.kt): renovar cada 30 s, soltar solo a
+  // la media hora y soltar al irse de la pestaña. Poner a alguien en tiempo real le enciende el
+  // GPS fino cada 3 segundos: es lo más caro que se le puede hacer a la batería de otro.
+  var FOLLOW_RENEW_MS = 30000, FOLLOW_MAX_MS = 30 * 60000;
+  var follow = { id: null, since: 0, timer: null };
+
+  function startFollow(id) {
+    stopFollow(true);
+    follow.id = id;
+    follow.since = Date.now();
+    renewFollow();
+    toast(T('follow_on', { name: (find(id) || {}).display_name || '' }));
+    renderSheet();
+    schedule();
+  }
+
+  function renewFollow() {
+    if (!follow.id) return;
+    if (Date.now() - follow.since >= FOLLOW_MAX_MS) {
+      stopFollow();
+      toast(T('follow_auto', { min: FOLLOW_MAX_MS / 60000 }));
+      return;
+    }
+    api('/location/live/' + encodeURIComponent(follow.id) + '?active=true', { method: 'POST' })
+      .catch(function () {});
+    follow.timer = setTimeout(renewFollow, FOLLOW_RENEW_MS);
+  }
+
+  function stopFollow(silent) {
+    clearTimeout(follow.timer);
+    var id = follow.id;
+    follow.id = null;
+    if (!id) return;
+    // keepalive: esto se llama también al cerrar la pestaña, y sin él el navegador cancela la
+    // petición al descargar la página — el otro móvil se quedaría en tiempo real hasta que la
+    // marca caduque sola en el servidor.
+    fetch('/location/live/' + encodeURIComponent(id) + '?active=false', {
+      method: 'POST', keepalive: true, headers: { Authorization: 'Bearer ' + token }
+    }).catch(function () {});
+    if (!silent) { renderSheet(); schedule(); }
+  }
+
+  // ------------------------------------------------------------------ panel de acciones
+  function select(id) {
+    selected = id;
+    render();
+    syncMarkers();
+    $('sheet').style.display = 'block';
+    $('msg').style.display = 'none';
+    $('sheet-status').textContent = '';
+    renderSheet();
+    centerOn(find(id));  // despues de abrir el panel: hace falta su altura para el encuadre
+    syncBack();
+  }
+
+  function renderSheet() {
+    var m = find(selected);
+    if (!m) { $('sheet').style.display = 'none'; syncBack(); return; }
+    $('sheet-name').textContent = m.display_name;
+    $('sheet-sub').textContent = subtitle(m);
+    var following = follow.id === m.user_id;
+    $('a-follow').textContent = following
+      ? T('act_follow_stop', { min: Math.max(1, Math.round((FOLLOW_MAX_MS - (Date.now() - follow.since)) / 60000)) })
+      : T('act_follow');
+    $('a-follow').className = 'btn' + (following ? ' on' : '');
+    $('a-history').textContent = trailFor === m.user_id ? T('act_history_off') : T('act_history');
+    $('a-center').style.display = m.lat == null ? 'none' : '';
+  }
+
+  function closeSheet() {
+    selected = null;
+    $('sheet').style.display = 'none';
+    $('msg').style.display = 'none';
+    render();
+    syncMarkers();
+    syncBack();
+  }
+
+  function act(path, okKey) {
+    $('sheet-status').textContent = '…';
+    api(path, { method: 'POST' })
+      .then(function () { $('sheet-status').textContent = T(okKey); })
+      .catch(function () { $('sheet-status').textContent = T('err'); });
+  }
+
+  function toggleTrail(id) {
+    if (trail) { map.removeLayer(trail); trail = null; }
+    if (trailFor === id) { trailFor = null; renderSheet(); return; }
+    trailFor = id;
+    renderSheet();
+    api('/location/history?hours=24&user_id=' + encodeURIComponent(id)).then(function (points) {
+      if (trailFor !== id) return;
+      if (!points.length) { trailFor = null; renderSheet(); toast(T('history_empty')); return; }
+      trail = L.polyline(points.map(function (p) { return [p.lat, p.lng]; }),
+                         { color: '#f5a623', weight: 4, opacity: .8 }).addTo(map);
+      map.fitBounds(trail.getBounds(),
+                    { paddingTopLeft: [40, 40], paddingBottomRight: [40, 40 + sheetCover()] });
+    }).catch(function () { trailFor = null; renderSheet(); });
+  }
+
+  function sendMessage() {
+    var text = $('msg-text').value.trim();
+    var file = $('msg-file').files[0];
+    if (!text && !file) { $('sheet-status').textContent = T('err_empty'); return; }
+    if (file && file.size > 25 * 1024 * 1024) { $('sheet-status').textContent = T('err_big'); return; }
+    var form = new FormData();
+    form.append('text', text);
+    if (file) form.append('file', file);
+    $('sheet-status').textContent = '…';
+    api('/messages/emergency/' + encodeURIComponent(selected), { method: 'POST', body: form })
+      .then(function () {
+        $('sheet-status').textContent = T('sent_msg');
+        $('msg-text').value = '';
+        $('msg-file').value = '';
+        $('msg').style.display = 'none';
+      })
+      .catch(function () { $('sheet-status').textContent = T('err'); });
+  }
+
+  // ------------------------------------------------------------------ sesión
+  function showApp() {
+    $('login').style.display = 'none';
+    $('app').style.display = 'flex';
+    initMap();
+    // El mapa se ha creado con el contenedor todavía oculto y Leaflet se queda con el tamaño de
+    // entonces (cero): sin esto sale un mapa gris hasta que alguien toca la ventana.
+    setTimeout(function () { map.invalidateSize(); }, 0);
+    Promise.all([
+      api('/groups/me').then(function (g) { $('group-name').textContent = g.name || ''; }),
+      api('/groups/me/members').then(function (ms) {
+        directory = {};
+        ms.forEach(function (m) { directory[m.id] = m; });
+      })
+    ]).catch(function (e) {
+      if (e && e.status === 400) toast(T('no_group'));
+    }).then(function () {
+      return refresh().then(fitAll).catch(function () {});
+    }).then(schedule);
+  }
+
+  function logout(message) {
+    stopFollow(true);
+    clearTimeout(pollTimer);
+    token = '';
+    localStorage.removeItem('lokate_token');
+    members = [];
+    selected = null;
+    $('sheet').style.display = 'none';
+    $('app').style.display = 'none';
+    $('login').style.display = 'block';
+    $('login-error').textContent = message || '';
+  }
+
+  $('login-form').addEventListener('submit', function (e) {
+    e.preventDefault();
+    $('login-error').textContent = '';
+    fetch('/auth/login', {
+      method: 'POST', headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ username: $('u').value.trim(), password: $('p').value })
+    }).then(function (r) {
+      return r.json().then(function (data) { return { ok: r.ok, status: r.status, data: data }; });
+    }).then(function (res) {
+      if (!res.ok) {
+        // El 429 trae el mensaje del freno de fuerza bruta (cuánto queda): se enseña tal cual,
+        // que es lo único que le sirve a quien está delante.
+        $('login-error').textContent = res.status === 429 && res.data.detail
+          ? res.data.detail : T('login_bad');
+        return;
+      }
+      token = res.data.access_token;
+      localStorage.setItem('lokate_token', token);
+      $('p').value = '';
+      showApp();
+    }).catch(function () { $('login-error').textContent = T('login_down'); });
+  });
+
+  // ------------------------------------------------------------------ eventos
+  // Dejar pulsado no saca el menu del navegador (guardar imagen, abrir en pestana...): en el
+  // mapa y en la lista solo molesta. En lo que se escribe si, que ahi hace falta pegar.
+  document.addEventListener('contextmenu', function (e) {
+    if (!e.target.closest('input, textarea')) e.preventDefault();
+  });
+
+  // ------------------------------------------------------------------ boton atras del movil
+  // Cada capa abierta (la ficha de alguien, el redactar mensaje) mete una entrada en el
+  // historial, asi que atras las va cerrando de dentro afuera en vez de sacar de la app de
+  // golpe. Abajo del todo se avisa una vez y no se vuelve a poner entrada: el siguiente atras
+  // ya es el del navegador, que es el unico que puede cerrar de verdad una app instalada.
+  var backDepth = 0, backArmed = false, backSkip = false, exitHinted = false;
+
+  function armBack() {
+    if (backArmed) return;
+    backArmed = true;
+    history.pushState({ lokate: 'root' }, '');
+  }
+
+  // El historial se pone al dia con lo que hay abierto, en vez de que cada boton lleve su
+  // cuenta: asi da igual por donde se cierre (la X, tocar el mapa, que esa persona desaparezca
+  // del grupo), que las entradas cuadran igual.
+  function syncBack() {
+    var open = $('sheet').style.display === 'block';
+    var want = open ? ($('msg').style.display === 'block' ? 2 : 1) : 0;
+    if (want > backDepth) {
+      armBack();
+      while (backDepth < want) { backDepth++; history.pushState({ lokate: backDepth }, ''); }
+    } else if (want < backDepth) {
+      var n = backDepth - want;
+      backDepth = want;
+      backSkip = true;  // history.go(-n) dispara un solo popstate, y no es del usuario
+      history.go(-n);
+    }
+  }
+
+  window.addEventListener('popstate', function () {
+    if (backSkip) { backSkip = false; return; }
+    if (backDepth > 0) {
+      backDepth--;
+      if ($('msg').style.display === 'block') $('msg').style.display = 'none';
+      else closeSheet();
+      return;
+    }
+    backArmed = false;  // la entrada centinela se la acaba de comer este atras
+    if (exitHinted) return;
+    exitHinted = true;
+    toast(T('exit_hint'));
+    setTimeout(function () { exitHinted = false; armBack(); }, 3000);
+  });
+
+  armBack();
+
+  $('list').addEventListener('click', function (e) {
+    var item = e.target.closest('.member');
+    if (item) select(item.dataset.id);
+  });
+  $('logout').addEventListener('click', function () { logout(); });
+  $('sheet-close').addEventListener('click', closeSheet);
+  $('a-center').addEventListener('click', function () { centerOn(find(selected)); });
+  $('a-precise').addEventListener('click', function () {
+    act('/location/request-location/' + encodeURIComponent(selected), 'sent_precise');
+  });
+  $('a-ring').addEventListener('click', function () {
+    var m = find(selected);
+    if (m && confirm(T('ring_confirm', { name: m.display_name }))) {
+      act('/location/ring/' + encodeURIComponent(selected), 'sent_ring');
+    }
+  });
+  $('a-follow').addEventListener('click', function () {
+    if (follow.id === selected) { stopFollow(); toast(T('follow_off')); } else { startFollow(selected); }
+  });
+  $('a-history').addEventListener('click', function () { toggleTrail(selected); });
+  $('a-msg').addEventListener('click', function () {
+    $('msg').style.display = $('msg').style.display === 'block' ? 'none' : 'block';
+    syncBack();
+  });
+  $('msg-send').addEventListener('click', sendMessage);
+
+  function switchLang(e) {
+    if (e) e.preventDefault();
+    lang = lang === 'es' ? 'en' : 'es';
+    localStorage.setItem('lokate_lang', lang);
+    rtf = new Intl.RelativeTimeFormat(lang, { numeric: 'auto' });
+    applyLang();
+  }
+  $('lang-login').addEventListener('click', switchLang);
+  $('lang-app').addEventListener('click', switchLang);
+
+  // Pestaña oculta (otra app, pantalla apagada, minimizado): se corta el sondeo y se suelta el
+  // seguimiento, igual que hace la app al irse a segundo plano.
+  document.addEventListener('visibilitychange', function () {
+    if (document.hidden) {
+      clearTimeout(pollTimer);
+      if (follow.id) { stopFollow(); toast(T('follow_off')); }
+    } else if (token) {
+      tick();
+    }
+  });
+  window.addEventListener('pagehide', function () { stopFollow(true); });
+
+  applyLang();
+  if (token) showApp();
+
+  if ('serviceWorker' in navigator) {
+    navigator.serviceWorker.register('/sw.js', { scope: '/lokate/' }).catch(function () {});
+  }
+})();
+</script>
+</body>
+</html>
