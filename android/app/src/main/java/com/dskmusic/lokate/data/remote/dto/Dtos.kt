@@ -240,6 +240,10 @@ data class BatteryReportDto(
     /** Y lo mismo repartido por precisión pedida al sistema, que es lo que de verdad gasta. */
     val gps_high_ms: Long = 0L,
     val gps_balanced_ms: Long = 0L,
+    /** Del tiempo medido, cuánto estuvo la pantalla encendida. No es de la app: es lo que explica
+     * casi siempre una bajada alta, y sin esto el informe no tiene con qué comparar. 0 puede ser
+     * "no se encendió" o "esa app es anterior a esto", así que quien lo pinta no supone nada. */
+    val screen_on_ms: Long = 0L,
     val fixes_ok: Long = 0L,
     val fixes_dropped: Long = 0L,
     val pings_ok: Long = 0L,

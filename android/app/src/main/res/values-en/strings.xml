@@ -526,6 +526,7 @@
     <string name="battery_row_drop_rate">Phone drain rate</string>
     <string name="battery_row_app_estimate">Of that, this app</string>
     <string name="battery_value_app_estimate">~%1$d mAh (~%2$d%% of that drop)</string>
+    <string name="battery_row_app_rate">This app rate</string>
     <string name="battery_row_temperature">Temperature</string>
     <string name="battery_row_charging">Charging now</string>
     <string name="battery_value_yes">Yes</string>
@@ -533,6 +534,7 @@
     <string name="battery_row_moving">Moving</string>
     <string name="battery_row_live">Live</string>
     <string name="battery_row_service_off">Service off</string>
+    <string name="battery_row_screen">Screen on</string>
     <string name="battery_row_gps_high">GPS at high accuracy</string>
     <string name="battery_row_gps_balanced">GPS in power saving</string>
     <string name="battery_row_measured">Measured time</string>
@@ -581,9 +583,11 @@
     <string name="battery_verdict_pings">More uploads fail than succeed: the battery is going into network retries.</string>
     <string name="battery_verdict_gps">GPS runs at high accuracy %1$d%% of the measured time: that is the biggest drain.</string>
     <string name="battery_verdict_rate_unknown">Not enough measured time yet to work out the phone drain rate.</string>
-    <string name="battery_verdict_rate_high">The phone battery drops %1$s%% per hour: high. Of that drop, this app accounts for ~%2$d%%; the rest is the screen, other apps and the system.</string>
-    <string name="battery_verdict_rate_low">The phone battery drops %1$s%% per hour: low. Of that drop, this app accounts for ~%2$d%%.</string>
-    <string name="battery_verdict_rate_normal">The phone battery drops %1$s%% per hour: normal. Of that drop, this app accounts for ~%2$d%%.</string>
+    <string name="battery_verdict_rate_high">The phone battery drops %1$s%% per hour: high. Of that drop, this app accounts for ~%2$d%%, that is ~%3$s%% of battery per hour; the rest is the screen, other apps and the system.</string>
+    <string name="battery_verdict_rate_low">The phone battery drops %1$s%% per hour: low. Of that drop, this app accounts for ~%2$d%%, that is ~%3$s%% of battery per hour.</string>
+    <string name="battery_verdict_rate_normal">The phone battery drops %1$s%% per hour: normal. Of that drop, this app accounts for ~%2$d%%, that is ~%3$s%% of battery per hour.</string>
+    <string name="battery_verdict_screen_high">The screen was on for %1$s (%2$d%% of the measured time): that is where most of the drop goes.</string>
+    <string name="battery_verdict_screen_low">The screen was only on %1$d%% of the time and the battery still drained: something else is running in the background.</string>
     <string name="battery_verdict_unmeasured">The app was stopped or asleep for %1$s of the period: the figures above only cover the rest.</string>
     <string name="battery_verdict_ok">Nothing looks misconfigured.</string>
     <!-- Zone entry and exit log -->

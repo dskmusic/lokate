@@ -2,6 +2,7 @@ package com.dskmusic.lokate.location
 
 import android.app.ActivityManager
 import android.app.usage.UsageStatsManager
+import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 import android.content.IntentFilter
@@ -9,6 +10,7 @@ import android.content.SharedPreferences
 import android.os.BatteryManager
 import android.os.Build
 import android.os.PowerManager
+import androidx.core.content.ContextCompat
 import com.dskmusic.lokate.BuildConfig
 import com.dskmusic.lokate.data.remote.dto.BatteryReportDto
 import com.dskmusic.lokate.di.ServiceLocator
@@ -44,6 +46,11 @@ object BatteryStats {
     @Volatile
     var serviceAlive = false
 
+    /** Que el receptor de la pantalla ya esté puesto. [start] lo llama LokateApplication una vez
+     * por proceso, pero registrarlo dos veces contaría cada encendido dos veces. */
+    @Volatile
+    private var screenWatched = false
+
     const val MODE_LIVE = "live"
     const val MODE_MOVE = "move"
     const val MODE_IDLE = "idle"
@@ -59,12 +66,52 @@ object BatteryStats {
      */
     @Synchronized
     fun start(context: Context) {
-        val prefs = prefs(context)
+        val app = context.applicationContext
+        val prefs = prefs(app)
         if (prefs.getLong(K_PERIOD_START, 0L) == 0L) {
-            resetPeriod(prefs, batteryLevel(context), fromCharge = false)
+            resetPeriod(prefs, batteryLevel(app), fromCharge = false)
         } else {
             prefs.edit().putLong(K_SEGMENT_SINCE, System.currentTimeMillis()).apply()
         }
+        startScreenWatch(app, prefs)
+    }
+
+    /**
+     * La pantalla se engancha desde aquí y no desde el servicio en primer plano a propósito: lo
+     * que mide es el gasto del MÓVIL, y tiene que seguir contando con el servicio parado (modos
+     * "solo bajo demanda" y "deshabilitado"). Vive lo que vive el proceso y se va con él, que es
+     * exactamente el trozo de tiempo que este informe dice medir.
+     *
+     * El estado se lee antes de registrar nada: el proceso puede arrancar con la pantalla ya
+     * encendida (alguien abre la app) o ya apagada (lo despierta el worker), y sin esto el primer
+     * tramo entero se le atribuiría al estado que tocara por defecto.
+     */
+    private fun startScreenWatch(app: Context, prefs: SharedPreferences) {
+        prefs.edit().putBoolean(K_SCREEN, screenOn(app)).apply()
+        if (screenWatched) return
+        screenWatched = true
+        ContextCompat.registerReceiver(
+            app,
+            screenReceiver,
+            IntentFilter(Intent.ACTION_SCREEN_ON).apply { addAction(Intent.ACTION_SCREEN_OFF) },
+            ContextCompat.RECEIVER_NOT_EXPORTED,
+        )
+    }
+
+    /**
+     * La pantalla se ha encendido o se ha apagado. Es el dato que más explica una bajada rara:
+     * los mAh de la pantalla no se pueden leer, pero el tiempo sí, y con el móvil quieto eso y
+     * lo que haga la app son casi todo lo que hay.
+     *
+     * ponytail: cuenta también los segundos que la pantalla se enciende sola por una notificación
+     * o por el always-on. En un periodo de horas eso son minutos, no cambia ningún diagnóstico, y
+     * descontarlos pediría saber quién la encendió, que es justo lo que no se puede saber.
+     */
+    @Synchronized
+    fun onScreen(context: Context, on: Boolean) {
+        val prefs = prefs(context)
+        accumulate(prefs)
+        prefs.edit().putBoolean(K_SCREEN, on).apply()
     }
 
     /**
@@ -162,6 +209,7 @@ object BatteryStats {
             off_ms = prefs.getLong(msKey(MODE_OFF), 0L),
             gps_high_ms = prefs.getLong(K_MS_HIGH, 0L),
             gps_balanced_ms = prefs.getLong(K_MS_BALANCED, 0L),
+            screen_on_ms = prefs.getLong(K_MS_SCREEN, 0L),
             fixes_ok = prefs.getLong(K_FIX_OK, 0L),
             fixes_dropped = prefs.getLong(K_FIX_DROP, 0L),
             pings_ok = prefs.getLong(K_PING_OK, 0L),
@@ -194,6 +242,19 @@ object BatteryStats {
     private fun prefs(context: Context): SharedPreferences =
         context.applicationContext.getSharedPreferences(PREFS, Context.MODE_PRIVATE)
 
+    /** ACTION_SCREEN_ON/OFF no se pueden declarar en el manifiesto (el sistema solo las manda a
+     * receptores registrados en caliente), y no piden permiso ninguno. */
+    private val screenReceiver = object : BroadcastReceiver() {
+        override fun onReceive(context: Context, intent: Intent) {
+            onScreen(context, intent.action == Intent.ACTION_SCREEN_ON)
+        }
+    }
+
+    /** Encendida = interactiva. No distingue la pantalla de bloqueo del uso de verdad, que es
+     * todo lo que se puede saber sin permisos especiales. */
+    private fun screenOn(context: Context): Boolean =
+        (context.getSystemService(Context.POWER_SERVICE) as? PowerManager)?.isInteractive == true
+
     private fun accumulate(prefs: SharedPreferences) {
         val now = System.currentTimeMillis()
         val since = prefs.getLong(K_SEGMENT_SINCE, 0L)
@@ -212,6 +273,11 @@ object BatteryStats {
             if (mode != MODE_OFF) {
                 val key = if (prefs.getBoolean(K_HIGH, false)) K_MS_HIGH else K_MS_BALANCED
                 edit.putLong(key, prefs.getLong(key, 0L) + elapsed)
+            }
+            // La pantalla va por libre del modo: cuenta esté el servicio como esté, porque lo que
+            // explica es la bajada del móvil entero y no la parte que pone la app.
+            if (prefs.getBoolean(K_SCREEN, false)) {
+                edit.putLong(K_MS_SCREEN, prefs.getLong(K_MS_SCREEN, 0L) + elapsed)
             }
         }
         edit.apply()
@@ -281,6 +347,8 @@ object BatteryStats {
     private const val K_PERIOD_START = "period_start"
     private const val K_FROM_CHARGE = "from_charge"
     private const val K_START_PCT = "start_pct"
+    private const val K_SCREEN = "screen_on"
+    private const val K_MS_SCREEN = "ms_screen_on"
     private const val K_MS_HIGH = "ms_gps_high"
     private const val K_MS_BALANCED = "ms_gps_balanced"
     private const val K_FIX_OK = "n_fix_ok"
@@ -297,7 +365,7 @@ object BatteryStats {
     /** Todo lo que se pone a cero al empezar un periodo (o sea, al cargar el móvil). */
     private val COUNTERS = listOf(
         msKey(MODE_LIVE), msKey(MODE_MOVE), msKey(MODE_IDLE), msKey(MODE_OFF),
-        K_MS_HIGH, K_MS_BALANCED, K_FIX_OK, K_FIX_DROP, K_PING_OK, K_PING_FAIL,
+        K_MS_SCREEN, K_MS_HIGH, K_MS_BALANCED, K_FIX_OK, K_FIX_DROP, K_PING_OK, K_PING_FAIL,
         K_ONE_SHOT, K_LIVE_SESSION, K_WORKER, K_GEO_EVENT, K_GEO_REGISTER, K_PUSH,
     )
 

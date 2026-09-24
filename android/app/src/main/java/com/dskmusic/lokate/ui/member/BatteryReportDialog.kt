@@ -60,6 +60,9 @@ fun BatteryReportDialog(
     val consumers = remember(report) { consumers(report) }
     val estimatedMah = consumers.sumOf { it.second }
     val appPct = appShare(estimatedMah, drop)
+    // Lo mismo que [appPct] pero sobre la batería entera en vez de sobre lo que bajó: "el 1% de
+    // una bajada" no dice si la bajada fue de treinta puntos o de dos, y este número sí.
+    val appPerHour = if (hours >= MIN_HOURS_FOR_RATE) estimatedMah / TYPICAL_BATTERY_MAH * 100.0 / hours else null
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -140,6 +143,9 @@ fun BatteryReportDialog(
                         appPct,
                     ),
                 )
+                if (appPerHour != null && estimatedMah > 0.0) {
+                    Line(R.string.battery_row_app_rate, "~" + decimal(appPerHour, APP_RATE_DECIMALS) + " %/h")
+                }
                 if (report.temperature_c > 0) Line(R.string.battery_row_temperature, decimal(report.temperature_c) + " °C")
                 if (report.is_charging) Line(R.string.battery_row_charging, stringResource(R.string.battery_value_yes))
 
@@ -149,6 +155,9 @@ fun BatteryReportDialog(
                 Line(R.string.battery_row_moving, share(report.move_ms, measuredMs))
                 Line(R.string.battery_row_live, share(report.live_ms, measuredMs))
                 Line(R.string.battery_row_service_off, share(report.off_ms, measuredMs))
+                if (report.screen_on_ms > 0L) {
+                    Line(R.string.battery_row_screen, share(report.screen_on_ms, measuredMs))
+                }
                 Line(R.string.battery_row_gps_high, duration(report.gps_high_ms))
                 Line(R.string.battery_row_gps_balanced, duration(report.gps_balanced_ms))
                 Line(
@@ -221,7 +230,7 @@ fun BatteryReportDialog(
 
                 // ----------------------------------------------------------------- veredicto
                 Section(stringResource(R.string.battery_section_verdict))
-                verdict(report, measuredMs, dropPerHour, appPct).forEach {
+                verdict(report, measuredMs, dropPerHour, appPct, appPerHour ?: 0.0).forEach {
                     Text(it, style = MaterialTheme.typography.bodyMedium)
                 }
             }
@@ -259,8 +268,9 @@ private fun Line(labelRes: Int, value: String) {
 
 /**
  * El veredicto de abajo del todo: primero lo que está fallando (que explica gastos raros mucho
- * mejor que cualquier número) y al final, siempre, cómo va el gasto. Como mucho [MAX_VERDICT]
- * líneas: esto es una guía para decidir qué tocar, no un informe dentro del informe.
+ * mejor que cualquier número), como mucho [MAX_VERDICT] cosas; después, siempre, cómo va la
+ * bajada del móvil; y al final la pantalla, si tiene algo que decir (ver [screenNote]). Es una
+ * guía para decidir qué tocar, no un informe dentro del informe.
  */
 @Composable
 private fun verdict(
@@ -268,6 +278,7 @@ private fun verdict(
     measuredMs: Long,
     dropPerHour: Double?,
     appPct: Int,
+    appPerHour: Double,
 ): List<String> {
     val frequency = runCatching { LocationFrequency.valueOf(report.frequency.orEmpty()) }.getOrNull()
     val unmeasuredMs = report.period_ms - measuredMs
@@ -294,16 +305,44 @@ private fun verdict(
     }
     val rate = when {
         dropPerHour == null -> stringResource(R.string.battery_verdict_rate_unknown)
-        dropPerHour >= HIGH_DROP_PER_HOUR ->
-            stringResource(R.string.battery_verdict_rate_high, decimal(dropPerHour), appPct)
-        dropPerHour <= LOW_DROP_PER_HOUR ->
-            stringResource(R.string.battery_verdict_rate_low, decimal(dropPerHour), appPct)
-        else -> stringResource(R.string.battery_verdict_rate_normal, decimal(dropPerHour), appPct)
+        dropPerHour >= HIGH_DROP_PER_HOUR -> stringResource(
+            R.string.battery_verdict_rate_high, decimal(dropPerHour), appPct, decimal(appPerHour, APP_RATE_DECIMALS),
+        )
+        dropPerHour <= LOW_DROP_PER_HOUR -> stringResource(
+            R.string.battery_verdict_rate_low, decimal(dropPerHour), appPct, decimal(appPerHour, APP_RATE_DECIMALS),
+        )
+        else -> stringResource(
+            R.string.battery_verdict_rate_normal, decimal(dropPerHour), appPct, decimal(appPerHour, APP_RATE_DECIMALS),
+        )
     }
+    val screen = screenNote(report, measuredMs, dropPerHour)
     return if (problems.isEmpty()) {
-        listOf(stringResource(R.string.battery_verdict_ok), rate)
+        listOfNotNull(stringResource(R.string.battery_verdict_ok), rate, screen)
     } else {
-        problems.take(MAX_VERDICT) + rate
+        problems.take(MAX_VERDICT) + listOfNotNull(rate, screen)
+    }
+}
+
+/**
+ * La línea que cierra el veredicto cuando la pantalla tiene algo que decir: o se llevó la bajada,
+ * o no se encendió casi nada y aun así el móvil se vació (y entonces hay algo corriendo por
+ * detrás que no es esta app, porque lo que pone esta app está dos líneas más arriba).
+ *
+ * Un cero no se comenta nunca: puede ser "no se encendió en tres horas" o "ese móvil lleva una
+ * versión anterior a esto", y no hay forma de distinguirlos desde aquí.
+ */
+@Composable
+private fun screenNote(report: BatteryReportDto, measuredMs: Long, dropPerHour: Double?): String? {
+    if (report.screen_on_ms <= 0L || measuredMs <= 0L) return null
+    val pct = (report.screen_on_ms * 100 / measuredMs).toInt()
+    return when {
+        pct >= SCREEN_MOST_PCT ->
+            stringResource(R.string.battery_verdict_screen_high, duration(report.screen_on_ms), pct)
+        // Poca pantalla solo es noticia si además se fue la batería: si no se fue, es un móvil
+        // en el bolsillo portándose bien.
+        pct <= SCREEN_LITTLE_PCT && (dropPerHour ?: 0.0) >= HIGH_DROP_PER_HOUR ->
+            stringResource(R.string.battery_verdict_screen_low, pct)
+        else -> null
     }
 }
 
@@ -404,7 +443,8 @@ private fun duration(ms: Long): String {
     }
 }
 
-private fun decimal(value: Double): String = String.format(java.util.Locale.getDefault(), "%.1f", value)
+private fun decimal(value: Double, digits: Int = 1): String =
+    String.format(java.util.Locale.getDefault(), "%." + digits + "f", value)
 
 /** El ritmo de reposo del móvil del OTRO, que es de quien habla el informe; por eso no se lee de
  * LocationForegroundService, que es el de este (y además lo tiene privado). Mismo caso que en
@@ -412,6 +452,10 @@ private fun decimal(value: Double): String = String.format(java.util.Locale.getD
  * distinta de la app, y entonces lo único que pasa es que el paréntesis de la fila de frecuencia
  * dice cinco minutos de más o de menos. */
 private const val IDLE_INTERVAL_MS = 15 * 60_000L
+
+/** El ritmo de la app va en centésimas: con un decimal, cualquier uso normal sale "0,1 %/h" o
+ * directamente "0,0 %/h", que es justo la precisión que hace falta para creerse el dato. */
+private const val APP_RATE_DECIMALS = 2
 
 private const val TOP_CONSUMERS = 3
 private const val MAX_VERDICT = 3
@@ -432,6 +476,10 @@ private const val TYPICAL_BATTERY_MAH = 4000.0
  * estuvo parada o dormida y hay que decirlo. */
 private const val MIN_UNMEASURED_MS = 60_000L
 private const val UNMEASURED_SHARE_PCT = 25
+
+/** Cuánta pantalla es "ahí se fue la batería" y cuánta es "ese móvil ni se ha tocado". */
+private const val SCREEN_MOST_PCT = 25
+private const val SCREEN_LITTLE_PCT = 5
 
 /** A partir de dónde se dice que algo va mal. */
 private const val BUCKET_RARE = 40

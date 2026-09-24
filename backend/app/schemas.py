@@ -370,6 +370,7 @@ class BatteryReport(BaseModel):
     off_ms: int = 0
     gps_high_ms: int = 0
     gps_balanced_ms: int = 0
+    screen_on_ms: int = 0
     fixes_ok: int = 0
     fixes_dropped: int = 0
     pings_ok: int = 0

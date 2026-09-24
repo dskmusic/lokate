@@ -532,6 +532,7 @@
     <string name="battery_row_drop_rate">Ritmo de bajada del móvil</string>
     <string name="battery_row_app_estimate">De eso, esta app</string>
     <string name="battery_value_app_estimate">~%1$d mAh (~%2$d%% de esa bajada)</string>
+    <string name="battery_row_app_rate">Ritmo de esta app</string>
     <string name="battery_row_temperature">Temperatura</string>
     <string name="battery_row_charging">Cargando ahora</string>
     <string name="battery_value_yes">Sí</string>
@@ -539,6 +540,7 @@
     <string name="battery_row_moving">En movimiento</string>
     <string name="battery_row_live">En directo</string>
     <string name="battery_row_service_off">Servicio apagado</string>
+    <string name="battery_row_screen">Pantalla encendida</string>
     <string name="battery_row_gps_high">GPS en alta precisión</string>
     <string name="battery_row_gps_balanced">GPS en modo ahorro</string>
     <string name="battery_row_measured">Tiempo medido</string>
@@ -587,9 +589,11 @@
     <string name="battery_verdict_pings">Fallan más envíos de los que salen: la batería se va en reintentos de red.</string>
     <string name="battery_verdict_gps">El GPS va en alta precisión el %1$d%% del tiempo medido: es lo que más gasta.</string>
     <string name="battery_verdict_rate_unknown">Todavía no hay tiempo medido suficiente para calcular el ritmo de bajada del móvil.</string>
-    <string name="battery_verdict_rate_high">La batería del móvil baja %1$s%% por hora: ritmo alto. De esa bajada, esta app explica ~%2$d%%; el resto es la pantalla, otras apps y el sistema.</string>
-    <string name="battery_verdict_rate_low">La batería del móvil baja %1$s%% por hora: ritmo bajo. De esa bajada, esta app explica ~%2$d%%.</string>
-    <string name="battery_verdict_rate_normal">La batería del móvil baja %1$s%% por hora: ritmo normal. De esa bajada, esta app explica ~%2$d%%.</string>
+    <string name="battery_verdict_rate_high">La batería del móvil baja %1$s%% por hora: ritmo alto. De esa bajada, esta app explica ~%2$d%%, o sea ~%3$s%% de batería por hora; el resto es la pantalla, otras apps y el sistema.</string>
+    <string name="battery_verdict_rate_low">La batería del móvil baja %1$s%% por hora: ritmo bajo. De esa bajada, esta app explica ~%2$d%%, o sea ~%3$s%% de batería por hora.</string>
+    <string name="battery_verdict_rate_normal">La batería del móvil baja %1$s%% por hora: ritmo normal. De esa bajada, esta app explica ~%2$d%%, o sea ~%3$s%% de batería por hora.</string>
+    <string name="battery_verdict_screen_high">La pantalla estuvo encendida %1$s (%2$d%% del tiempo medido): ahí se va la mayor parte de la bajada.</string>
+    <string name="battery_verdict_screen_low">La pantalla solo estuvo encendida el %1$d%% del tiempo y aun así la batería se fue: hay algo más corriendo por detrás.</string>
     <string name="battery_verdict_unmeasured">La app estuvo parada o dormida %1$s del periodo: lo de arriba solo cuenta el resto.</string>
     <string name="battery_verdict_ok">No se ve nada mal configurado.</string>
     <!-- Registro de entradas y salidas de zona -->
