@@ -32,8 +32,14 @@ import com.dskmusic.lokate.util.formatTimestamp
  * y los números están para poder discutirlo.
  *
  * Lo que se enseña arriba es una ESTIMACIÓN: Android no deja leer los mAh reales de una app
- * (ni a ella misma), así que se multiplica el tiempo medido por un consumo típico de cada cosa.
+ * (ni a ella misma), así que se multiplica lo que la app hizo por un consumo típico de cada cosa.
  * Sirve para ordenar de mayor a menor y para ver bultos raros, no para dar un dato exacto.
+ *
+ * Y hay dos sujetos distintos en la misma pantalla, que es lo que más despista: el %/h y los
+ * puntos de batería son del MÓVIL ENTERO (pantalla, otras apps, sistema), y los mAh y los
+ * porcentajes del reparto de arriba son solo de esta app. Cada fila lo dice con todas las letras
+ * a propósito: antes el veredicto acababa con un "gasto alto: 9%/h" que parecía acusar a la app
+ * tres líneas después de decir que la app ponía el 3%.
  */
 @Composable
 fun BatteryReportDialog(
@@ -53,6 +59,7 @@ fun BatteryReportDialog(
     val dropPerHour = if (drop != null && hours >= MIN_HOURS_FOR_RATE) drop / hours else null
     val consumers = remember(report) { consumers(report) }
     val estimatedMah = consumers.sumOf { it.second }
+    val appPct = appShare(estimatedMah, drop)
 
     AlertDialog(
         onDismissRequest = onDismiss,
@@ -85,6 +92,11 @@ fun BatteryReportDialog(
                         style = MaterialTheme.typography.bodySmall,
                     )
                 } else {
+                    Text(
+                        stringResource(R.string.battery_top_caption, estimatedMah.toInt()),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
                     consumers.take(TOP_CONSUMERS).forEachIndexed { index, (labelRes, mah) ->
                         val pct = (mah / estimatedMah * 100).toInt()
                         Text(
@@ -125,7 +137,7 @@ fun BatteryReportDialog(
                     stringResource(
                         R.string.battery_value_app_estimate,
                         estimatedMah.toInt(),
-                        appShare(estimatedMah, drop),
+                        appPct,
                     ),
                 )
                 if (report.temperature_c > 0) Line(R.string.battery_row_temperature, decimal(report.temperature_c) + " °C")
@@ -209,7 +221,7 @@ fun BatteryReportDialog(
 
                 // ----------------------------------------------------------------- veredicto
                 Section(stringResource(R.string.battery_section_verdict))
-                verdict(report, measuredMs, dropPerHour).forEach {
+                verdict(report, measuredMs, dropPerHour, appPct).forEach {
                     Text(it, style = MaterialTheme.typography.bodyMedium)
                 }
             }
@@ -251,7 +263,12 @@ private fun Line(labelRes: Int, value: String) {
  * líneas: esto es una guía para decidir qué tocar, no un informe dentro del informe.
  */
 @Composable
-private fun verdict(report: BatteryReportDto, measuredMs: Long, dropPerHour: Double?): List<String> {
+private fun verdict(
+    report: BatteryReportDto,
+    measuredMs: Long,
+    dropPerHour: Double?,
+    appPct: Int,
+): List<String> {
     val frequency = runCatching { LocationFrequency.valueOf(report.frequency.orEmpty()) }.getOrNull()
     val unmeasuredMs = report.period_ms - measuredMs
     val problems = buildList {
@@ -277,9 +294,11 @@ private fun verdict(report: BatteryReportDto, measuredMs: Long, dropPerHour: Dou
     }
     val rate = when {
         dropPerHour == null -> stringResource(R.string.battery_verdict_rate_unknown)
-        dropPerHour >= HIGH_DROP_PER_HOUR -> stringResource(R.string.battery_verdict_rate_high, decimal(dropPerHour))
-        dropPerHour <= LOW_DROP_PER_HOUR -> stringResource(R.string.battery_verdict_rate_low, decimal(dropPerHour))
-        else -> stringResource(R.string.battery_verdict_rate_normal, decimal(dropPerHour))
+        dropPerHour >= HIGH_DROP_PER_HOUR ->
+            stringResource(R.string.battery_verdict_rate_high, decimal(dropPerHour), appPct)
+        dropPerHour <= LOW_DROP_PER_HOUR ->
+            stringResource(R.string.battery_verdict_rate_low, decimal(dropPerHour), appPct)
+        else -> stringResource(R.string.battery_verdict_rate_normal, decimal(dropPerHour), appPct)
     }
     return if (problems.isEmpty()) {
         listOf(stringResource(R.string.battery_verdict_ok), rate)
@@ -291,13 +310,21 @@ private fun verdict(report: BatteryReportDto, measuredMs: Long, dropPerHour: Dou
 /**
  * Reparto estimado del gasto, de mayor a menor.
  *
+ * El modo ahorro se cobra POR POSICIÓN y no por tiempo, que es la diferencia entre lo que la app
+ * tiene pedido y lo que el móvil gasta de verdad: con el móvil quieto el servicio alarga el
+ * intervalo a quince minutos, y multiplicar tres horas de suscripción por unos miliamperios fijos
+ * le daba el 69% del reparto a once posiciones. El GPS fino sí va por tiempo: ahí el chip está
+ * encendido de verdad todo el rato que se mide.
+ *
  * ponytail: los miliamperios de cada cosa son los típicos de un móvil de gama media, no los de
  * ESTE móvil — el dato real (mAh por app) es privilegiado y no hay forma de leerlo. Si algún
- * día hay que afinarlo, se tocan estas constantes y ya: son el mando de calibración.
+ * día hay que afinarlo, se tocan estas constantes y ya: son el mando de calibración. Las
+ * posiciones del rato en directo se cuentan dos veces (por fix y dentro del tiempo de GPS fino);
+ * son segundos contra horas y no mueven el orden de la lista.
  */
 private fun consumers(report: BatteryReportDto): List<Pair<Int, Double>> = listOf(
     R.string.battery_consumer_gps_high to report.gps_high_ms / 3_600_000.0 * MA_GPS_HIGH,
-    R.string.battery_consumer_gps_balanced to report.gps_balanced_ms / 3_600_000.0 * MA_GPS_BALANCED,
+    R.string.battery_consumer_gps_balanced to (report.fixes_ok + report.fixes_dropped) * MAH_FIX_BALANCED,
     R.string.battery_consumer_pings to (report.pings_ok + report.pings_failed) * MAH_PING,
     R.string.battery_consumer_one_shots to report.one_shots * MAH_ONE_SHOT,
     R.string.battery_consumer_worker to report.worker_runs * MAH_WORKER,
@@ -306,7 +333,7 @@ private fun consumers(report: BatteryReportDto): List<Pair<Int, Double>> = listO
     R.string.battery_consumer_pushes to report.pushes * MAH_PUSH,
 ).filter { it.second > 0.0 }.sortedByDescending { it.second }
 
-/** Qué parte de lo que ha bajado la batería explica la app, en porcentaje. Sale de suponer una
+/** Qué parte de lo que ha bajado la batería DEL MÓVIL explica la app, en porcentaje. Sale de suponer una
  * batería de [TYPICAL_BATTERY_MAH]: el tamaño real tampoco se puede leer, y para "¿es la app o
  * es el móvil?" sobra con el orden de magnitud. */
 private fun appShare(estimatedMah: Double, drop: Int?): Int {
@@ -318,10 +345,18 @@ private fun appShare(estimatedMah: Double, drop: Int?): Int {
 private fun share(ms: Long, totalMs: Long): String =
     if (totalMs <= 0L) duration(ms) else stringResource(R.string.battery_value_share, duration(ms), (ms * 100 / totalMs).toInt())
 
+/**
+ * La frecuencia del ajuste y, entre paréntesis, la de verdad cuando el móvil lleva rato quieto:
+ * ahí el servicio pide como mucho una posición cada [IDLE_INTERVAL_MS] por muy corto que sea el
+ * ajuste. Sin esto el informe pone "cada 30 segundos" justo encima de
+ * diez posiciones en tres horas y parece que algo va roto, cuando es exactamente lo previsto.
+ */
 @Composable
 private fun frequencyLabel(name: String?): String {
-    val frequency = runCatching { LocationFrequency.valueOf(name.orEmpty()) }.getOrNull()
-    return if (frequency != null) stringResource(frequency.labelRes) else name.orEmpty()
+    val frequency = runCatching { LocationFrequency.valueOf(name.orEmpty()) }.getOrNull() ?: return name.orEmpty()
+    val label = stringResource(frequency.labelRes)
+    if (!frequency.sendsPeriodicUpdates || frequency.intervalMs >= IDLE_INTERVAL_MS) return label
+    return label + stringResource(R.string.battery_frequency_idle_note, duration(IDLE_INTERVAL_MS))
 }
 
 private fun modeLabel(mode: String?): Int = when (mode) {
@@ -371,12 +406,20 @@ private fun duration(ms: Long): String {
 
 private fun decimal(value: Double): String = String.format(java.util.Locale.getDefault(), "%.1f", value)
 
+/** El ritmo de reposo del móvil del OTRO, que es de quien habla el informe; por eso no se lee de
+ * LocationForegroundService, que es el de este (y además lo tiene privado). Mismo caso que en
+ * ui/common/UpdateStatus.kt: coinciden salvo que esa persona lleve una versión
+ * distinta de la app, y entonces lo único que pasa es que el paréntesis de la fila de frecuencia
+ * dice cinco minutos de más o de menos. */
+private const val IDLE_INTERVAL_MS = 15 * 60_000L
+
 private const val TOP_CONSUMERS = 3
 private const val MAX_VERDICT = 3
 
-/** Consumo típico de cada cosa, el mando de calibración de [consumers]. */
+/** Consumo típico de cada cosa, el mando de calibración de [consumers]. El GPS fino en mA
+ * (está encendido todo el rato que se mide); el modo ahorro en mAh por posición conseguida. */
 private const val MA_GPS_HIGH = 90.0
-private const val MA_GPS_BALANCED = 8.0
+private const val MAH_FIX_BALANCED = 0.6
 private const val MAH_PING = 0.25
 private const val MAH_ONE_SHOT = 0.5
 private const val MAH_WORKER = 0.15

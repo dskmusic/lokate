@@ -503,8 +503,9 @@
     <string name="battery_report_stale">Their phone did not answer: this is the last saved report.</string>
     <string name="battery_report_received">Received: %1$s</string>
     <string name="battery_report_failed">Their phone did not send the report and there is no earlier one saved.</string>
-    <string name="battery_top_title">Biggest drains</string>
+    <string name="battery_top_title">Biggest drains inside the app</string>
     <string name="battery_top_empty">No measured activity yet.</string>
+    <string name="battery_top_caption">Split of the ~%1$d mAh from the app, not of the phone battery.</string>
     <string name="battery_top_row">%1$d. %2$s — %3$d%%</string>
     <string name="battery_consumer_gps_high">GPS at high accuracy</string>
     <string name="battery_consumer_gps_balanced">GPS in power saving</string>
@@ -520,11 +521,11 @@
     <string name="battery_section_verdict">Verdict</string>
     <string name="battery_row_since_charge">Since last charge</string>
     <string name="battery_row_since_measure">Since measuring started</string>
-    <string name="battery_row_battery">Battery</string>
+    <string name="battery_row_battery">Phone battery</string>
     <string name="battery_value_battery">%1$d%% → %2$d%% (-%3$d)</string>
-    <string name="battery_row_drop_rate">Drain rate</string>
-    <string name="battery_row_app_estimate">App estimate</string>
-    <string name="battery_value_app_estimate">~%1$d mAh (~%2$d%% of the drop)</string>
+    <string name="battery_row_drop_rate">Phone drain rate</string>
+    <string name="battery_row_app_estimate">Of that, this app</string>
+    <string name="battery_value_app_estimate">~%1$d mAh (~%2$d%% of that drop)</string>
     <string name="battery_row_temperature">Temperature</string>
     <string name="battery_row_charging">Charging now</string>
     <string name="battery_value_yes">Yes</string>
@@ -549,6 +550,7 @@
     <string name="battery_value_geofences">%1$d entries or exits / %2$d registrations</string>
     <string name="battery_row_pushes">Pushes received</string>
     <string name="battery_row_frequency">Configured frequency</string>
+    <string name="battery_frequency_idle_note"> (still: %1$s)</string>
     <string name="battery_row_mode">Current mode</string>
     <string name="battery_row_service">Service</string>
     <string name="battery_row_bucket">Priority given by Android</string>
@@ -578,10 +580,10 @@
     <string name="battery_verdict_service_off">The service is stopped even though their frequency asks for periodic updates: no location is being sent.</string>
     <string name="battery_verdict_pings">More uploads fail than succeed: the battery is going into network retries.</string>
     <string name="battery_verdict_gps">GPS runs at high accuracy %1$d%% of the measured time: that is the biggest drain.</string>
-    <string name="battery_verdict_rate_unknown">Not enough measured time yet to work out the drain rate.</string>
-    <string name="battery_verdict_rate_high">High drain: %1$s%% per hour.</string>
-    <string name="battery_verdict_rate_low">Low drain: %1$s%% per hour.</string>
-    <string name="battery_verdict_rate_normal">Normal drain: %1$s%% per hour.</string>
+    <string name="battery_verdict_rate_unknown">Not enough measured time yet to work out the phone drain rate.</string>
+    <string name="battery_verdict_rate_high">The phone battery drops %1$s%% per hour: high. Of that drop, this app accounts for ~%2$d%%; the rest is the screen, other apps and the system.</string>
+    <string name="battery_verdict_rate_low">The phone battery drops %1$s%% per hour: low. Of that drop, this app accounts for ~%2$d%%.</string>
+    <string name="battery_verdict_rate_normal">The phone battery drops %1$s%% per hour: normal. Of that drop, this app accounts for ~%2$d%%.</string>
     <string name="battery_verdict_unmeasured">The app was stopped or asleep for %1$s of the period: the figures above only cover the rest.</string>
     <string name="battery_verdict_ok">Nothing looks misconfigured.</string>
     <!-- Zone entry and exit log -->
