@@ -73,6 +73,25 @@ class User(Base):
     # Es para que un administrador pueda entrar a mirar un grupo sin aparecer en él.
     # ponytail: CSV como los watched_ids de las preferencias, son un puñado de ids y siempre se leen enteros.
     hidden_group_ids = Column(String, nullable=True)
+    # Ultimo informe de bateria que subio su movil, JSON tal cual lo escribio la app mas la
+    # fecha de recepcion (ver routers/locations.upload_battery_report). Solo lo mira un admin
+    # desde la ficha de ese usuario; el servidor no interpreta nada de dentro.
+    # ponytail: una columna de texto con el ultimo y ya, como UserBackup — el historico no le
+    # hace falta a nadie y desglosarlo en columnas obligaria a tocar el servidor cada vez que
+    # la app anade un contador.
+    battery_report = Column(String, nullable=True)
+    # Version de la app que tiene instalada ese movil (BuildConfig.VERSION_NAME). La manda en
+    # cada /auth/device y sirve para una sola cosa: cuando cambia, avisar a los administradores
+    # de que esa persona ya ha actualizado. NULL = su app es anterior a esta version.
+    app_version = Column(String, nullable=True)
+    # Ultimo aviso de "actualiza la app" que se le mando y en que quedo. Tres columnas sueltas en
+    # vez de una tabla de envios: de cada persona solo interesa el ultimo, y asi la lista que ve
+    # el admin sale de un SELECT a users sin unir nada.
+    update_notice_at = Column(DateTime, nullable=True)
+    # "sent" (mandado, sin respuesta todavia), "started", "installed" o "dismissed" (ver
+    # routers/auth.update_notice_status).
+    update_notice_status = Column(String, nullable=True)
+    update_notice_status_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=utcnow)
 
     group = relationship("Group", back_populates="users")
@@ -162,6 +181,49 @@ class ZoneNotificationPref(Base):
         return [uid for uid in (self.watched_ids or "").split(",") if uid]
 
 
+
+
+class ZoneEvent(Base):
+    """Cada entrada y salida de zona que el servidor ha decidido de verdad, con a cuanta gente
+    avisó y, si no avisó a nadie, por qué.
+
+    Hasta ahora solo se guardaba el estado actual ([ZoneState]), así que "¿por qué no me llegó el
+    aviso de ayer?" no tenía respuesta: había que reconstruirla de los pings a mano
+    (app/zone_replay.py). Esto lo deja escrito en el momento en que pasa, que es lo único que
+    distingue "no se aviso" de "se avisó y el push no llegó".
+
+    ponytail: tabla propia y no una columna más en los pings — una transición ocupa nada (son
+    unas pocas al día por persona) y los pings se barren cada 30 días con otra lógica."""
+
+    __tablename__ = "zone_events"
+
+    id = Column(String, primary_key=True, default=gen_id)
+    user_id = Column(String, ForeignKey("users.id"), nullable=False)
+    zone_id = Column(String, ForeignKey("zones.id"), nullable=False)
+    # Redundante con el del usuario, pero el usuario puede cambiar de grupo y el evento no: es
+    # dónde pasó, no dónde está ahora esa persona.
+    group_id = Column(String, ForeignKey("groups.id"), nullable=False)
+    entered = Column(Boolean, nullable=False)
+    at = Column(DateTime, default=utcnow, index=True)
+    lat = Column(Float, nullable=False)
+    lng = Column(Float, nullable=False)
+    accuracy = Column(Float, nullable=True)
+    # Distancia al centro de la zona en ese momento: con ella y la precisión se ve de un vistazo
+    # si la decisión fue holgada o justita, sin tener que repasar los pings.
+    distance_m = Column(Float, nullable=True)
+    notified = Column(Integer, nullable=False, default=0)
+    # Por qué no se avisó a nadie (o en qué contexto raro se decidió). NULL = aviso normal.
+    # Los códigos los traduce la app: no_prefs, hidden, private_zone, test, resync.
+    reason = Column(String, nullable=True)
+
+    user = relationship("User")
+    zone = relationship("Zone")
+
+    # La consulta del registro es siempre "lo de esta persona, lo más reciente primero".
+    __table_args__ = (Index("ix_zone_events_user_at", "user_id", "at"),)
+
+    def __str__(self) -> str:  # legible en el panel admin
+        return ("entró en" if self.entered else "salió de") + f" {self.zone_id}"
 
 
 class UserBackup(Base):

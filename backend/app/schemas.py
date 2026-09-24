@@ -202,6 +202,10 @@ class ZoneResponse(BaseModel):
 # ---- Device ----
 class RegisterDeviceRequest(BaseModel):
     fcm_token: str
+    # Version instalada (ver models.User.app_version). Solo se guarda: los avisos al admin los
+    # manda la app a proposito (ver /auth/update-notice/status), asi llegan aunque se reinstale
+    # la misma version encima.
+    app_version: str | None = None
     location_frequency: str | None = None
     config_issues: str | None = None
     # Canal de notificación de zona de ese móvil (ver models.User.zone_channel_id).
@@ -339,6 +343,67 @@ class AdminKnownWifiRequest(BaseModel):
     ssid: str = Field(min_length=1, max_length=64)
 
 
+class BatteryReport(BaseModel):
+    """Lo que un movil cuenta de si mismo cuando un admin le pide el informe de bateria.
+
+    Lo hace y lo mide la propia app (ver BatteryStats.kt en Android): el desglose por app que
+    enseña Android es privilegiado y ninguna app puede leerlo, ni el suyo. Aqui el servidor no
+    interpreta nada — solo valida que sea del tamano y del tipo que dice ser, y lo guarda.
+
+    Todos los campos con valor por defecto a proposito: una version de la app mas antigua o mas
+    nueva que la del servidor sigue pudiendo subir el suyo sin que esto reviente.
+    """
+
+    generated_at: int = 0
+    app_version: str | None = Field(default=None, max_length=40)
+    device: str | None = Field(default=None, max_length=160)
+    period_start: int = 0
+    period_ms: int = 0
+    period_from_charge: bool = False
+    battery_start_pct: int = -1
+    battery_now_pct: int = -1
+    is_charging: bool = False
+    temperature_c: float = -1
+    live_ms: int = 0
+    move_ms: int = 0
+    idle_ms: int = 0
+    off_ms: int = 0
+    gps_high_ms: int = 0
+    gps_balanced_ms: int = 0
+    fixes_ok: int = 0
+    fixes_dropped: int = 0
+    pings_ok: int = 0
+    pings_failed: int = 0
+    one_shots: int = 0
+    live_sessions: int = 0
+    worker_runs: int = 0
+    geofence_events: int = 0
+    geofence_registers: int = 0
+    pushes: int = 0
+    frequency: str | None = Field(default=None, max_length=30)
+    mode: str | None = Field(default=None, max_length=20)
+    last_tick_at: int = 0
+    service_running: bool = False
+    standby_bucket: int = -1
+    ignoring_battery_optimizations: bool = False
+    power_save: bool = False
+    device_idle: bool = False
+    config_issues: str | None = Field(default=None, max_length=200)
+    exit_count: int = 0
+    last_exit_at: int = 0
+    last_exit_reason: int = 0
+    last_exit_description: str | None = Field(default=None, max_length=200)
+
+
+class AdminBatteryReportResponse(BaseModel):
+    """known=False: ese movil no ha subido ningun informe todavia (esta apagado, no le ha dado
+    tiempo a contestar o su app es anterior a esto)."""
+
+    known: bool
+    received_at: datetime | None = None
+    report: BatteryReport | None = None
+
+
 class AdminKnownWifiResponse(BaseModel):
     """known=False: ese usuario no tiene copia en la nube, asi que el servidor no ha visto nunca
     su lista de wifis. updated_at es de cuando se hizo esa copia, no de ahora mismo."""
@@ -372,6 +437,78 @@ class AdminZoneCreateRequest(BaseModel):
     lat: float = Field(ge=-90, le=90)
     lng: float = Field(ge=-180, le=180)
     radius_m: float = Field(gt=0, le=50000)
+
+
+class AdminIdsRequest(BaseModel):
+    """Una lista de ids para borrar de golpe. Uno solo es una lista de uno: así el borrado de
+    una fila y el de una selección entera son el mismo endpoint."""
+
+    ids: list[str]
+
+
+class AdminDeletedResponse(BaseModel):
+    deleted: int
+
+
+class UpdateNoticeStatusRequest(BaseModel):
+    """Que ha hecho el usuario con el aviso de "actualiza la app"."""
+
+    # "started" (ha pulsado actualizar y el APK ya esta descargado), "installed" (ha vuelto a
+    # abrir la app despues) o "dismissed" (lo ha barrido sin hacer nada).
+    stage: str
+    app_version: str | None = None
+
+
+class AdminUpdateNoticeRequest(BaseModel):
+    """Aviso de "actualiza la app". Destinatarios, del más concreto al más amplio: si vienen
+    user_ids se usan esos; si no, el grupo; si no hay nada, TODOS los usuarios de todos los
+    grupos (incluidos los que no tienen grupo)."""
+
+    message: str | None = None
+    group_id: str | None = None
+    user_ids: list[str] | None = None
+
+
+class AdminUpdateNoticeResponse(BaseModel):
+    """[sent] son los que tienen token FCM y por tanto pueden recibirlo; [without_token] los que
+    no lo tienen (nunca han abierto esta versión, o cerraron sesión) y no se van a enterar."""
+
+    sent: int
+    without_token: int
+
+
+class AdminUpdateNoticeStateResponse(BaseModel):
+    """Como va el ultimo aviso de actualizacion de una persona. [status]: "sent" (mandado y
+    sin noticias), "started", "installed" o "dismissed"; [status_at] es cuando llego esa
+    respuesta, null mientras no haya ninguna."""
+
+    user_id: str
+    user_name: str
+    group_name: str | None = None
+    sent_at: datetime
+    status: str
+    status_at: datetime | None = None
+    app_version: str | None = None
+
+
+class AdminZoneEventResponse(BaseModel):
+    """Una entrada o salida ya decidida por el servidor, tal y como la enseña el registro del
+    panel. Los nombres vienen resueltos (no los ids): esto se lee, no se cruza con nada."""
+
+    id: str
+    at: datetime
+    user_id: str
+    user_name: str
+    zone_id: str
+    zone_name: str
+    entered: bool
+    notified: int
+    # NULL = aviso normal. Resto de códigos en models.ZoneEvent.reason; los traduce la app.
+    reason: str | None = None
+    distance_m: float | None = None
+    accuracy: float | None = None
+    lat: float
+    lng: float
 
 
 class AdminHistoryPoint(BaseModel):

@@ -1,6 +1,7 @@
 package com.dskmusic.lokate.data.remote
 
 import com.dskmusic.lokate.data.remote.dto.AdminBackupCreateRequestDto
+import com.dskmusic.lokate.data.remote.dto.AdminBatteryReportDto
 import com.dskmusic.lokate.data.remote.dto.AdminBackupDto
 import com.dskmusic.lokate.data.remote.dto.AdminDashboardDto
 import com.dskmusic.lokate.data.remote.dto.AdminDeleteAllDto
@@ -17,10 +18,17 @@ import com.dskmusic.lokate.data.remote.dto.AdminUserDto
 import com.dskmusic.lokate.data.remote.dto.AdminUserUpdateRequestDto
 import com.dskmusic.lokate.data.remote.dto.AdminZoneCreateRequestDto
 import com.dskmusic.lokate.data.remote.dto.AdminZoneDto
+import com.dskmusic.lokate.data.remote.dto.AdminDeletedDto
+import com.dskmusic.lokate.data.remote.dto.AdminIdsRequestDto
+import com.dskmusic.lokate.data.remote.dto.AdminUpdateNoticeDto
+import com.dskmusic.lokate.data.remote.dto.AdminUpdateNoticeResultDto
+import com.dskmusic.lokate.data.remote.dto.AdminUpdateNoticeStateDto
+import com.dskmusic.lokate.data.remote.dto.AdminZoneEventDto
 import com.dskmusic.lokate.data.remote.dto.AdminZoneUpdateRequestDto
 import com.dskmusic.lokate.data.remote.dto.AvatarResponseDto
 import com.dskmusic.lokate.data.remote.dto.BackupDto
 import com.dskmusic.lokate.data.remote.dto.BackupUploadRequestDto
+import com.dskmusic.lokate.data.remote.dto.BatteryReportDto
 import com.dskmusic.lokate.data.remote.dto.GroupCreateRequestDto
 import com.dskmusic.lokate.data.remote.dto.GroupDto
 import com.dskmusic.lokate.data.remote.dto.GroupJoinRequestDto
@@ -40,6 +48,7 @@ import com.dskmusic.lokate.data.remote.dto.TestNotificationRequestDto
 import com.dskmusic.lokate.data.remote.dto.TokenResponseDto
 import com.dskmusic.lokate.data.remote.dto.UpdateCheckDto
 import com.dskmusic.lokate.data.remote.dto.UpdateFlagRequestDto
+import com.dskmusic.lokate.data.remote.dto.UpdateNoticeStatusDto
 import com.dskmusic.lokate.data.remote.dto.UpdateProfileRequestDto
 import com.dskmusic.lokate.data.remote.dto.UserDto
 import com.dskmusic.lokate.data.remote.dto.ZoneCreateRequestDto
@@ -131,6 +140,10 @@ interface ApiService {
     @POST("location/request-location/{userId}")
     suspend fun requestLocation(@Path("userId") userId: String)
 
+    /** Este móvil sube su propio informe de batería, cuando un admin se lo ha pedido por push. */
+    @POST("location/battery-report")
+    suspend fun uploadBatteryReport(@Body body: BatteryReportDto)
+
     /** Pone (o quita) a otro miembro en tiempo real mientras lo sigamos en el mapa. */
     @POST("location/live/{userId}")
     suspend fun setLiveTracking(@Path("userId") userId: String, @Query("active") active: Boolean)
@@ -211,6 +224,14 @@ interface ApiService {
     @POST("admin-api/users/{id}/locate")
     suspend fun adminLocateUser(@Path("id") id: String)
 
+    /** Le pide por push al móvil de ese usuario que haga y suba su informe de batería. */
+    @POST("admin-api/users/{id}/battery-report")
+    suspend fun adminRequestBatteryReport(@Path("id") id: String)
+
+    /** Y el último que subió, que es lo que se sondea mientras se espera al de ahora. */
+    @GET("admin-api/users/{id}/battery-report")
+    suspend fun adminBatteryReport(@Path("id") id: String): AdminBatteryReportDto
+
     @GET("admin-api/users/{id}/known-wifi")
     suspend fun adminKnownWifi(@Path("id") id: String): AdminKnownWifiDto
 
@@ -232,6 +253,32 @@ interface ApiService {
 
     @DELETE("admin-api/zones/{id}")
     suspend fun adminDeleteZone(@Path("id") id: String)
+
+    /** Registro de entradas y salidas de zona. Todos los filtros son opcionales; el servidor
+     * limita el tamaño (ver admin_api.list_zone_events). */
+    @GET("admin-api/zone-events")
+    suspend fun adminZoneEvents(
+        @Query("user_id") userId: String? = null,
+        @Query("zone_id") zoneId: String? = null,
+        @Query("days") days: Int = 7,
+        @Query("only_missed") onlyMissed: Boolean = false,
+    ): List<AdminZoneEventDto>
+
+    /** Borra entradas del registro: una o las que se hayan marcado, misma llamada. */
+    @POST("admin-api/zone-events/delete")
+    suspend fun adminDeleteZoneEvents(@Body body: AdminIdsRequestDto): AdminDeletedDto
+
+    /** Aviso de "actualiza la app" a todos, a un grupo o a personas sueltas. */
+    @POST("admin-api/notify-update")
+    suspend fun adminNotifyUpdate(@Body body: AdminUpdateNoticeDto): AdminUpdateNoticeResultDto
+
+    /** Como quedo el ultimo aviso de actualizacion de cada uno, el mas reciente primero. */
+    @GET("admin-api/update-notice/status")
+    suspend fun adminUpdateNoticeStates(): List<AdminUpdateNoticeStateDto>
+
+    /** Que ha hecho el usuario con el aviso de actualizacion: los admins se enteran. */
+    @POST("auth/update-notice/status")
+    suspend fun updateNoticeStatus(@Body body: UpdateNoticeStatusDto)
 
     @GET("admin-api/files/{folder}")
     suspend fun adminListFiles(@Path("folder") folder: String): List<AdminFileDto>

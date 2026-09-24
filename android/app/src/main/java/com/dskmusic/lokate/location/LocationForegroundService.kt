@@ -119,6 +119,9 @@ class LocationForegroundService : Service() {
                 trackStillness(it)
             }
             val toSend = result.locations.filter(::worthSending)
+            // Para el informe de batería: cuántos fixes ha entregado el sistema y cuántos se
+            // han tirado. Un móvil con muchos tirados está encendiendo el GPS para nada.
+            result.locations.forEach { BatteryStats.onFix(applicationContext, sent = it in toSend) }
             // Momento barato para enterarse de que se ha entrado o salido de un wifi conocido:
             // si nada ha cambiado, applyLocationRequest no hace nada.
             applyLocationRequest()
@@ -176,6 +179,9 @@ class LocationForegroundService : Service() {
      */
     private val powerReceiver = object : BroadcastReceiver() {
         override fun onReceive(context: Context, intent: Intent) {
+            // Aquí se sabe al segundo que el cargador entra o sale, así que es el sitio donde el
+            // informe de batería empieza a contar "desde la última carga".
+            BatteryStats.onPower(applicationContext)
             serviceScope.launch { pingDeviceStatus() }
         }
     }
@@ -195,6 +201,7 @@ class LocationForegroundService : Service() {
 
     override fun onCreate() {
         super.onCreate()
+        BatteryStats.serviceAlive = true
         fusedClient = LocationServices.getFusedLocationProviderClient(this)
         locator = ServiceLocator.getInstance(applicationContext)
         // Dinámico y no del manifiesto: solo interesa mientras el servicio viva, y estas dos son
@@ -226,7 +233,8 @@ class LocationForegroundService : Service() {
             locator.zoneRepository.observeZones().collect {
                 zones = it
                 // Mismo momento para refrescar las geocercas del sistema: es la lista que
-                // acaba de cambiar y mandarla de más no cuesta nada (ver ZoneGeofencing).
+                // acaba de cambiar. Room reemite aunque el servidor haya devuelto lo mismo, así
+                // que el registro repetido lo frena el propio ZoneGeofencing (ver su freno).
                 ZoneGeofencing.refresh(applicationContext, it)
                 applyLocationRequest()
             }
@@ -309,6 +317,7 @@ class LocationForegroundService : Service() {
         if (configuredIntervalMs <= 0L) {
             // Sin modo periódico y sin seguimiento no hay nada que pedir: se llega aquí al
             // caducar el seguimiento de un móvil en "solo bajo demanda", justo antes de pararse.
+            BatteryStats.onMode(applicationContext, BatteryStats.MODE_OFF, highAccuracy = false)
             fusedClient.removeLocationUpdates(locationCallback)
             currentIntervalMs = -1
             return
@@ -514,13 +523,25 @@ class LocationForegroundService : Service() {
     }
 
     private fun startLocationUpdates(intervalMs: Long) {
-        if (!worthReRequesting(intervalMs)) return
-        currentIntervalMs = intervalMs
-
         // Con fixes cada pocos segundos el GPS no llega a apagarse entre uno y otro, así que la
         // precisión máxima ya se está pagando igual. De medio minuto en adelante, ubicar por wifi
         // y antenas (~100 m) cuesta una fracción y sobra para ver dónde anda alguien.
-        val priority = if (intervalMs < MIN_MOVE_FROM_INTERVAL_MS) {
+        val highAccuracy = intervalMs < MIN_MOVE_FROM_INTERVAL_MS
+        // El contador de batería se entera del ritmo SIEMPRE, se vuelva a pedir o no: lo que
+        // mide es el tiempo que se pasa en cada modo, y eso no depende de que haya cambio.
+        BatteryStats.onMode(
+            applicationContext,
+            mode = when {
+                liveActive -> BatteryStats.MODE_LIVE
+                idle -> BatteryStats.MODE_IDLE
+                else -> BatteryStats.MODE_MOVE
+            },
+            highAccuracy = highAccuracy,
+        )
+        if (!worthReRequesting(intervalMs)) return
+        currentIntervalMs = intervalMs
+
+        val priority = if (highAccuracy) {
             Priority.PRIORITY_HIGH_ACCURACY
         } else {
             Priority.PRIORITY_BALANCED_POWER_ACCURACY
@@ -624,6 +645,10 @@ class LocationForegroundService : Service() {
     )
 
     override fun onDestroy() {
+        // Cierra el trozo de tiempo que llevara abierto: a partir de aquí el móvil no está
+        // pidiendo posición, y eso en el informe es "servicio parado", no "en reposo".
+        BatteryStats.serviceAlive = false
+        BatteryStats.onMode(applicationContext, BatteryStats.MODE_OFF, highAccuracy = false)
         fusedClient.removeLocationUpdates(locationCallback)
         runCatching { unregisterReceiver(powerReceiver) }
         if (transitionsRegistered) {

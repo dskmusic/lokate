@@ -3,7 +3,7 @@ from pathlib import Path
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, status
 from sqlalchemy.orm import Session
 
-from .. import login_guard, models, schemas
+from .. import login_guard, models, push, schemas
 from ..auth import create_access_token, get_current_user, hash_password, verify_password
 from ..database import get_db
 
@@ -100,7 +100,68 @@ def register_device(
     if body.wifi_connected is not None:
         user.wifi_connected = body.wifi_connected
         user.wifi_ssid = body.wifi_ssid
+
+    # La version se guarda y ya: quien avisa al admin es la propia app (ver mas abajo). Asi el
+    # aviso llega aunque se reinstale la MISMA version encima, que es lo normal cuando se publica
+    # un APK arreglado sin tocar el numero.
+    if body.app_version:
+        user.app_version = body.app_version
     db.commit()
+
+
+# Que cuenta cada aviso al admin. El texto va con el nombre del grupo porque un admin los ve de
+# todos los grupos a la vez.
+_UPDATE_STAGES = {
+    "started": "%s (%s) ha pulsado actualizar (tenia la %s)",
+    "installed": "%s (%s) ha vuelto a abrir la app tras actualizar (ahora la %s)",
+    "dismissed": "%s (%s) ha descartado el aviso de actualizacion (sigue en la %s)",
+}
+
+
+@router.post("/update-notice/status", status_code=status.HTTP_204_NO_CONTENT)
+def update_notice_status(
+    body: schemas.UpdateNoticeStatusRequest,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Que ha hecho el usuario con el aviso de "actualiza la app": lo cuenta la propia app en
+    los tres momentos, sin mirar numeros de version. A proposito — el admin quiere saber si la
+    persona hizo caso, y reinstalar la misma version encima es una actualizacion igual de valida
+    (Android la acepta mientras el versionCode no baje).
+
+    ponytail: "installed" es "ha vuelto a la app despues de lanzar el instalador", no una
+    confirmacion del sistema; si le da a actualizar y luego cancela el instalador, tambien
+    llega. Por eso el aviso lleva la version, que es la unica prueba real. El descarte solo se
+    entera cuando el aviso lo pinto la app (Android no avisa de los que pinta el sistema)."""
+    template = _UPDATE_STAGES.get(body.stage)
+    if template is None:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "Fase desconocida: %s" % body.stage)
+    if body.app_version:
+        user.app_version = body.app_version
+    # Lo mismo que se le manda al admin por push queda guardado, para la lista de "ultimo envio"
+    # de la app (admin_api.update_notice_states). Si no le habian mandado ningun aviso, esto no
+    # rellena update_notice_at: la fila solo sale en la lista si hubo envio.
+    user.update_notice_status = body.stage
+    user.update_notice_status_at = models.utcnow()
+    db.commit()
+    group = user.group.name if user.group else "sin grupo"
+    _notify_admins(
+        db,
+        user,
+        template % (user.display_name, group, body.app_version or user.app_version or "?"),
+        "update_" + body.stage,
+    )
+
+
+def _notify_admins(db: Session, about: models.User, body: str, kind: str) -> None:
+    """Avisa a los administradores de algo que ha hecho [about] (menos a el mismo, si lo es)."""
+    admins = [
+        u.id for u in db.query(models.User).filter(models.User.is_admin.is_(True)).all()
+        if u.id != about.id
+    ]
+    if not admins:
+        return
+    push.send_to_users(db, user_ids=admins, title="Lokate", body=body, data={"type": kind})
 
 
 @router.post("/avatar", response_model=schemas.AvatarResponse)

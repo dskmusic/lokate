@@ -700,6 +700,37 @@ class LocationPingAdmin(ModelView, model=models.LocationPing):
     name_plural = "Historial de ubicaciones"
 
 
+class ZoneEventAdmin(ModelView, model=models.ZoneEvent):
+    """El registro de entradas y salidas, en crudo. Lo bonito (agrupado por día y con filtros)
+    está en el panel de la app; aquí se ve tal cual para poder ordenar y exportar."""
+
+    column_list = [
+        models.ZoneEvent.at,
+        models.ZoneEvent.user,
+        models.ZoneEvent.zone,
+        models.ZoneEvent.entered,
+        models.ZoneEvent.notified,
+        models.ZoneEvent.reason,
+    ]
+    column_sortable_list = [models.ZoneEvent.at, models.ZoneEvent.notified]
+    column_labels = {
+        models.ZoneEvent.at: "Cuando",
+        models.ZoneEvent.user: "Quien",
+        models.ZoneEvent.zone: "Zona",
+        models.ZoneEvent.entered: "Entro",
+        models.ZoneEvent.notified: "Avisados",
+        models.ZoneEvent.reason: "Sin aviso porque",
+        models.ZoneEvent.distance_m: "Distancia (m)",
+        models.ZoneEvent.accuracy: "Precision (m)",
+    }
+    can_create = False
+    can_edit = False
+    # Borrar sí: una a una con su botón, o varias marcando las casillas de la lista.
+    can_delete = True
+    name_plural = "Avisos de zona"
+    icon = "fa-solid fa-bell"
+
+
 class LoginBlocksView(BaseView):
     """Quién lleva contraseñas falladas y a quién le ha saltado el freno de fuerza bruta (ver
     app/login_guard.py), con el botón para soltarlo sin esperar los 15 minutos — que es lo que
@@ -774,4 +805,5 @@ def register_admin(app: FastAPI) -> None:
     admin.add_view(LoginUnblockView)
     admin.add_view(SetLocaleView)
     admin.add_view(ZoneAdmin)
+    admin.add_view(ZoneEventAdmin)
     admin.add_view(LocationPingAdmin)

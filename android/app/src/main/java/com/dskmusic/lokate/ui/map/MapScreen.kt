@@ -110,6 +110,7 @@ fun MapScreen(
     onOpenGroup: () -> Unit,
     onOpenMember: (String) -> Unit,
     onOpenAdmin: () -> Unit = {},
+    startUpdate: Boolean = false,
     focusUserIdFlow: StateFlow<String?>? = null,
     onFocusUserIdConsumed: () -> Unit = {},
 ) {
@@ -198,12 +199,47 @@ fun MapScreen(
     var showUpdateDialog by remember { mutableStateOf(false) }
     var updating by remember { mutableStateOf(false) }
 
-    // Miembro elegido en la pestaña "Gente": centra el mapa en su posición más reciente.
+    // Descargar el APK del servidor e instalarlo. Lo llaman el botón del diálogo de "hay
+    // actualización" y el aviso que manda un admin: es lo mismo, solo cambia quién lo dispara.
+    fun runUpdate() {
+        // Sin el permiso de "instalar apps desconocidas" no hay nada que hacer salvo llevarle a
+        // dárselo; al volver, el diálogo sigue ahí con su botón.
+        if (!AppUpdater.canRequestInstall(context)) {
+            AppUpdater.openInstallPermissionSettings(context)
+            return
+        }
+        updating = true
+        scope.launch {
+            val url = absoluteMediaUrl("/lokate.apk").orEmpty()
+            runCatching { AppUpdater.downloadAndInstall(context, url) }
+            updating = false
+            showUpdateDialog = false
+        }
+    }
+
+    // Se ha entrado tocando el aviso de un admin: el diálogo se abre ya descargando, para que se
+    // vea qué está pasando, y no hay que pulsar nada más.
+    LaunchedEffect(startUpdate) {
+        if (startUpdate) {
+            showUpdateDialog = true
+            runUpdate()
+        }
+    }
+
+    // Miembro elegido en la pestaña "Gente" o en su ficha: centra el mapa en su posición más
+    // reciente.
     val focusUserId = focusUserIdFlow?.collectAsStateWithLifecycle()?.value
-    LaunchedEffect(focusUserId, state.members, mapViewRef) {
+    LaunchedEffect(focusUserId, mapViewRef) {
         val id = focusUserId ?: return@LaunchedEffect
-        val member = state.members.find { it.user_id == id } ?: return@LaunchedEffect
-        mapViewRef?.moveTo(GeoPoint(member.lat, member.lng))
+        val map = mapViewRef ?: return@LaunchedEffect
+        // Primero con lo que haya en memoria, para que el mapa no se quede donde estaba mientras
+        // se pide...
+        state.members.find { it.user_id == id }?.let { map.moveTo(GeoPoint(it.lat, it.lng)) }
+        // ...y luego con la posición recién traída, que es la que pidió la ficha con "localizar":
+        // el sondeo llevaba parado desde que se salió del mapa, así que lo de memoria puede ser
+        // de hace rato. Hasta aquí no se consume el foco, o el refresco llegaría sin nadie a
+        // quien centrar.
+        viewModel.fetchLatest(id)?.let { map.moveTo(GeoPoint(it.lat, it.lng)) }
         onFocusUserIdConsumed()
     }
 
@@ -646,22 +682,9 @@ fun MapScreen(
                 }
             },
             confirmButton = {
-                TextButton(
-                    enabled = !updating,
-                    onClick = {
-                        if (!AppUpdater.canRequestInstall(context)) {
-                            AppUpdater.openInstallPermissionSettings(context)
-                            return@TextButton
-                        }
-                        updating = true
-                        scope.launch {
-                            val url = absoluteMediaUrl("/lokate.apk").orEmpty()
-                            runCatching { AppUpdater.downloadAndInstall(context, url) }
-                            updating = false
-                            showUpdateDialog = false
-                        }
-                    },
-                ) { Text(stringResource(R.string.update_available_now)) }
+                TextButton(enabled = !updating, onClick = { runUpdate() }) {
+                    Text(stringResource(R.string.update_available_now))
+                }
             },
             dismissButton = {
                 TextButton(enabled = !updating, onClick = { showUpdateDialog = false }) {

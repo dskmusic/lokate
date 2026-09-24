@@ -91,6 +91,16 @@ object Constants {
      * notificación la pinta el sistema y Android entrega los "data" tal cual como extras. Así
      * el mismo código sirve venga de donde venga el toque. */
     const val EXTRA_PUSH_USER_ID = "user_id"
+
+    /** Igual que [EXTRA_PUSH_USER_ID]: el nombre es el del payload del push, no "extra_algo". */
+    const val EXTRA_PUSH_TYPE = "type"
+
+    /** Aviso de "actualiza la app" que manda un admin desde Ajustes. Al tocarlo se abre la app
+     * y se descarga e instala sola, sin buscar nada por menus. */
+    const val PUSH_TYPE_UPDATE_PROMPT = "update_prompt"
+
+    /** Id fijo: si el admin lo manda dos veces, la barra no acumula dos avisos iguales. */
+    const val UPDATE_NOTIFICATION_ID = 1004
 }
 
 /** El orden de los valores es el que se ve en ajustes (de más frecuente a menos), y su nombre

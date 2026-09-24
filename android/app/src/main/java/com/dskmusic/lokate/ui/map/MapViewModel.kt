@@ -200,6 +200,20 @@ class MapViewModel(
         pollingJob?.cancel()
     }
 
+    /**
+     * La posición de una persona AHORA, sin esperar al siguiente sondeo. Devuelve null si la
+     * petición falla o si esa persona todavía no tiene ninguna posición.
+     *
+     * Es la misma llamada que hace el bucle (pedir a uno cuesta lo mismo que pedir a todos), así
+     * que de paso refresca a todo el grupo. Hace falta porque al volver de una ficha el sondeo
+     * llevaba parado desde que se salió del mapa: lo que hay en memoria puede ser de hace rato.
+     */
+    suspend fun fetchLatest(userId: String): LocationDto? =
+        runCatching { locationRepository.groupLatest() }
+            .onSuccess { _uiState.value = _uiState.value.copy(members = it, loading = false) }
+            .getOrNull()
+            ?.find { it.user_id == userId }
+
     /** Vuelve a verse. El bucle pide el grupo nada más entrar, así que esto ya trae lo fresco. */
     fun resumePolling() {
         if (_uiState.value.group != null) startPolling()

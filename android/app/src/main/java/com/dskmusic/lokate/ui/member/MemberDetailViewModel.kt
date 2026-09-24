@@ -2,6 +2,8 @@ package com.dskmusic.lokate.ui.member
 
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dskmusic.lokate.data.remote.dto.AdminBatteryReportDto
+import com.dskmusic.lokate.data.remote.dto.BatteryReportDto
 import com.dskmusic.lokate.data.remote.dto.LocationDto
 import com.dskmusic.lokate.data.repository.AdminRepository
 import com.dskmusic.lokate.data.repository.LocationRepository
@@ -17,6 +19,11 @@ enum class LocationRequestResult { SUCCESS, FAILURE }
 private const val LOCATION_REQUEST_POLL_INTERVAL_MS = 2_500L
 private const val LOCATION_REQUEST_TIMEOUT_MS = 20_000L
 
+/** El informe de batería tarda más que una ubicación: el móvil tiene que despertar, leer media
+ * docena de servicios del sistema y subirlo. Treinta segundos es lo que se espera antes de
+ * darlo por perdido y enseñar el anterior, si lo hubiera. */
+private const val BATTERY_REPORT_TIMEOUT_MS = 30_000L
+
 data class MemberDetailUiState(
     val loading: Boolean = true,
     val location: LocationDto? = null,
@@ -31,6 +38,13 @@ data class MemberDetailUiState(
     /** Sus "wifis de casa" según la última copia en la nube, para no mandarle una que ya tiene.
      * null = todavía no se ha mirado o no hay copia (entonces no se puede saber). */
     val knownWifis: List<String>? = null,
+    /** Informe de batería (solo admins): mientras se pide, el que llegue, y si el que se enseña
+     * es uno viejo porque su móvil no ha contestado a tiempo. report=null = no hay diálogo. */
+    val requestingBatteryReport: Boolean = false,
+    val batteryReport: BatteryReportDto? = null,
+    val batteryReportAt: String? = null,
+    val batteryReportStale: Boolean = false,
+    val batteryReportFailed: Boolean = false,
     val error: String? = null,
 )
 
@@ -130,6 +144,49 @@ class MemberDetailViewModel(
                 .onSuccess { _uiState.value = _uiState.value.copy(knownWifiAdded = ssid) }
                 .onFailure { _uiState.value = _uiState.value.copy(error = it.message) }
         }
+    }
+
+    /**
+     * Solo admins: le pide por push a su móvil el informe de batería y sondea hasta que suba uno
+     * más nuevo que el que ya hubiera (mismo patrón que [requestFreshLocation]).
+     *
+     * Si no contesta a tiempo se enseña el último que subiera, marcado como viejo: casi siempre
+     * sigue explicando lo que se quería mirar, y el propio silencio ya es un síntoma.
+     */
+    fun requestBatteryReport() {
+        _uiState.value = _uiState.value.copy(requestingBatteryReport = true, batteryReportFailed = false)
+        viewModelScope.launch {
+            val previous = runCatching { adminRepository.batteryReport(userId) }.getOrNull()
+            val sent = runCatching { adminRepository.requestBatteryReport(userId) }.isSuccess
+
+            var fresh: AdminBatteryReportDto? = null
+            if (sent) {
+                val deadline = System.currentTimeMillis() + BATTERY_REPORT_TIMEOUT_MS
+                while (System.currentTimeMillis() < deadline && fresh == null) {
+                    delay(LOCATION_REQUEST_POLL_INTERVAL_MS)
+                    val response = runCatching { adminRepository.batteryReport(userId) }.getOrNull()
+                    if (response?.known == true && response.received_at != previous?.received_at) fresh = response
+                }
+            }
+
+            val shown = fresh ?: previous?.takeIf { it.known }
+            _uiState.value = _uiState.value.copy(
+                requestingBatteryReport = false,
+                batteryReport = shown?.report,
+                batteryReportAt = shown?.received_at,
+                batteryReportStale = fresh == null && shown != null,
+                batteryReportFailed = shown == null,
+            )
+        }
+    }
+
+    fun dismissBatteryReport() {
+        _uiState.value = _uiState.value.copy(
+            batteryReport = null,
+            batteryReportAt = null,
+            batteryReportStale = false,
+            batteryReportFailed = false,
+        )
     }
 
     /** Mensaje de emergencia: el backend lo entrega con prioridad forzada, sin mirar preferencias del destinatario. */

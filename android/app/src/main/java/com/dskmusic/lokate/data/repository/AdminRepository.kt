@@ -3,6 +3,7 @@ package com.dskmusic.lokate.data.repository
 import com.dskmusic.lokate.data.remote.ApiService
 import com.dskmusic.lokate.data.remote.dto.AdminBackupCreateRequestDto
 import com.dskmusic.lokate.data.remote.dto.AdminBackupDto
+import com.dskmusic.lokate.data.remote.dto.AdminBatteryReportDto
 import com.dskmusic.lokate.data.remote.dto.AdminDashboardDto
 import com.dskmusic.lokate.data.remote.dto.AdminDiskUsageDto
 import com.dskmusic.lokate.data.remote.dto.AdminFileDto
@@ -17,6 +18,11 @@ import com.dskmusic.lokate.data.remote.dto.AdminUserDto
 import com.dskmusic.lokate.data.remote.dto.AdminUserUpdateRequestDto
 import com.dskmusic.lokate.data.remote.dto.AdminZoneCreateRequestDto
 import com.dskmusic.lokate.data.remote.dto.AdminZoneDto
+import com.dskmusic.lokate.data.remote.dto.AdminIdsRequestDto
+import com.dskmusic.lokate.data.remote.dto.AdminUpdateNoticeDto
+import com.dskmusic.lokate.data.remote.dto.AdminUpdateNoticeResultDto
+import com.dskmusic.lokate.data.remote.dto.AdminUpdateNoticeStateDto
+import com.dskmusic.lokate.data.remote.dto.AdminZoneEventDto
 import com.dskmusic.lokate.data.remote.dto.AdminZoneUpdateRequestDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -54,6 +60,12 @@ class AdminRepository(private val api: ApiService) {
     /** Las "wifis de casa" que ese usuario tiene según su última copia en la nube. */
     suspend fun knownWifi(id: String): AdminKnownWifiDto = withContext(Dispatchers.IO) { api.adminKnownWifi(id) }
 
+    /** Le pide al móvil de ese usuario (por push) que haga su informe de batería y lo suba. */
+    suspend fun requestBatteryReport(id: String) = withContext(Dispatchers.IO) { api.adminRequestBatteryReport(id) }
+
+    suspend fun batteryReport(id: String): AdminBatteryReportDto =
+        withContext(Dispatchers.IO) { api.adminBatteryReport(id) }
+
     /** Le pide al móvil de ese usuario (por push) que añada esta wifi a sus "wifis de casa". */
     suspend fun addKnownWifi(id: String, ssid: String) =
         withContext(Dispatchers.IO) { api.adminAddKnownWifi(id, AdminKnownWifiRequestDto(ssid)) }
@@ -73,6 +85,22 @@ class AdminRepository(private val api: ApiService) {
         withContext(Dispatchers.IO) { api.adminUpdateZone(id, AdminZoneUpdateRequestDto(name, lat, lng, radiusM)) }
 
     suspend fun deleteZone(id: String) = withContext(Dispatchers.IO) { api.adminDeleteZone(id) }
+
+    /** El registro de entradas y salidas de zona, ya filtrado por el servidor. */
+    suspend fun zoneEvents(userId: String?, zoneId: String?, days: Int, onlyMissed: Boolean): List<AdminZoneEventDto> =
+        withContext(Dispatchers.IO) { api.adminZoneEvents(userId, zoneId, days, onlyMissed) }
+
+    /** Devuelve cuantas se han borrado de verdad (los ids que ya no existian no cuentan). */
+    suspend fun deleteZoneEvents(ids: List<String>): Int =
+        withContext(Dispatchers.IO) { api.adminDeleteZoneEvents(AdminIdsRequestDto(ids)).deleted }
+
+    /** Aviso de "actualiza la app". [userIds] manda sobre [groupId]; sin ninguno, a todo el mundo. */
+    suspend fun notifyUpdate(message: String?, groupId: String?, userIds: List<String>?): AdminUpdateNoticeResultDto =
+        withContext(Dispatchers.IO) { api.adminNotifyUpdate(AdminUpdateNoticeDto(message, groupId, userIds)) }
+
+    /** Estado del ultimo aviso de cada persona; se vuelve a pedir para refrescarlo. */
+    suspend fun updateNoticeStates(): List<AdminUpdateNoticeStateDto> =
+        withContext(Dispatchers.IO) { api.adminUpdateNoticeStates() }
 
     suspend fun listFiles(folder: String): List<AdminFileDto> =
         withContext(Dispatchers.IO) { api.adminListFiles(folder) }

@@ -29,22 +29,19 @@ import kotlinx.coroutines.withContext
  */
 object ZoneGeofencing {
 
-    /** Cuándo se hizo el último re-registro de rutina. En memoria a propósito: si el proceso ha
-     * muerto (que es justo cuando un fabricante puede haberse cargado las geocercas) vuelve a
-     * cero y el primer worker las registra otra vez sin esperar. */
+    /** Qué lista está registrada ahora mismo y desde cuándo, para el freno de [refresh]. En
+     * memoria a propósito: si el proceso ha muerto (que es justo cuando un fabricante puede
+     * haberse cargado las geocercas) vuelve a cero y la primera llamada las registra otra vez
+     * sin esperar. */
     @Volatile
-    private var lastRoutineRefreshAt = 0L
+    private var lastRegisteredAt = 0L
+
+    @Volatile
+    private var lastSignature: String? = null
 
     /** Vuelve a registrarlas leyendo la caché de Room. Para quien no tiene ya la lista a mano
-     * (el worker de respaldo, el arranque del móvil).
-     *
-     * Como mucho una vez por hora: el worker pasa cada 15 minutos y esto no es una comprobación
-     * barata (borra y vuelve a registrar la lista entera en Play Services). Un cambio de zonas
-     * de verdad no pasa por aquí — llega por el otro [refresh], con la lista ya en la mano. */
+     * (el worker de respaldo, el arranque del móvil). El freno lo pone el otro [refresh]. */
     suspend fun refresh(context: Context) {
-        val now = System.currentTimeMillis()
-        if (now - lastRoutineRefreshAt < ROUTINE_MIN_GAP_MS) return
-        lastRoutineRefreshAt = now
         val zones = runCatching {
             ServiceLocator.getInstance(context).zoneRepository.observeZones().first()
         }.getOrNull() ?: return
@@ -54,9 +51,22 @@ object ZoneGeofencing {
     /**
      * Idempotente a propósito: se manda siempre la lista entera y el sistema reemplaza lo que
      * hubiera. Así no hay estado que se pueda desincronizar y da igual llamarlo de más.
+     *
+     * Freno compartido por TODOS los que llaman (el servicio cuando Room emite, el worker cada
+     * 15 minutos, el arranque): si la lista es la misma que ya está registrada y hace menos de
+     * [ROUTINE_MIN_GAP_MS] que se registró, no se toca nada. Un cambio de verdad entra siempre
+     * al instante — cambia la firma — y una lista repetida vuelve a registrarse igual una vez
+     * por hora, que es lo que protege de los fabricantes que borran las geocercas por su cuenta.
+     *
+     * Hacía falta porque ZoneRepository.refresh() reescribe las zonas en Room aunque el servidor
+     * haya devuelto lo mismo, y Room reemite: cada 15 minutos se borraban y volvían a registrar
+     * 100 geocercas en Play Services sin que hubiera cambiado nada.
      */
     suspend fun refresh(context: Context, zones: List<ZoneDto>) = withContext(Dispatchers.IO) {
         val app = context.applicationContext
+        val signature = zones.joinToString("|") { "${it.id}:${it.lat}:${it.lng}:${it.radius_m}" }
+        val now = System.currentTimeMillis()
+        if (signature == lastSignature && now - lastRegisteredAt < ROUTINE_MIN_GAP_MS) return@withContext
         // Sin permiso de segundo plano el sistema rechaza el registro. No es un fallo que haya
         // que avisar aquí: ya sale en los avisos de configuración (ver ConfigCheck).
         if (!PermissionUtils.hasBackgroundLocationPermission(app)) return@withContext
@@ -64,7 +74,11 @@ object ZoneGeofencing {
         val client = LocationServices.getGeofencingClient(app)
         val pending = pendingIntent(app)
         runCatching { Tasks.await(client.removeGeofences(pending)) }
-        if (zones.isEmpty()) return@withContext
+        if (zones.isEmpty()) {
+            lastSignature = signature
+            lastRegisteredAt = now
+            return@withContext
+        }
 
         // ponytail: si un grupo llegara a tener más de 100 zonas se quedan las primeras por
         // nombre, que es como llegan de Room. Si eso pasa alguna vez, ordenar por cercanía.
@@ -90,7 +104,13 @@ object ZoneGeofencing {
             .setInitialTrigger(0)
             .addGeofences(fences)
             .build()
-        runCatching { Tasks.await(client.addGeofences(request, pending)) }
+        // Solo se apunta si Play Services lo aceptó: si falló (sin red, sin Play Services,
+        // el sistema ocupado) el freno no debe tapar el siguiente intento.
+        runCatching { Tasks.await(client.addGeofences(request, pending)) }.onSuccess {
+            lastSignature = signature
+            lastRegisteredAt = now
+            BatteryStats.onGeofenceRegister(app)
+        }
     }
 
     /** MUTABLE porque el sistema escribe dentro el resultado de la transición. Explícito al

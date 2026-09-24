@@ -412,6 +412,43 @@ object NotificationHelper {
         NotificationManagerCompat.from(context).notify(notificationId, notification)
     }
 
+    /**
+     * Aviso de "actualiza la app" que manda un admin. La pinta la app y no el sistema (el push
+     * viene sin bloque "notification", ver admin_api.notify_update) porque asi puede llevar dos
+     * cosas que el sistema no daria:
+     *
+     *  - el boton "Actualizar", que hace lo mismo que tocar el aviso;
+     *  - un delete intent, que es la unica forma de enterarse de que el usuario lo ha descartado
+     *    sin actualizar ([UpdateNoticeReceiver] se lo dice al servidor y el admin lo ve).
+     *
+     * Android no deja instalar un APK desde la propia notificacion (el instalador necesita una
+     * pantalla delante), asi que tocarla abre MainActivity y es ella quien arranca la descarga:
+     * lo mas directo que permite el sistema.
+     */
+    fun showUpdateNotification(context: Context, title: String, body: String) {
+        val id = Constants.UPDATE_NOTIFICATION_ID
+        val flags = PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+        val openIntent = Intent(context, com.dskmusic.lokate.MainActivity::class.java).apply {
+            addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            putExtra(Constants.EXTRA_PUSH_TYPE, Constants.PUSH_TYPE_UPDATE_PROMPT)
+        }
+        val open = PendingIntent.getActivity(context, id, openIntent, flags)
+        val dismissed = PendingIntent.getBroadcast(context, id, Intent(context, UpdateNoticeReceiver::class.java), flags)
+
+        val notification = NotificationCompat.Builder(context, Constants.SYSTEM_CHANNEL_ID)
+            .setContentTitle(title)
+            .setContentText(body)
+            .setStyle(NotificationCompat.BigTextStyle().bigText(body))
+            .setSmallIcon(R.drawable.ic_notification)
+            .setGroup(SYSTEM_GROUP)
+            .setAutoCancel(true)
+            .setContentIntent(open)
+            .setDeleteIntent(dismissed)
+            .addAction(0, context.getString(R.string.update_notice_action), open)
+            .build()
+        NotificationManagerCompat.from(context).notify(id, notification)
+    }
+
     fun showSystemNotification(context: Context, title: String, body: String) {
         val notification = NotificationCompat.Builder(context, Constants.SYSTEM_CHANNEL_ID)
             .setContentTitle(title)

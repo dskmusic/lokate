@@ -8,6 +8,7 @@ import com.dskmusic.lokate.data.remote.dto.LoginRequestDto
 import com.dskmusic.lokate.data.remote.dto.RegisterDeviceRequestDto
 import com.dskmusic.lokate.data.remote.dto.RegisterRequestDto
 import com.dskmusic.lokate.data.remote.dto.UpdateFlagRequestDto
+import com.dskmusic.lokate.data.remote.dto.UpdateNoticeStatusDto
 import com.dskmusic.lokate.data.remote.dto.UpdateProfileRequestDto
 import com.dskmusic.lokate.data.remote.dto.UserDto
 import com.dskmusic.lokate.push.NotificationHelper
@@ -83,6 +84,7 @@ class AuthRepository(
         api.registerDevice(
             RegisterDeviceRequestDto(
                 fcm_token = fcmToken,
+                app_version = com.dskmusic.lokate.BuildConfig.VERSION_NAME,
                 location_frequency = settings.locationFrequency.first().name,
                 config_issues = status.configIssues.orEmpty(),
                 zone_channel_id = NotificationHelper.currentZoneChannelId(appContext, settings),
@@ -147,6 +149,17 @@ class AuthRepository(
      * para todo el mundo sin tener que entrar por SSH a tocar el archivo a mano. */
     suspend fun setUpdateFlag(enabled: Boolean): Boolean = withContext(Dispatchers.IO) {
         api.setUpdateFlag(UpdateFlagRequestDto(enabled)).update_available
+    }
+
+    /** Que se ha hecho con el aviso de "actualiza la app" (ver UpdateNoticeStatusDto). Falla
+     * en silencio: es informativo para el admin, no puede estropearle nada al usuario. */
+    suspend fun reportUpdateNoticeStatus(stage: String) = withContext(Dispatchers.IO) {
+        runCatching {
+            api.updateNoticeStatus(
+                UpdateNoticeStatusDto(stage, com.dskmusic.lokate.BuildConfig.VERSION_NAME),
+            )
+        }
+        Unit
     }
 
     fun isLoggedIn(): Boolean = session.isLoggedIn

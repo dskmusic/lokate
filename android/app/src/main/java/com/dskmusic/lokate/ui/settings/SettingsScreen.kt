@@ -95,7 +95,7 @@ fun SettingsScreen(
 ) {
     val context = LocalContext.current
     val viewModel = remember {
-        SettingsViewModel(locator.settings, locator.authRepository, locator.groupRepository, locator.zoneRepository, locator.locationRepository, locator.backupRepository)
+        SettingsViewModel(locator.settings, locator.authRepository, locator.groupRepository, locator.zoneRepository, locator.locationRepository, locator.backupRepository, locator.adminRepository)
     }
 
     val themeMode by locator.settings.themeMode.collectAsStateWithLifecycle(initialValue = ThemeMode.SYSTEM)
@@ -144,6 +144,7 @@ fun SettingsScreen(
     var showResetZoomConfirm by remember { mutableStateOf(false) }
     var showDisableUpdatesConfirm by remember { mutableStateOf(false) }
     var showTestNotificationPicker by remember { mutableStateOf(false) }
+    var showUpdateNotice by remember { mutableStateOf(false) }
     var showTestNotificationAllConfirm by remember { mutableStateOf(false) }
     var showEditNameDialog by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
@@ -733,6 +734,16 @@ fun SettingsScreen(
                                 modifier = Modifier.padding(top = 6.dp),
                             )
                         }
+                        OutlinedButton(
+                            onClick = {
+                                viewModel.clearUpdateNotice()
+                                viewModel.loadUpdateNoticeTargets()
+                                showUpdateNotice = true
+                            },
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                        ) {
+                            Text(stringResource(R.string.settings_update_notice))
+                        }
                     }
                 }
             }
@@ -874,6 +885,10 @@ fun SettingsScreen(
                 TextButton(onClick = { showDisableUpdatesConfirm = false }) { Text(stringResource(R.string.cancel)) }
             },
         )
+    }
+
+    if (showUpdateNotice) {
+        UpdateNoticeDialog(viewModel, onDismiss = { showUpdateNotice = false })
     }
 
     if (showTestNotificationPicker) {

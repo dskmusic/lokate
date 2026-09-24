@@ -24,6 +24,12 @@ from .auth import ALLOWED_AVATAR_TYPES, AVATAR_DIR, MAX_AVATAR_BYTES
 
 router = APIRouter(prefix="/admin-api", tags=["admin-api"])
 
+# Lo que se manda si el administrador no escribe nada. El texto se puede editar en el momento
+# del envío (ver el diálogo de Ajustes), aquí solo está el valor por defecto.
+DEFAULT_UPDATE_NOTICE = (
+    "Por favor, actualiza la app. Toca este aviso para instalar la versión nueva."
+)
+
 # uuid4().hex generado por backups.py — valida el id antes de tocar el filesystem con él.
 _BACKUP_ID = Path(pattern=r"^[0-9a-f]{32}$")
 
@@ -296,6 +302,48 @@ def locate_user(user_id: str, admin: models.User = Depends(get_current_admin_use
     push.send_to_user(db, user_id, "Lokate", "Un administrador quiere localizar tu dispositivo", {"type": "ring"})
 
 
+@router.post("/users/{user_id}/battery-report", status_code=status.HTTP_204_NO_CONTENT)
+def request_battery_report(
+    user_id: str,
+    admin: models.User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Le pide por push al movil de ese usuario que haga su informe de bateria y lo suba.
+
+    Silencioso (sin bloque "notification"), como la peticion de ubicacion puntual: al usuario no
+    le sale nada. La respuesta no vuelve por aqui — su movil la sube a upload_battery_report y
+    el panel la recoge con el GET de abajo.
+    """
+    user = db.get(models.User, user_id)
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    push.send_to_user(db, user_id, "Lokate", "Informe de bateria", {"type": "battery_report"})
+
+
+@router.get("/users/{user_id}/battery-report", response_model=schemas.AdminBatteryReportResponse)
+def get_battery_report(
+    user_id: str,
+    admin: models.User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    """El ultimo informe que subio ese movil. Es lo que sondea la ficha mientras espera al que
+    acaba de pedir: se queda con el que traiga una fecha mas nueva que la que ya tenia."""
+    user = db.get(models.User, user_id)
+    if not user:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "User not found")
+    if not user.battery_report:
+        return schemas.AdminBatteryReportResponse(known=False)
+    try:
+        payload = json.loads(user.battery_report)
+    except ValueError:
+        return schemas.AdminBatteryReportResponse(known=False)
+    return schemas.AdminBatteryReportResponse(
+        known=True,
+        received_at=payload.get("received_at"),
+        report=payload.get("report"),
+    )
+
+
 @router.get("/users/{user_id}/known-wifi", response_model=schemas.AdminKnownWifiResponse)
 def list_known_wifi(
     user_id: str,
@@ -375,6 +423,153 @@ async def admin_upload_avatar(
     return schemas.AvatarResponse(avatar_url=target.avatar_url)
 
 
+# ---- Registro de entradas y salidas de zona ----
+# Lo escribe geofence.check_zone_transitions en el momento en que decide cada transición; aquí
+# solo se lee. Sirve para la pregunta de siempre: "¿salió de verdad y no me avisaron, o es que
+# nadie tenía el aviso puesto?".
+@router.post("/zone-events/delete", response_model=schemas.AdminDeletedResponse)
+def delete_zone_events(
+    body: schemas.AdminIdsRequest,
+    admin: models.User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Borra las filas indicadas del registro. Una o mil, el mismo sitio: la app manda una lista
+    tanto si se ha deslizado una fila como si se han marcado veinte."""
+    if not body.ids:
+        return schemas.AdminDeletedResponse(deleted=0)
+    deleted = (
+        db.query(models.ZoneEvent)
+        .filter(models.ZoneEvent.id.in_(body.ids))
+        .delete(synchronize_session=False)
+    )
+    db.commit()
+    return schemas.AdminDeletedResponse(deleted=deleted)
+
+
+@router.post("/notify-update", response_model=schemas.AdminUpdateNoticeResponse)
+def notify_update(
+    body: schemas.AdminUpdateNoticeRequest,
+    admin: models.User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Manda a quien se diga el aviso de "actualiza la app". El push lleva type=update_prompt:
+    al tocarlo, la app se abre descargando el APK (ver MainActivity + MapScreen).
+
+    ponytail: no comprueba la versión de nadie — el servidor no la sabe (solo tiene la bandera
+    apk/update_si, que es global). Esto es un empujón manual, no una comprobación."""
+    query = db.query(models.User)
+    if body.user_ids:
+        query = query.filter(models.User.id.in_(body.user_ids))
+    elif body.group_id:
+        query = query.filter(models.User.group_id == body.group_id)
+    targets = query.all()
+    if not targets:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Ningún destinatario")
+
+    with_token = [u for u in targets if u.fcm_token]
+    message = (body.message or "").strip() or DEFAULT_UPDATE_NOTICE
+    # Se apunta a quien se le manda y cuando, para que el admin pueda mirar despues como ha
+    # quedado cada uno (GET /update-notice/status). Solo a los que tienen token: al resto no les
+    # ha llegado nada, asi que tampoco hay estado que seguir.
+    now = utcnow()
+    for user in with_token:
+        user.update_notice_at = now
+        user.update_notice_status = "sent"
+        user.update_notice_status_at = None
+    db.commit()
+    push.send_to_users(
+        db,
+        user_ids=[u.id for u in with_token],
+        title="Lokate",
+        body=message,
+        data={"type": "update_prompt"},
+        # Aquí SÍ interesa que lo pinte la app y no el sistema (al revés que los avisos de zona):
+        # es la única forma de ponerle el botón "Actualizar" y de enterarse de si lo barren sin
+        # hacer nada. Estos móviles llevan el servicio de ubicación en marcha, así que el proceso
+        # está vivo casi siempre; si estuviera muerto, FCM lo entrega en cuanto despierte.
+        system_notification=False,
+    )
+    return schemas.AdminUpdateNoticeResponse(
+        sent=len(with_token), without_token=len(targets) - len(with_token)
+    )
+
+
+@router.get("/update-notice/status", response_model=list[schemas.AdminUpdateNoticeStateResponse])
+def update_notice_states(
+    admin: models.User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    """Como ha quedado el ultimo aviso de actualizacion de cada persona, el mas reciente arriba.
+
+    ponytail: de cada usuario solo se guarda el ultimo envio (tres columnas en users, sin tabla
+    de historico). Si alguna vez hiciera falta ver envios anteriores, eso ya es una tabla."""
+    users = (
+        db.query(models.User)
+        .filter(models.User.update_notice_at.isnot(None))
+        .order_by(models.User.update_notice_at.desc())
+        .all()
+    )
+    return [
+        schemas.AdminUpdateNoticeStateResponse(
+            user_id=u.id,
+            user_name=u.display_name,
+            group_name=u.group.name if u.group else None,
+            sent_at=u.update_notice_at,
+            status=u.update_notice_status or "sent",
+            status_at=u.update_notice_status_at,
+            app_version=u.app_version,
+        )
+        for u in users
+    ]
+
+
+@router.get("/zone-events", response_model=list[schemas.AdminZoneEventResponse])
+def list_zone_events(
+    user_id: str | None = None,
+    zone_id: str | None = None,
+    group_id: str | None = None,
+    days: int = 7,
+    # Solo lo que NO avisó a nadie: el filtro que se usa cuando alguien dice "no me llegó nada".
+    only_missed: bool = False,
+    limit: int = 300,
+    admin: models.User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    query = (
+        db.query(models.ZoneEvent, models.User.display_name, models.Zone.name)
+        .join(models.User, models.User.id == models.ZoneEvent.user_id)
+        .join(models.Zone, models.Zone.id == models.ZoneEvent.zone_id)
+        .filter(models.ZoneEvent.at >= utcnow() - timedelta(days=max(days, 1)))
+    )
+    if user_id:
+        query = query.filter(models.ZoneEvent.user_id == user_id)
+    if zone_id:
+        query = query.filter(models.ZoneEvent.zone_id == zone_id)
+    if group_id:
+        query = query.filter(models.ZoneEvent.group_id == group_id)
+    if only_missed:
+        query = query.filter(models.ZoneEvent.notified == 0)
+    rows = query.order_by(models.ZoneEvent.at.desc()).limit(min(limit, 1000)).all()
+    return [
+        schemas.AdminZoneEventResponse(
+            id=event.id,
+            at=event.at,
+            user_id=event.user_id,
+            user_name=user_name,
+            zone_id=event.zone_id,
+            zone_name=zone_name,
+            entered=event.entered,
+            notified=event.notified,
+            reason=event.reason,
+            distance_m=event.distance_m,
+            accuracy=event.accuracy,
+            lat=event.lat,
+            lng=event.lng,
+        )
+        for event, user_name, zone_name in rows
+    ]
+
+
 # ---- Zonas (todas, de cualquier grupo — a diferencia de /zones, que es solo del propio grupo) ----
 @router.get("/zones", response_model=list[schemas.AdminZoneResponse])
 def list_all_zones(admin: models.User = Depends(get_current_admin_user), db: Session = Depends(get_db)):
@@ -425,6 +620,7 @@ def delete_zone_admin(zone_id: str, admin: models.User = Depends(get_current_adm
     if not zone:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Zone not found")
     db.query(models.ZoneState).filter(models.ZoneState.zone_id == zone_id).delete()
+    db.query(models.ZoneEvent).filter(models.ZoneEvent.zone_id == zone_id).delete()
     db.query(models.ZoneNotificationPref).filter(models.ZoneNotificationPref.zone_id == zone_id).delete()
     db.delete(zone)
     db.commit()

@@ -90,6 +90,54 @@ data class AdminZoneCreateRequestDto(
     val radius_m: Double,
 )
 
+/** Una entrada o salida de zona ya decidida por el servidor (ver models.ZoneEvent). [notified]
+ * = a cuánta gente se le mandó el aviso; 0 con [reason] explica por qué no se mandó a nadie. */
+data class AdminZoneEventDto(
+    val id: String,
+    val at: String,
+    val user_id: String,
+    val user_name: String,
+    val zone_id: String,
+    val zone_name: String,
+    val entered: Boolean,
+    val notified: Int,
+    /** null = aviso normal. Resto: no_prefs, hidden, private_zone, test, resync. */
+    val reason: String? = null,
+    val distance_m: Double? = null,
+    val accuracy: Double? = null,
+    val lat: Double,
+    val lng: Double,
+)
+
+/** Lista de ids para borrar de golpe; una fila suelta es una lista de uno. */
+data class AdminIdsRequestDto(val ids: List<String>)
+
+data class AdminDeletedDto(val deleted: Int)
+
+/** Aviso de "actualiza la app". Destinatarios del mas concreto al mas amplio: [user_ids] manda
+ * sobre [group_id], y sin ninguno de los dos va a todo el mundo. */
+data class AdminUpdateNoticeDto(
+    val message: String? = null,
+    val group_id: String? = null,
+    val user_ids: List<String>? = null,
+)
+
+/** [sent] = a cuantos se les ha podido mandar; [without_token] = los que no tienen token FCM y
+ * no se van a enterar (nunca han abierto esta version, o cerraron sesion). */
+data class AdminUpdateNoticeResultDto(val sent: Int, val without_token: Int)
+
+/** Como quedo el ultimo aviso de actualizacion de una persona. [status]: "sent" (mandado, sin
+ * respuesta), "started", "installed" o "dismissed"; [status_at] null mientras no conteste. */
+data class AdminUpdateNoticeStateDto(
+    val user_id: String,
+    val user_name: String,
+    val group_name: String? = null,
+    val sent_at: String,
+    val status: String,
+    val status_at: String? = null,
+    val app_version: String? = null,
+)
+
 data class AdminDiskUsageDto(
     val database_bytes: Long,
     val avatars_bytes: Long,
@@ -134,4 +182,12 @@ data class AdminSimulateDto(
     /** Textos de los avisos disparados; vacío = el arrastre no ha cruzado ninguna zona. */
     val transitions: List<String>,
     val notified: Int,
+)
+
+/** El último informe de batería que subió el móvil de ese usuario. known=false: todavía no ha
+ * subido ninguno (su app es anterior, está apagado o no le ha dado tiempo a contestar). */
+data class AdminBatteryReportDto(
+    val known: Boolean = false,
+    val received_at: String? = null,
+    val report: BatteryReportDto? = null,
 )

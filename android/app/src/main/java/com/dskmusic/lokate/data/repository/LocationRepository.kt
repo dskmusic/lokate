@@ -9,10 +9,12 @@ import com.dskmusic.lokate.data.local.PendingPingDao
 import com.dskmusic.lokate.data.local.PendingPingEntity
 import com.dskmusic.lokate.data.prefs.SettingsDataStore
 import com.dskmusic.lokate.data.remote.ApiService
+import com.dskmusic.lokate.data.remote.dto.BatteryReportDto
 import com.dskmusic.lokate.data.remote.dto.LocationDto
 import com.dskmusic.lokate.data.remote.dto.LocationPingBatchRequestDto
 import com.dskmusic.lokate.data.remote.dto.LocationPingRequestDto
 import com.dskmusic.lokate.data.remote.dto.QueuedPingDto
+import com.dskmusic.lokate.location.BatteryStats
 import com.dskmusic.lokate.location.LiveTracking
 import com.dskmusic.lokate.location.UpdateMode
 import com.dskmusic.lokate.util.LocationFrequency
@@ -78,9 +80,12 @@ class LocationRepository(
             config_issues = status.configIssues,
             update_mode = UpdateMode.forPing(frequency),
         )
+        // El nivel de batería ya está leído aquí: es el sitio natural para que el contador de
+        // gasto se entere de que el móvil está cargando y empiece un periodo nuevo.
+        BatteryStats.onBattery(context, status.batteryLevel, status.isCharging)
         // Sin red no se intenta siquiera: cada intento condenado enciende la radio móvil unos
         // segundos para nada, y eso en modo túnel/ascensor pasa continuamente.
-        if (!isOnline()) return@withContext queue(body)
+        if (!isOnline()) return@withContext queueAndCount(body)
         repeat(PING_ATTEMPTS) { attempt ->
             // La respuesta del ping es por donde llegan tanto la renovación como el fin del
             // seguimiento en vivo: se aplica aquí, que es por donde pasan todos los que
@@ -88,6 +93,7 @@ class LocationRepository(
             val response = runCatching { api.ping(body) }.getOrNull()
             if (response != null) {
                 LiveTracking.update(response.live_seconds)
+                BatteryStats.onPing(context, delivered = true)
                 recordSuccess()
                 // Hay red y el servidor contesta: buen momento para soltar lo que quedó atrás.
                 flushPending()
@@ -97,8 +103,19 @@ class LocationRepository(
             // luego a la cola. Más intentos no arreglan una red caída, solo gastan batería.
             if (attempt < PING_ATTEMPTS - 1) delay(RETRY_DELAY_MS)
         }
-        queue(body)
+        queueAndCount(body)
     }
+
+    /** Lo mismo que [queue] pero apuntando el ping fallido en el informe de batería: un móvil
+     * con mala cobertura enciende la radio para nada muchas veces al día, y eso se ve aquí. */
+    private suspend fun queueAndCount(body: LocationPingRequestDto): Boolean {
+        BatteryStats.onPing(context, delivered = false)
+        return queue(body)
+    }
+
+    /** Sube el informe de batería de ESTE móvil (lo ha pedido un admin por push). */
+    suspend fun uploadBatteryReport(report: BatteryReportDto) =
+        withContext(Dispatchers.IO) { api.uploadBatteryReport(report) }
 
     /** Guarda el ping para el próximo vaciado. false = ni eso se ha podido (disco lleno,
      * base de datos rota): el punto se ha perdido y quien llama tiene que saberlo. */

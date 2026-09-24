@@ -1,3 +1,5 @@
+import os
+from datetime import datetime, timedelta, timezone
 from math import atan2, cos, radians, sin, sqrt
 from time import monotonic
 
@@ -16,6 +18,26 @@ ZONE_EXIT_MARGIN_M = 20
 # Tope de lo que la precisión del fix puede endurecer el límite de una zona (ver
 # _accuracy_margin). Sin tope, un fix de ±1 km dejaría la zona en nada.
 MAX_ACCURACY_MARGIN_M = 150
+
+# Cuánto se guarda el registro de entradas y salidas. Lo mismo que los pings por defecto, para
+# que el registro y las posiciones que lo explican caduquen a la vez: un evento sin sus pings no
+# se puede repasar con app/zone_replay.py.
+EVENT_RETENTION_DAYS = int(os.getenv("ZONE_EVENT_RETENTION_DAYS", os.getenv("LOCATION_RETENTION_DAYS", "30")))
+# La escoba pasa como mucho una vez al día: aquí se entra solo cuando alguien cruza un borde,
+# que son unas pocas veces al día en todo el servidor.
+_PURGE_EVERY = timedelta(days=1)
+_last_purge = datetime.min.replace(tzinfo=timezone.utc)
+
+
+def _purge_old_events(db: Session) -> None:
+    global _last_purge
+    now = datetime.now(timezone.utc)
+    if now - _last_purge < _PURGE_EVERY:
+        return
+    _last_purge = now
+    db.query(models.ZoneEvent).filter(
+        models.ZoneEvent.at < now - timedelta(days=EVENT_RETENTION_DAYS)
+    ).delete()
 
 # ---- Modo prueba de los administradores ----
 # Mientras un admin arrastra a alguien por el mapa para probar los avisos, la posición REAL de
@@ -161,7 +183,8 @@ def check_zone_transitions(
             threshold = zone.radius_m + ZONE_EXIT_MARGIN_M + margin
         else:
             threshold = zone.radius_m - margin
-        is_inside = distance_m(lat, lng, zone.lat, zone.lng) <= threshold
+        distance = distance_m(lat, lng, zone.lat, zone.lng)
+        is_inside = distance <= threshold
 
         if state is None:
             state = models.ZoneState(user_id=user.id, zone_id=zone.id, is_inside=is_inside)
@@ -174,18 +197,45 @@ def check_zone_transitions(
 
         verb = "ha entrado en" if is_inside else "ha salido de"
         body = f"{user.display_name} {verb} {zone.name}"
+        # reason acompaña al evento guardado: es la diferencia entre "no te avisó" y "no te
+        # podía avisar", que es justo lo que se pregunta uno tres días después.
+        reason = None
         if recipients_override is not None:
             recipients = [uid for uid in recipients_override if uid != user.id]
+            reason = "test"
         elif user.is_hidden_in(user.group_id):
             # Escondido en este grupo: sus idas y venidas no avisan a nadie.
             recipients = []
+            reason = "hidden"
         else:
             recipients = _notification_recipients(db, user.group_id, user.id, zone.id, is_inside)
         # Zona privada: solo avisa a quien la creo, aunque a otro le quedara una preferencia
         # guardada de cuando la zona era publica.
         if not zone.is_public:
+            before = len(recipients)
             recipients = [uid for uid in recipients if uid == zone.created_by]
+            if not recipients and before:
+                reason = "private_zone"
         report.append((body, len(recipients)))
+        # Lo que de verdad ha salido por el aire: con notify=False (recolocación en silencio al
+        # salir del modo prueba) la transición es real pero a propósito no avisa a nadie.
+        sent = len(recipients) if notify else 0
+        if reason is None:
+            reason = "resync" if not notify else ("no_prefs" if not recipients else None)
+
+        db.add(models.ZoneEvent(
+            user_id=user.id,
+            zone_id=zone.id,
+            group_id=user.group_id,
+            entered=is_inside,
+            lat=lat,
+            lng=lng,
+            accuracy=accuracy,
+            distance_m=distance,
+            notified=sent,
+            reason=reason,
+        ))
+        _purge_old_events(db)
 
         if notify:
             aviso = dict(

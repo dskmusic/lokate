@@ -34,6 +34,9 @@ class LocationUpdateWorker(context: Context, params: WorkerParameters) : Corouti
 
     override suspend fun doWork(): Result {
         val locator = ServiceLocator.getInstance(applicationContext)
+        // Despertar cada 15 min cuesta batería aunque no se haga nada: queda apuntado, y de
+        // paso es lo que cierra los trozos de tiempo con el móvil quieto (ver BatteryStats).
+        BatteryStats.onWorkerRun(applicationContext)
         if (!locator.authRepository.isLoggedIn()) return Result.success()
 
         // Latido: re-registra token FCM, canal de notificaciones y estado del móvil. Es lo

@@ -82,6 +82,13 @@ class MainActivity : ComponentActivity() {
         // Ajustes, por ejemplo), el intent sigue siendo el mismo y volvería a saltar la ficha.
         intent.removeExtra(Constants.EXTRA_PUSH_USER_ID)
 
+        // Toque en el aviso de "actualiza la app" (o en su boton "Actualizar"): el mapa arranca
+        // la descarga e instalacion sin que haya que buscar nada. Se consume igual que el de
+        // arriba, para que una rotacion no vuelva a lanzarla.
+        val startUpdate = intent.getStringExtra(Constants.EXTRA_PUSH_TYPE) == Constants.PUSH_TYPE_UPDATE_PROMPT &&
+            startDestination == Routes.MAP
+        intent.removeExtra(Constants.EXTRA_PUSH_TYPE)
+
         // Acceso directo del icono de la app: se abre el mapa y encima la sección elegida, para
         // que "atrás" lleve al mapa en vez de cerrar la app. Se consume igual que el extra de
         // arriba, si no una rotación volvería a abrir la sección.
@@ -117,6 +124,7 @@ class MainActivity : ComponentActivity() {
                         startDestination = startDestination,
                         openMemberUserId = memberFromPush,
                         openSection = sectionFromShortcut,
+                        startUpdate = startUpdate,
                     )
                 }
             }

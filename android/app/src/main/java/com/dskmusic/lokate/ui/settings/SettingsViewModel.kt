@@ -4,6 +4,7 @@ import android.content.Context
 import android.net.Uri
 import androidx.lifecycle.ViewModel
 import androidx.lifecycle.viewModelScope
+import com.dskmusic.lokate.data.repository.AdminRepository
 import com.dskmusic.lokate.data.repository.AuthRepository
 import com.dskmusic.lokate.data.repository.BackupRepository
 import com.dskmusic.lokate.data.repository.GroupRepository
@@ -11,6 +12,10 @@ import com.dskmusic.lokate.data.repository.LocationRepository
 import com.dskmusic.lokate.data.repository.ZoneRepository
 import com.dskmusic.lokate.data.prefs.SettingsDataStore
 import com.dskmusic.lokate.data.remote.ServerConfig
+import com.dskmusic.lokate.data.remote.dto.AdminGroupDto
+import com.dskmusic.lokate.data.remote.dto.AdminUpdateNoticeResultDto
+import com.dskmusic.lokate.data.remote.dto.AdminUpdateNoticeStateDto
+import com.dskmusic.lokate.data.remote.dto.AdminUserDto
 import com.dskmusic.lokate.data.remote.dto.GroupMemberDto
 import com.dskmusic.lokate.ui.map.MapCameraMemory
 import com.dskmusic.lokate.util.Constants
@@ -32,6 +37,7 @@ class SettingsViewModel(
     private val zoneRepository: ZoneRepository,
     private val locationRepository: LocationRepository,
     private val backupRepository: BackupRepository,
+    private val adminRepository: AdminRepository,
 ) : ViewModel() {
 
     /** Estado de la copia en la nube para la pantalla de ajustes. */
@@ -88,6 +94,23 @@ class SettingsViewModel(
     private val _groupMembers = MutableStateFlow<List<GroupMemberDto>>(emptyList())
     val groupMembers: StateFlow<List<GroupMemberDto>> = _groupMembers
 
+    // Destinatarios del aviso de actualización: son de todo el servidor, no del grupo propio, así
+    // que salen del repositorio de administración y solo se cargan al abrir el diálogo.
+    private val _adminGroups = MutableStateFlow<List<AdminGroupDto>>(emptyList())
+    val adminGroups: StateFlow<List<AdminGroupDto>> = _adminGroups
+
+    private val _adminUsers = MutableStateFlow<List<AdminUserDto>>(emptyList())
+    val adminUsers: StateFlow<List<AdminUserDto>> = _adminUsers
+
+    private val _updateNoticeResult = MutableStateFlow<AdminUpdateNoticeResultDto?>(null)
+    val updateNoticeResult: StateFlow<AdminUpdateNoticeResultDto?> = _updateNoticeResult
+
+    private val _updateNoticeError = MutableStateFlow<String?>(null)
+    val updateNoticeError: StateFlow<String?> = _updateNoticeError
+
+    private val _updateNoticeStates = MutableStateFlow<List<AdminUpdateNoticeStateDto>>(emptyList())
+    val updateNoticeStates: StateFlow<List<AdminUpdateNoticeStateDto>> = _updateNoticeStates
+
     private val _mapCacheClearedBytes = MutableStateFlow<Long?>(null)
     val mapCacheClearedBytes: StateFlow<Long?> = _mapCacheClearedBytes
 
@@ -127,6 +150,41 @@ class SettingsViewModel(
 
     fun loadGroupMembers() = viewModelScope.launch {
         runCatching { groupRepository.members() }.onSuccess { _groupMembers.value = it }
+    }
+
+    /** Las dos listas del selector del aviso de actualización. Se piden una sola vez. */
+    fun loadUpdateNoticeTargets() = viewModelScope.launch {
+        if (_adminGroups.value.isEmpty()) {
+            runCatching { adminRepository.listGroups() }.onSuccess { _adminGroups.value = it }
+        }
+        if (_adminUsers.value.isEmpty()) {
+            runCatching { adminRepository.listUsers() }.onSuccess { _adminUsers.value = it }
+        }
+    }
+
+    /** Aviso de "actualiza la app". Sin grupo ni usuarios va a todo el mundo, que es lo que pide
+     * el servidor cuando los dos vienen vacíos. */
+    fun sendUpdateNotice(message: String, groupId: String?, userIds: List<String>?) = viewModelScope.launch {
+        _updateNoticeResult.value = null
+        _updateNoticeError.value = null
+        runCatching { adminRepository.notifyUpdate(message, groupId, userIds) }
+            .onSuccess {
+                _updateNoticeResult.value = it
+                loadUpdateNoticeStates()
+            }
+            .onFailure { _updateNoticeError.value = it.message }
+    }
+
+    /** Se pide al abrir el diálogo, al terminar un envío y cuando se toca refrescar: el estado
+     * cambia solo cuando a la otra persona le da por actualizar o descartar, así que aquí no hay
+     * nada que empujar desde el servidor. */
+    fun loadUpdateNoticeStates() = viewModelScope.launch {
+        runCatching { adminRepository.updateNoticeStates() }.onSuccess { _updateNoticeStates.value = it }
+    }
+
+    fun clearUpdateNotice() {
+        _updateNoticeResult.value = null
+        _updateNoticeError.value = null
     }
 
     /** userIds null = a todo el grupo (la pantalla pide confirmación antes de eso). */

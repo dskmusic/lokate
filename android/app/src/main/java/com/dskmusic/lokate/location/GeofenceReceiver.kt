@@ -28,6 +28,7 @@ class GeofenceReceiver : BroadcastReceiver() {
         val fix = event.triggeringLocation ?: return
 
         val app = context.applicationContext
+        BatteryStats.onGeofenceEvent(app)
         // goAsync: un receptor muere en cuanto vuelve de onReceive, y aquí hay que hablar por
         // red. Si no llega a salir, LocationRepository lo deja en la cola y sale luego.
         val pendingResult = goAsync()

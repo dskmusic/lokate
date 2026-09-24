@@ -2,7 +2,9 @@ package com.dskmusic.lokate
 
 import android.app.Application
 import com.dskmusic.lokate.di.ServiceLocator
+import com.dskmusic.lokate.location.BatteryStats
 import com.dskmusic.lokate.push.NotificationHelper
+import com.dskmusic.lokate.util.AppUpdater
 import com.dskmusic.lokate.util.Constants
 import com.dskmusic.lokate.util.MapTileCache
 import kotlinx.coroutines.CoroutineScope
@@ -17,6 +19,12 @@ class LokateApplication : Application() {
     override fun onCreate() {
         super.onCreate()
         NotificationHelper.createChannels(this)
+        // El informe de batería empieza a contar con el proceso, no con el primer ping: si no,
+        // un móvil quieto se pasa quince minutos sin medir nada.
+        BatteryStats.start(this)
+        // Si el arranque viene de haber instalado una actualización, el admin que la pidió se
+        // entera aquí (no hace nada si no había ninguna a medias).
+        AppUpdater.confirmPendingInstall(this)
 
         // Configuración recomendada por osmdroid: User-Agent propio y caché en almacenamiento de la app.
         Configuration.getInstance().apply {

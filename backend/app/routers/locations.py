@@ -1,3 +1,4 @@
+import json
 import os
 from datetime import datetime, timedelta, timezone
 from time import monotonic
@@ -6,7 +7,7 @@ from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, s
 from sqlalchemy.orm import Session
 
 from .. import geofence, models, push, schemas, smoothing
-from ..auth import get_current_user_with_group
+from ..auth import get_current_user, get_current_user_with_group
 from ..database import get_db
 
 router = APIRouter(prefix="/location", tags=["location"])
@@ -363,3 +364,22 @@ def request_location(
         body="Solicitud de ubicación",
         data={"type": "request_location"},
     )
+
+
+@router.post("/battery-report", status_code=status.HTTP_204_NO_CONTENT)
+def upload_battery_report(
+    body: schemas.BatteryReport,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """Un móvil sube SU informe de batería, después de que un admin se lo pidiera por push.
+
+    Se guarda el último y punto (pisa el anterior): quien lo mira quiere saber cómo va ese móvil
+    ahora, no llevar un histórico. Va aquí y no en admin-api porque quien lo sube es el usuario
+    de a pie desde su propio dispositivo, no un administrador.
+    """
+    user.battery_report = json.dumps(
+        {"received_at": datetime.now(timezone.utc).isoformat(), "report": body.model_dump()},
+        ensure_ascii=False,
+    )
+    db.commit()

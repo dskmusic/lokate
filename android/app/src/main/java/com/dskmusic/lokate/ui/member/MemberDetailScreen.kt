@@ -24,6 +24,7 @@ import androidx.compose.foundation.shape.CircleShape
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.AddCircle
 import androidx.compose.material.icons.filled.ArrowBack
+import androidx.compose.material.icons.filled.BatteryAlert
 import androidx.compose.material.icons.filled.BatteryChargingFull
 import androidx.compose.material.icons.filled.BatteryFull
 import androidx.compose.material.icons.filled.CheckCircle
@@ -169,6 +170,24 @@ fun MemberDetailScreen(
                     IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = null) }
                 },
                 actions = {
+                    // Solo admins: pedirle a su móvil el informe de batería. Va aquí arriba, a
+                    // la izquierda de Google Maps, porque es una herramienta de diagnóstico y no
+                    // una acción sobre esa persona (a ella no le sale nada: es un push silencioso).
+                    if (isAdmin) {
+                        IconButton(
+                            onClick = { viewModel.requestBatteryReport() },
+                            enabled = !state.requestingBatteryReport,
+                        ) {
+                            if (state.requestingBatteryReport) {
+                                CircularProgressIndicator(Modifier.size(20.dp), strokeWidth = 2.dp)
+                            } else {
+                                Icon(
+                                    Icons.Filled.BatteryAlert,
+                                    contentDescription = stringResource(R.string.battery_report_action),
+                                )
+                            }
+                        }
+                    }
                     // Abrir en Google Maps es lo único de esta pantalla que no toca a la otra
                     // persona (ni le pide nada ni le hace sonar nada), así que va arriba y no
                     // entre los botones de acción.
@@ -476,6 +495,29 @@ fun MemberDetailScreen(
                 Text(it, color = MaterialTheme.colorScheme.error)
             }
         }
+    }
+
+    // El informe de bateria que acaba de subir su movil (o el ultimo que subiera, si no ha
+    // contestado). Solo lo pide un admin, asi que aqui no hace falta volver a comprobarlo.
+    state.batteryReport?.let { report ->
+        BatteryReportDialog(
+            memberName = state.location?.display_name ?: stringResource(R.string.member_detail_title),
+            report = report,
+            receivedAt = state.batteryReportAt,
+            stale = state.batteryReportStale,
+            onDismiss = { viewModel.dismissBatteryReport() },
+        )
+    }
+
+    if (state.batteryReportFailed) {
+        AlertDialog(
+            onDismissRequest = { viewModel.dismissBatteryReport() },
+            title = { Text(stringResource(R.string.battery_report_action)) },
+            text = { Text(stringResource(R.string.battery_report_failed)) },
+            confirmButton = {
+                TextButton(onClick = { viewModel.dismissBatteryReport() }) { Text(stringResource(R.string.close)) }
+            },
+        )
     }
 
     // Solo con posicion hay foto que mirar: sin ella esta pantalla ni llega a pintar el avatar.

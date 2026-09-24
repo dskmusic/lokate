@@ -2,6 +2,7 @@ package com.dskmusic.lokate.push
 
 import com.dskmusic.lokate.R
 import com.dskmusic.lokate.di.ServiceLocator
+import com.dskmusic.lokate.location.BatteryStats
 import com.dskmusic.lokate.location.LiveTracking
 import com.dskmusic.lokate.location.LocationServiceController
 import com.dskmusic.lokate.util.DeviceStatusUtils
@@ -52,6 +53,8 @@ class LokateFirebaseMessagingService : FirebaseMessagingService() {
         // push SÍ llegó al dispositivo y el problema está de aquí hacia dentro (permiso de
         // notificaciones, canal bloqueado, un ajuste apagado); si no aparece, no llegó nunca.
         android.util.Log.i("LokatePush", "Push recibido: type=$type")
+        // Cada push despierta el proceso y enciende la radio un momento: cuenta para el informe.
+        BatteryStats.onPush(applicationContext)
 
         val notifyZone = runBlocking { locator.settings.notifyZoneEnabled.first() }
         val notifySystem = runBlocking { locator.settings.notifySystemEnabled.first() }
@@ -83,8 +86,20 @@ class LokateFirebaseMessagingService : FirebaseMessagingService() {
             // miembro): totalmente silencioso, sin sonido ni notificación — solo se lee la
             // posición una vez y se sube igual que un ping normal en segundo plano.
             "request_location" -> CoroutineScope(Dispatchers.IO).launch {
+                // Enciende el GPS a tope durante unos segundos en ESTE móvil: es de lo más caro
+                // que le puede pedir otra persona, así que queda contado.
+                BatteryStats.onOneShot(applicationContext)
                 runCatching { pingOneShot(locator) }
                     .onFailure { android.util.Log.w("LokatePush", "Petición puntual fallida", it) }
+            }
+            // Un admin quiere ver el informe de batería de este móvil: se hace y se sube, sin
+            // enseñar nada aquí. Silencioso como la petición de ubicación puntual.
+            "battery_report" -> CoroutineScope(Dispatchers.IO).launch {
+                runCatching {
+                    locator.locationRepository.uploadBatteryReport(
+                        BatteryStats.report(applicationContext),
+                    )
+                }.onFailure { android.util.Log.w("LokatePush", "Informe de batería fallido", it) }
             }
             // Alguien nos ha puesto en seguimiento en vivo desde su mapa: silencioso, va
             // consentido con la entrada al grupo, y manda por encima de la frecuencia elegida
@@ -92,6 +107,7 @@ class LokateFirebaseMessagingService : FirebaseMessagingService() {
             // solo llega la PRIMERA activación; las renovaciones y el fin viajan en la respuesta
             // de cada ping, y el servidor repite el push si nos ve callados.
             "live_tracking" -> CoroutineScope(Dispatchers.IO).launch {
+                BatteryStats.onLiveSession(applicationContext)
                 LiveTracking.update(message.data["seconds"]?.toIntOrNull() ?: 0)
                 // En "solo bajo demanda" no hay servicio corriendo y hay que levantarlo: el
                 // push de alta prioridad da permiso para arrancarlo desde segundo plano. Si
@@ -130,6 +146,10 @@ class LokateFirebaseMessagingService : FirebaseMessagingService() {
                 val absoluteAttachmentUrl = attachmentUrl?.let { com.dskmusic.lokate.data.remote.absoluteMediaUrl(it) }
                 NotificationHelper.showEmergencyMessageNotification(this, title, body, absoluteAttachmentUrl, attachmentKind)
             }
+            // Un admin pide que se actualice la app. Se pinta siempre, sin mirar el ajuste de
+            // "avisos del sistema": es el aviso que arregla la app, no una novedad del grupo.
+            com.dskmusic.lokate.util.Constants.PUSH_TYPE_UPDATE_PROMPT ->
+                NotificationHelper.showUpdateNotification(this, title, body)
             // "Lleva X sin dar señal": es el único aviso del servidor que se puede silenciar por
             // persona (ajuste en su ficha) además de por app. El push llega igual y se descarta
             // aquí: el servidor no sabe —ni tiene por qué— quién quiere saber de quién.

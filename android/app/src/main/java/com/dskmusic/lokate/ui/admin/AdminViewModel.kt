@@ -11,6 +11,7 @@ import com.dskmusic.lokate.data.remote.dto.AdminFileDto
 import com.dskmusic.lokate.data.remote.dto.AdminGroupDto
 import com.dskmusic.lokate.data.remote.dto.AdminUserDto
 import com.dskmusic.lokate.data.remote.dto.AdminZoneDto
+import com.dskmusic.lokate.data.remote.dto.AdminZoneEventDto
 import com.dskmusic.lokate.data.repository.AdminRepository
 import com.dskmusic.lokate.util.FileUtils
 import kotlinx.coroutines.flow.MutableStateFlow
@@ -28,6 +29,16 @@ data class AdminUiState(
     val groups: List<AdminGroupDto> = emptyList(),
     val loadingZones: Boolean = false,
     val zones: List<AdminZoneDto> = emptyList(),
+    val loadingZoneEvents: Boolean = false,
+    val zoneEvents: List<AdminZoneEventDto> = emptyList(),
+    /** Filtros del registro de zonas. Viven en el estado (y no en la pantalla) para que no se
+     * pierdan al girar el móvil ni al volver de otra pestaña. */
+    val logUserId: String? = null,
+    val logZoneId: String? = null,
+    val logDays: Int = 7,
+    val logOnlyMissed: Boolean = false,
+    /** Ids marcados para borrar. Vacío = no hay modo selección. */
+    val selectedEvents: Set<String> = emptySet(),
     val loadingFiles: Boolean = false,
     val files: List<AdminFileDto> = emptyList(),
     val loadingBackups: Boolean = false,
@@ -192,6 +203,57 @@ class AdminViewModel(private val repository: AdminRepository) : ViewModel() {
                 onDone()
             }
             .onFailure { _uiState.value = _uiState.value.copy(actionInProgress = false); fail(it) }
+    }
+
+    /** Recarga el registro con los filtros que haya ahora. Se llama sola al cambiar cualquiera
+     * de ellos: son cuatro parámetros y la consulta la resuelve el servidor. */
+    fun loadZoneEvents() = viewModelScope.launch {
+        val state = _uiState.value
+        _uiState.value = state.copy(loadingZoneEvents = true)
+        runCatching { repository.zoneEvents(state.logUserId, state.logZoneId, state.logDays, state.logOnlyMissed) }
+            .onSuccess { _uiState.value = _uiState.value.copy(zoneEvents = it, loadingZoneEvents = false) }
+            .onFailure { _uiState.value = _uiState.value.copy(loadingZoneEvents = false); fail(it) }
+    }
+
+    /** Marca o desmarca una fila. Al quedarse a cero se sale solo del modo selección: no hace
+     * falta un botón de cancelar aparte. */
+    fun toggleEventSelection(id: String) {
+        val current = _uiState.value.selectedEvents
+        _uiState.value = _uiState.value.copy(
+            selectedEvents = if (id in current) current - id else current + id,
+        )
+    }
+
+    fun clearEventSelection() {
+        _uiState.value = _uiState.value.copy(selectedEvents = emptySet())
+    }
+
+    /** Borra lo marcado y recarga. ponytail: se recarga entero en vez de quitar las filas a mano
+     * porque la lista trae como mucho 30 días de eventos y el servidor es quien manda. */
+    fun deleteSelectedEvents() = viewModelScope.launch {
+        val ids = _uiState.value.selectedEvents.toList()
+        if (ids.isEmpty()) return@launch
+        _uiState.value = _uiState.value.copy(actionInProgress = true)
+        runCatching { repository.deleteZoneEvents(ids) }
+            .onSuccess {
+                _uiState.value = _uiState.value.copy(actionInProgress = false, selectedEvents = emptySet())
+                loadZoneEvents()
+            }
+            .onFailure { _uiState.value = _uiState.value.copy(actionInProgress = false); fail(it) }
+    }
+
+    fun setLogFilters(
+        userId: String? = _uiState.value.logUserId,
+        zoneId: String? = _uiState.value.logZoneId,
+        days: Int = _uiState.value.logDays,
+        onlyMissed: Boolean = _uiState.value.logOnlyMissed,
+    ) {
+        _uiState.value = _uiState.value.copy(
+            logUserId = userId, logZoneId = zoneId, logDays = days, logOnlyMissed = onlyMissed,
+            // Las marcas son de las filas que se ven; con otro filtro ya no están.
+            selectedEvents = emptySet(),
+        )
+        loadZoneEvents()
     }
 
     fun loadFiles(folder: String) = viewModelScope.launch {

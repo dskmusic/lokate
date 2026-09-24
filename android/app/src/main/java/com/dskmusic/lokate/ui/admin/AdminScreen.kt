@@ -8,6 +8,7 @@ import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Backup
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Groups
+import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material3.AlertDialog
@@ -42,6 +43,7 @@ fun AdminScreen(locator: ServiceLocator, onBack: () -> Unit) {
     val viewModel = remember { AdminViewModel(locator.adminRepository) }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
     var tab by remember { mutableStateOf(AdminTab.DASHBOARD) }
+    var showZoneLog by remember { mutableStateOf(false) }
 
     LaunchedEffect(tab) {
         when (tab) {
@@ -53,12 +55,24 @@ fun AdminScreen(locator: ServiceLocator, onBack: () -> Unit) {
         }
     }
 
-    Scaffold(
+    // El registro de zonas es pantalla aparte y no otra pestaña: se entra desde el botón de la
+    // barra y al volver sigues donde estabas.
+    if (showZoneLog) {
+        AdminZoneLogScreen(state, viewModel, onBack = { showZoneLog = false })
+    } else Scaffold(
         topBar = {
             TopAppBar(
                 title = { Text(stringResource(R.string.admin_title)) },
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = null) }
+                },
+                actions = {
+                    IconButton(onClick = { showZoneLog = true }) {
+                        Icon(
+                            Icons.Filled.NotificationsActive,
+                            contentDescription = stringResource(R.string.admin_zone_log_title),
+                        )
+                    }
                 },
             )
         },

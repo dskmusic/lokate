@@ -32,7 +32,11 @@ def _add_missing_columns() -> None:
         return
     with engine.begin() as conn:
         columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(users)")}
-        for column in ("location_frequency", "config_issues", "zone_channel_id", "hidden_group_ids", "update_mode"):
+        for column in (
+            "location_frequency", "config_issues", "zone_channel_id", "hidden_group_ids", "update_mode",
+            "battery_report", "app_version",
+            "update_notice_at", "update_notice_status", "update_notice_status_at",
+        ):
             if column not in columns:
                 conn.exec_driver_sql(f"ALTER TABLE users ADD COLUMN {column} VARCHAR")
 

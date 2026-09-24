@@ -39,6 +39,8 @@ fun LokateNavHost(
     openMemberUserId: String? = null,
     /** Sección a abrir encima del mapa al entrar desde un acceso directo del icono de la app. */
     openSection: String? = null,
+    /** Se ha entrado tocando el aviso de actualización: el mapa la descarga e instala solo. */
+    startUpdate: Boolean = false,
 ) {
     val navController: NavHostController = rememberNavController()
     val context = LocalContext.current
@@ -117,6 +119,7 @@ fun LokateNavHost(
                 onOpenGroup = { navController.navigate(Routes.GROUP) },
                 onOpenMember = { userId -> navController.navigate(Routes.memberDetail(userId)) },
                 onOpenAdmin = { navController.navigate(Routes.ADMIN) },
+                startUpdate = startUpdate,
                 focusUserIdFlow = backStackEntry.savedStateHandle.getStateFlow("focus_user_id", null as String?),
                 onFocusUserIdConsumed = { backStackEntry.savedStateHandle.remove<String>("focus_user_id") },
             )

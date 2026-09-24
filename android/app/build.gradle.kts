@@ -16,8 +16,8 @@ android {
         applicationId = "com.dskmusic.lokate"
         minSdk = 26
         targetSdk = 35
-        versionCode = 1
-        versionName = "1.0.0"
+        versionCode = 2
+        versionName = "1.0.8"
 
         // La URL del servidor no viaja en el codigo: cada quien pone la suya en local.properties
         // (que git ignora) como  lokate.apiBaseUrl=https://mi-servidor.com/ , o con -PlokateApiBaseUrl
