@@ -14,6 +14,12 @@ fun MapView.moveTo(target: GeoPoint) {
     val current = GeoPoint(mapCenter.latitude, mapCenter.longitude)
     if (current.distanceToAsDouble(target) > Constants.MAP_ANIMATE_MAX_DISTANCE_METERS) {
         controller.setCenter(target)
+        // El zoom no se toca: se salta con el que llevara el usuario. Reaplicarlo sí, porque
+        // osmdroid decide qué teselas pedir al dibujarse y el salto le pilla con las del sitio
+        // anterior pedidas y ninguna del nuevo — mismo truco que el primer layout (ver
+        // [OsmMapView]). De que haya algo que pintar muy de cerca se encarga [TileRetryEffect].
+        controller.setZoom(zoomLevelDouble)
+        invalidate()
     } else {
         controller.animateTo(target)
     }

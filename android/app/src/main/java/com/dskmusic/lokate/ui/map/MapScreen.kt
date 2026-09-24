@@ -445,7 +445,7 @@ fun MapScreen(
                     // cambiar de pestaña, no de abrir la app), OsmMapView ya la restauró solo y
                     // no hay que recentrar sobre la ubicación actual por encima.
                     if (MapCameraMemory.center == null) {
-                        lastKnownLocation(context) { view.controller.setCenter(GeoPoint(it.latitude, it.longitude)) }
+                        lastKnownLocation(context) { view.moveTo(GeoPoint(it.latitude, it.longitude)) }
                     }
                 },
             )

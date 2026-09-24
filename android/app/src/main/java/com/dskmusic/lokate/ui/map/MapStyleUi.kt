@@ -42,8 +42,13 @@ import org.osmdroid.mapsforge.MapsForgeTileSource
 import org.osmdroid.tileprovider.MapTileProviderBasic
 import org.osmdroid.tileprovider.tilesource.TileSourceFactory
 import org.osmdroid.tileprovider.util.SimpleRegisterReceiver
+import org.osmdroid.util.MapTileIndex
 import org.osmdroid.views.MapView
 import java.io.File
+import kotlin.math.PI
+import kotlin.math.cos
+import kotlin.math.ln
+import kotlin.math.tan
 
 /** Modo oscuro del mapa: en vez de depender de un proveedor de teselas oscuras de terceros
  * (CARTO exige clave y, aun con clave válida, su CDN sirve teselas cacheadas de otros
@@ -198,6 +203,62 @@ private const val TILE_RETRY_INTERVAL_MS = 1_500L
  * usuario mueve el mapa. */
 private const val TILE_RETRY_MAX = 5
 
+/** Reintentos de los gordos (ver abajo). Dos bastan: si tras vaciar la caché dos veces siguen sin
+ * llegar, o no existen o no hay red, y en ninguno de los dos casos lo arregla insistir. */
+private const val TILE_HARD_RETRY_MAX = 2
+
+/** Tope de teselas que se piden a mano de una vez (ver [prefetchRealTiles]). En zoom 20 la
+ * pantalla de un móvil cabe en unas 15 teselas de nivel 19, y de 21 para arriba en 6 o menos;
+ * 24 deja margen y a la vez impide una tormenta de descargas si la vista fuese enorme. */
+private const val PREFETCH_MAX_TILES = 24
+
+/**
+ * Último zoom con teselas de VERDAD en la fuente que esté puesta: 19 tanto en el mapa de OSM como
+ * en el satélite de Esri (los mapas descargados traen el suyo).
+ */
+fun MapView.maxRealTileZoom(): Double = tileProvider.tileSource.maximumZoomLevel.toDouble()
+
+/**
+ * Pide a mano las teselas de [maxRealTileZoom] que cubren lo que se está viendo.
+ *
+ * Por encima de ese nivel osmdroid no pide nada: se salta el descargador (la fuente no publica
+ * esos zooms) y pasa el turno al aproximador, que amplía una tesela de más abajo... pero solo si
+ * ya la tiene guardada. En un sitio donde no se ha estado nunca no tiene ninguna, y como tampoco
+ * la pide, la pantalla se queda en la cuadrícula vacía para siempre. Pidiéndola nosotros, al
+ * llegar se guarda en la caché de disco, el aproximador la amplía y el mapa se pinta — borroso,
+ * como cualquier mapa a ese nivel, pero sin tocarle el zoom al usuario. Al moverse por la zona
+ * esto se repite con las teselas nuevas que vayan haciendo falta.
+ */
+private fun MapView.prefetchRealTiles() {
+    val zoom = tileProvider.tileSource.maximumZoomLevel
+    val box = projection.boundingBox
+    val side = 1 shl zoom
+
+    fun tileX(lon: Double) = (((lon + 180.0) / 360.0) * side).toInt().coerceIn(0, side - 1)
+    fun tileY(lat: Double): Int {
+        // Mercator, la cuenta de toda la vida de las teselas (85.05 es donde el mapa se corta).
+        val rad = Math.toRadians(lat.coerceIn(-85.05, 85.05))
+        return ((1.0 - ln(tan(rad) + 1.0 / cos(rad)) / PI) / 2.0 * side).toInt().coerceIn(0, side - 1)
+    }
+
+    val x0 = tileX(box.lonWest)
+    val x1 = tileX(box.lonEast)
+    val y0 = tileY(box.latNorth)
+    val y1 = tileY(box.latSouth)
+    // ponytail: si la vista cruza el meridiano 180 los índices se dan la vuelta; a estos zooms la
+    // pantalla mide metros, así que se deja pasar en vez de partir el rectángulo en dos.
+    if (x1 < x0 || y1 < y0) return
+    var asked = 0
+    for (x in x0..x1) {
+        for (y in y0..y1) {
+            if (asked++ >= PREFETCH_MAX_TILES) return
+            // Es lo mismo que hace osmdroid al dibujar: si ya está en caché devuelve y no gasta
+            // nada, si no la descarga en segundo plano y al terminar repinta el mapa él solo.
+            tileProvider.getMapTile(MapTileIndex.getTileIndex(zoom, x, y))
+        }
+    }
+}
+
 /**
  * Vuelve a pedir las teselas que se quedaron a medias (el mapa "pixelado" al abrirlo).
  *
@@ -218,6 +279,7 @@ fun TileRetryEffect(map: MapView) {
         lifecycleOwner.repeatOnLifecycle(Lifecycle.State.RESUMED) {
             var pending = -1
             var tries = 0
+            var hardTries = 0
             while (true) {
                 delay(TILE_RETRY_INTERVAL_MS)
                 // isDone: solo cuentan las cifras de una pasada de dibujado terminada.
@@ -227,9 +289,36 @@ fun TileRetryEffect(map: MapView) {
                     // Algo se ha movido (han llegado teselas, o el usuario ha cambiado la vista).
                     pending = missing
                     tries = 0
+                    hardTries = 0
                 }
-                if (missing == 0 || tries++ >= TILE_RETRY_MAX) continue
-                map.invalidate()
+                if (missing == 0) continue
+                if (map.zoomLevelDouble > map.maxRealTileZoom()) {
+                    // Aquí "a medias" no significa nada: TODO lo que se ve son ampliaciones y
+                    // siempre cuenta como estirado. El único hueco de verdad es notFound, que es
+                    // donde no se pintó nada. Y no se arregla repintando ni vaciando la caché
+                    // (eso tiraría lo poco que hubiera): falta la tesela de abajo, y esa hay que
+                    // pedirla a mano.
+                    if (states.notFound > 0) map.prefetchRealTiles()
+                    continue
+                }
+                if (tries++ < TILE_RETRY_MAX) {
+                    map.invalidate()
+                    continue
+                }
+                // Repintar ya no sirve: la tesela se quedó marcada como pedida o como fallida y
+                // osmdroid no la vuelve a pedir por mucho que se redibuje (por eso el usuario
+                // tenía que mover el zoom: a otro nivel son teselas distintas). Vaciar la caché
+                // en memoria las deja sin marca y el siguiente dibujado las pide de nuevo; las
+                // buenas que se tiran vuelven del disco, sin descargar nada.
+                //
+                // Solo con la pantalla ENTERA vacía, que es el atasco de verdad: faltando unas
+                // pocas lo normal es que no existan (mar, borde del mapa descargado, zoom más allá
+                // de lo que publica el proveedor) y vaciar la caché haría parpadear el mapa entero
+                // para volver a pintar lo mismo.
+                if (missing == states.total && hardTries++ < TILE_HARD_RETRY_MAX) {
+                    map.tileProvider.clearTileCache()
+                    map.invalidate()
+                }
             }
         }
     }
