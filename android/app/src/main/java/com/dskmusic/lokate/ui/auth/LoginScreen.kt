@@ -7,6 +7,8 @@ import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Button
 import androidx.compose.material3.CircularProgressIndicator
@@ -57,7 +59,10 @@ fun LoginScreen(locator: ServiceLocator, onLoggedIn: () -> Unit, onGoToRegister:
 
     Scaffold { padding ->
         Column(
-            modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp),
+            // El scroll es para el móvil tumbado: de pie sobra, pero ahí el formulario no
+            // cabe de alto y sin esto el botón de entrar se queda fuera de la pantalla.
+            modifier = Modifier.fillMaxSize().padding(padding).padding(24.dp)
+                .verticalScroll(rememberScrollState()),
             verticalArrangement = Arrangement.Center,
         ) {
             Text(stringResource(R.string.login_title), style = MaterialTheme.typography.titleLarge)

@@ -1,0 +1,9 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- El redondel de los botones del aviso de navegación. Color fijo y no del tema: lo pinta el
+     sistema, y ?android:attr/... lo resuelve cada fabricante a su manera (en HyperOS salía gris
+     oscuro sobre tarjeta negra, o sea invisible). Azul de la app + glifo blanco se ve igual de
+     bien sobre tarjeta clara y sobre tarjeta oscura. -->
+<shape xmlns:android="http://schemas.android.com/apk/res/android"
+    android:shape="oval">
+    <solid android:color="@color/ic_launcher_background" />
+</shape>

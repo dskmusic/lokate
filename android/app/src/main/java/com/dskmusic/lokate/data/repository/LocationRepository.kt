@@ -9,17 +9,23 @@ import com.dskmusic.lokate.data.local.PendingPingDao
 import com.dskmusic.lokate.data.local.PendingPingEntity
 import com.dskmusic.lokate.data.prefs.SettingsDataStore
 import com.dskmusic.lokate.data.remote.ApiService
+import com.dskmusic.lokate.data.remote.NominatimAddressDto
+import com.dskmusic.lokate.data.remote.NominatimResultDto
 import com.dskmusic.lokate.data.remote.dto.BatteryReportDto
+import com.dskmusic.lokate.data.remote.dto.IsochroneDto
 import com.dskmusic.lokate.data.remote.dto.LocationDto
 import com.dskmusic.lokate.data.remote.dto.LocationPingBatchRequestDto
 import com.dskmusic.lokate.data.remote.dto.LocationPingRequestDto
+import com.dskmusic.lokate.data.remote.dto.MatrixDto
 import com.dskmusic.lokate.data.remote.dto.QueuedPingDto
+import com.dskmusic.lokate.data.remote.dto.RouteDto
 import com.dskmusic.lokate.location.BatteryStats
 import com.dskmusic.lokate.location.LiveTracking
 import com.dskmusic.lokate.location.UpdateMode
 import com.dskmusic.lokate.util.LocationFrequency
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.flow.first
 import kotlinx.coroutines.withContext
 import java.text.SimpleDateFormat
 import java.util.Date
@@ -79,6 +85,10 @@ class LocationRepository(
             location_frequency = frequency.name,
             config_issues = status.configIssues,
             update_mode = UpdateMode.forPing(frequency),
+            // Se lee aquí y no se pasa como parámetro para no tocar a los cuatro que pingean:
+            // DataStore lo tiene en memoria desde la primera lectura, así que no es un viaje
+            // a disco por ping.
+            wifi_anchor = settings.wifiAnchor.first(),
         )
         // El nivel de batería ya está leído aquí: es el sitio natural para que el contador de
         // gasto se entere de que el móvil está cargando y empiece un periodo nuevo.
@@ -170,6 +180,8 @@ class LocationRepository(
                     location_frequency = newest.locationFrequency,
                     config_issues = newest.configIssues,
                     update_mode = newest.updateMode,
+                    // Como el resto del estado del lote: el de AHORA, no el de cada punto.
+                    wifi_anchor = settings.wifiAnchor.first(),
                 ),
             )
         }.getOrNull() ?: return@withContext
@@ -205,6 +217,58 @@ class LocationRepository(
             .format(Date(millis))
 
     suspend fun groupLatest(): List<LocationDto> = withContext(Dispatchers.IO) { api.groupLatestLocations() }
+
+    suspend fun memberLatest(userId: String): LocationDto =
+        withContext(Dispatchers.IO) { api.memberLatestLocation(userId) }
+
+    /** Ver [com.dskmusic.lokate.data.remote.ApiService.route]. Lanza si no se ha podido trazar
+     * (502): quien llama lo dice y no dibuja nada — una recta que cruza un río no es un camino. */
+    suspend fun route(
+        fromLat: Double,
+        fromLng: Double,
+        toLat: Double,
+        toLng: Double,
+        mode: String,
+    ): RouteDto = withContext(Dispatchers.IO) {
+        // El idioma del móvil, que es en el que se van a oír las indicaciones. El servidor
+        // atiende es/en y cualquier otro lo contesta en español.
+        api.route(fromLat, fromLng, toLat, toLng, mode, Locale.getDefault().language)
+    }
+
+    /** Busca sitios en el servidor (Pelias, ver backend places.py). **null = no disponible**, y
+     * entonces quien pregunta lo busca en Nominatim, que es lo que se hacía antes; una lista
+     * vacía es "no existe". [near] es el centro de lo que se está mirando: no recorta nada, solo
+     * pone de primeros los resultados de esa zona.
+     *
+     * Aquí no se deja escapar ninguna excepción a propósito: un buscador con suplente no tiene
+     * errores que contar, tiene un plan B. */
+    suspend fun searchPlaces(text: String, nearLat: Double?, nearLng: Double?): List<NominatimResultDto>? =
+        withContext(Dispatchers.IO) { runCatching { api.geocode(text, nearLat, nearLng) }.getOrNull() }
+
+    /** La dirección de un punto, por el servidor. null = no disponible o no sabe nada de ahí: en
+     * los dos casos le toca a Nominatim, que a veces sí lo conoce. */
+    suspend fun addressOf(lat: Double, lng: Double): NominatimAddressDto? = withContext(Dispatchers.IO) {
+        runCatching { api.address(lat, lng) }.getOrNull()?.takeIf { it.display_name != null }
+    }
+
+    /** Hasta dónde llega esa persona en 5, 10 y 15 minutos. null = no se ha podido (sin servicio,
+     * o ahí no hay calles): quien pregunta lo dice y no dibuja nada. */
+    suspend fun isochrone(lat: Double, lng: Double, mode: String): IsochroneDto? =
+        withContext(Dispatchers.IO) { runCatching { api.isochrone(lat, lng, mode) }.getOrNull() }
+
+    /** Los segundos que tarda cada uno de [points] en llegar al destino, en el mismo orden.
+     * null = no se ha podido, y entonces la lista se queda ordenada por línea recta: un orden
+     * aproximado es mejor que una espera. */
+    suspend fun travelTimes(
+        points: List<Pair<Double, Double>>,
+        toLat: Double,
+        toLng: Double,
+        mode: String,
+    ): MatrixDto? = withContext(Dispatchers.IO) {
+        runCatching {
+            api.travelMatrix(points.map { "${it.first},${it.second}" }, toLat, toLng, mode)
+        }.getOrNull()
+    }
 
     suspend fun ringDevice(userId: String) = withContext(Dispatchers.IO) { api.ringDevice(userId) }
 

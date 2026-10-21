@@ -26,6 +26,16 @@ class LokateApplication : Application() {
         // entera aquí (no hace nada si no había ninguna a medias).
         AppUpdater.confirmPendingInstall(this)
 
+        // Pre-calienta fuera del hilo principal lo que MainActivity o el BootReceiver van a pedir
+        // en el hilo principal: la construcción de SessionManager (clave en el Keystore +
+        // EncryptedSharedPreferences) y de la pila de red (OkHttp/Retrofit). Es lo que más tarda
+        // en un arranque en frío, y sin esto acabaría bloqueando el hilo principal en el primer
+        // isLoggedIn(). runCatching: un fallo aquí no debe tumbar el arranque — se reintentará en
+        // el primer uso real, igual que ocurría antes.
+        CoroutineScope(Dispatchers.IO).launch {
+            runCatching { ServiceLocator.getInstance(applicationContext).authRepository.isLoggedIn() }
+        }
+
         // Configuración recomendada por osmdroid: User-Agent propio y caché en almacenamiento de la app.
         Configuration.getInstance().apply {
             userAgentValue = packageName

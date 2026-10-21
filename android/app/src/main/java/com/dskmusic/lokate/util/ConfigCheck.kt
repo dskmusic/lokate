@@ -130,8 +130,9 @@ object ConfigCheck {
         }
     }
 
-    /** El permiso concedido no sirve de nada si la ubicación del sistema está apagada del todo. */
-    private fun isLocationEnabled(context: Context): Boolean {
+    /** El permiso concedido no sirve de nada si la ubicación del sistema está apagada del todo.
+     * Público porque navegar también lo pregunta antes de arrancar (ver GpsRequiredDialog). */
+    fun isLocationEnabled(context: Context): Boolean {
         val manager = context.getSystemService(Context.LOCATION_SERVICE) as? LocationManager ?: return true
         return LocationManagerCompat.isLocationEnabled(manager)
     }

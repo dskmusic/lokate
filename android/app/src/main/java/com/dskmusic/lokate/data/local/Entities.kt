@@ -12,6 +12,9 @@ data class ZoneEntity(
     val radiusM: Double,
     val isPublic: Boolean = true,
     val createdBy: String? = null,
+    /** Wifis de la zona separadas por comas, tal cual las guarda el servidor. Ver
+     * [com.dskmusic.lokate.data.remote.dto.ZoneCreateRequestDto.wifi_ssids]. */
+    val wifiSsids: String? = null,
 )
 
 /**

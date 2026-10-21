@@ -18,8 +18,10 @@ from . import models, smoothing
 from .database import SessionLocal
 from .geofence import distance_m
 
-# Por debajo de esto no es un salto, es el temblor normal del GPS.
-JUMP_M = 300.0
+# Por debajo de esto no es un salto, es el temblor normal del GPS. 150 y no 300 porque el pico
+# que hubo que perseguir (fix de wifi de 142 m de margen, 287 m de desvío) no salía en el informe
+# justo por eso: los picos que molestan de verdad son los de esta talla, no los de kilómetros.
+JUMP_M = 150.0
 TOP = 15
 
 

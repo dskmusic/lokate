@@ -24,6 +24,7 @@ import com.dskmusic.lokate.data.remote.dto.AdminUpdateNoticeDto
 import com.dskmusic.lokate.data.remote.dto.AdminUpdateNoticeResultDto
 import com.dskmusic.lokate.data.remote.dto.AdminUpdateNoticeStateDto
 import com.dskmusic.lokate.data.remote.dto.AdminZoneEventDto
+import com.dskmusic.lokate.data.remote.dto.AdminZoneReplayDto
 import com.dskmusic.lokate.data.remote.dto.AdminZoneUpdateRequestDto
 import com.dskmusic.lokate.data.remote.dto.AvatarResponseDto
 import com.dskmusic.lokate.data.remote.dto.BackupDto
@@ -36,8 +37,11 @@ import com.dskmusic.lokate.data.remote.dto.GroupSwitchRequestDto
 import com.dskmusic.lokate.data.remote.dto.GroupVisibilityDto
 import com.dskmusic.lokate.data.remote.dto.GroupVisibilityRequestDto
 import com.dskmusic.lokate.data.remote.dto.GroupMemberDto
+import com.dskmusic.lokate.data.remote.dto.IsochroneDto
+import com.dskmusic.lokate.data.remote.dto.MatrixDto
 import com.dskmusic.lokate.data.remote.dto.LocationDto
 import com.dskmusic.lokate.data.remote.dto.LocationHistoryPointDto
+import com.dskmusic.lokate.data.remote.dto.RouteDto
 import com.dskmusic.lokate.data.remote.dto.LocationPingBatchRequestDto
 import com.dskmusic.lokate.data.remote.dto.LocationPingRequestDto
 import com.dskmusic.lokate.data.remote.dto.LocationPingResponseDto
@@ -122,6 +126,61 @@ interface ApiService {
 
     @GET("location/group/latest")
     suspend fun groupLatestLocations(): List<LocationDto>
+
+    /** La ruta por calles entre dos puntos, para el "cómo llegar" del mapa. La pide el servidor
+     * a OpenRouteService y no el móvil: así la clave no viaja dentro del APK y las rutas
+     * repetidas no gastan cuota. [mode] es "foot" o "car". 502 = no se ha podido trazar.
+     * [lang] es el idioma de las indicaciones habladas ("es"/"en"); otro se atiende en español. */
+    @GET("location/route")
+    suspend fun route(
+        @Query("from_lat") fromLat: Double,
+        @Query("from_lng") fromLng: Double,
+        @Query("to_lat") toLat: Double,
+        @Query("to_lng") toLng: Double,
+        @Query("mode") mode: String,
+        @Query("lang") lang: String,
+    ): RouteDto
+
+    /** El buscador de sitios del servidor (Pelias, ver backend places.py). Contesta con la misma
+     * forma que Nominatim a propósito: así el móvil usa el mismo código con los dos y Nominatim
+     * sigue siendo el suplente. [lat]/[lng] es el centro de lo que se está mirando: no recorta
+     * nada, solo pone de primeros los resultados de esa zona. 502 = no disponible. */
+    @GET("location/geocode")
+    suspend fun geocode(
+        @Query("q") query: String,
+        @Query("lat") lat: Double? = null,
+        @Query("lng") lng: Double? = null,
+    ): List<NominatimResultDto>
+
+    /** La dirección de un punto del mapa, también con la forma de Nominatim. 502 = no
+     * disponible; un 200 con display_name a null = ha contestado y de ahí no sabe nada. */
+    @GET("location/address")
+    suspend fun address(@Query("lat") lat: Double, @Query("lng") lng: Double): NominatimAddressDto
+
+    /** Hasta dónde se llega desde un punto en 5, 10 y 15 minutos. Solo cuando alguien pulsa el
+     * botón: son 500 al día para toda la familia. 404 = ahí no hay calle cerca. */
+    @GET("location/isochrone")
+    suspend fun isochrone(
+        @Query("lat") lat: Double,
+        @Query("lng") lng: Double,
+        @Query("mode") mode: String,
+    ): IsochroneDto
+
+    /** Lo que tarda cada uno de [points] ("lat,lng") en llegar al destino. Una petición para
+     * todos, para ordenar la lista del "cómo llegar" por minutos de verdad. */
+    @GET("location/matrix")
+    suspend fun travelMatrix(
+        @Query("points") points: List<String>,
+        @Query("to_lat") toLat: Double,
+        @Query("to_lng") toLng: Double,
+        @Query("mode") mode: String,
+    ): MatrixDto
+
+    /** La ficha de uno solo. Un admin la obtiene de cualquiera sin cambiarse a su grupo; el
+     * resto, solo de los suyos (404 si no). 404 tambien si esa persona no ha mandado nunca una
+     * posicion. */
+    @GET("location/{user_id}/latest")
+    suspend fun memberLatestLocation(@Path("user_id") userId: String): LocationDto
 
     @GET("location/history")
     suspend fun locationHistory(
@@ -238,6 +297,9 @@ interface ApiService {
     @POST("admin-api/users/{id}/known-wifi")
     suspend fun adminAddKnownWifi(@Path("id") id: String, @Body body: AdminKnownWifiRequestDto)
 
+    @POST("admin-api/users/{id}/stop-ring")
+    suspend fun adminStopRing(@Path("id") id: String)
+
     @Multipart
     @POST("admin-api/users/{id}/avatar")
     suspend fun adminUploadAvatar(@Path("id") id: String, @Part file: MultipartBody.Part): AvatarResponseDto
@@ -263,6 +325,16 @@ interface ApiService {
         @Query("days") days: Int = 7,
         @Query("only_missed") onlyMissed: Boolean = false,
     ): List<AdminZoneEventDto>
+
+    /** Diagnostico de una persona en una zona: por que llego (o no llego) el aviso. El servidor
+     * limita las horas (ver zone_replay.MAX_HOURS). */
+    @GET("admin-api/zone-replay")
+    suspend fun adminZoneReplay(
+        @Query("user_id") userId: String,
+        @Query("zone_id") zoneId: String,
+        @Query("hours") hours: Int = 24,
+        @Query("show_all") showAll: Boolean = false,
+    ): AdminZoneReplayDto
 
     /** Borra entradas del registro: una o las que se hayan marcado, misma llamada. */
     @POST("admin-api/zone-events/delete")

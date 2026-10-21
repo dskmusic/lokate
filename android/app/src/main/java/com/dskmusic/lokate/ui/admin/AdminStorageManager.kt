@@ -51,6 +51,7 @@ import coil.compose.AsyncImage
 import com.dskmusic.lokate.R
 import com.dskmusic.lokate.data.remote.absoluteMediaUrl
 import com.dskmusic.lokate.data.remote.dto.AdminFileDto
+import com.dskmusic.lokate.ui.common.cabe
 
 /** Carpetas que el backend deja explorar y borrar (ver _MANAGED_DIRS en admin_api.py). */
 private const val FOLDER_AVATARS = "avatars"
@@ -230,9 +231,9 @@ private fun FilePreview(file: AdminFileDto) {
         file.kind == "image" -> AsyncImage(
             model = url,
             contentDescription = null,
-            modifier = Modifier.fillMaxWidth().height(320.dp),
+            modifier = Modifier.fillMaxWidth().height(cabe(320.dp)),
         )
-        file.kind == "video" || file.kind == "audio" -> Box(Modifier.fillMaxWidth().height(240.dp)) {
+        file.kind == "video" || file.kind == "audio" -> Box(Modifier.fillMaxWidth().height(cabe(240.dp))) {
             AndroidView(
                 factory = { ctx ->
                     VideoView(ctx).apply {

@@ -46,18 +46,54 @@ def _add_missing_columns() -> None:
             "CREATE INDEX IF NOT EXISTS ix_location_pings_user_ts ON location_pings (user_id, timestamp)"
         )
         conn.exec_driver_sql("DROP INDEX IF EXISTS ix_location_pings_user_id")
+        conn.exec_driver_sql("DROP INDEX IF EXISTS ix_location_pings_timestamp")
+
+        # NULL = activado, que es lo que queremos para los moviles con una app anterior a esto:
+        # no la mandan y son justo los que no pueden apagarla desde Ajustes.
+        if "wifi_anchor" not in columns:
+            conn.exec_driver_sql("ALTER TABLE users ADD COLUMN wifi_anchor BOOLEAN")
+
+        ping_columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(location_pings)")}
+        if "wifi_ssid" not in ping_columns:
+            conn.exec_driver_sql("ALTER TABLE location_pings ADD COLUMN wifi_ssid VARCHAR")
 
         zone_columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(zones)")}
         if "watched_ids" not in zone_columns:
             conn.exec_driver_sql("ALTER TABLE zones ADD COLUMN watched_ids VARCHAR")
 
+        # Las zonas que ya existian no tienen wifi apuntada: NULL es "esta zona va solo por
+        # posicion", o sea exactamente como se comportaban antes de que esto existiera.
+        if "wifi_ssids" not in zone_columns:
+            conn.exec_driver_sql("ALTER TABLE zones ADD COLUMN wifi_ssids VARCHAR")
+
         # Las zonas que ya existian eran de todo el grupo: publicas.
         if "is_public" not in zone_columns:
             conn.exec_driver_sql("ALTER TABLE zones ADD COLUMN is_public BOOLEAN NOT NULL DEFAULT 1")
 
+        # El cambio de zona a medio confirmar (ver geofence.CONFIRM_ACCURACY_M). NULL en las
+        # filas que ya existían es exactamente "nada pendiente", así que no hay que rellenar nada.
+        state_columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(zone_states)")}
+        if "pending_inside" not in state_columns:
+            conn.exec_driver_sql("ALTER TABLE zone_states ADD COLUMN pending_inside BOOLEAN")
+        if "wifi_seen_at" not in state_columns:
+            conn.exec_driver_sql("ALTER TABLE zone_states ADD COLUMN wifi_seen_at DATETIME")
+        # Cuando se apunto el candidato (ver geofence.confirms). NULL en las filas que ya
+        # existian = "no se sabe", y se les cree igual que antes: como mucho un candidato suelto
+        # de hace un momento se confirma a la vieja usanza, una sola vez.
+        if "pending_at" not in state_columns:
+            conn.exec_driver_sql("ALTER TABLE zone_states ADD COLUMN pending_at DATETIME")
+
         # "De quién avisa esta zona" pasó de ser de la zona (una lista para todo el grupo) a ser
         # de cada usuario. La lista vieja de la zona se copia a las preferencias que ya existían
         # para que a nadie le cambien los avisos al actualizar.
+        # A quien se aviso de cada transicion y a quien no se pudo (ver models.ZoneEvent). Las
+        # filas anteriores se quedan en NULL: de ellas solo se sabe el numero, que es justo la
+        # limitacion que motivo estas dos columnas.
+        event_columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(zone_events)")}
+        for column in ("notified_ids", "missed_ids"):
+            if column not in event_columns:
+                conn.exec_driver_sql(f"ALTER TABLE zone_events ADD COLUMN {column} VARCHAR")
+
         pref_columns = {row[1] for row in conn.exec_driver_sql("PRAGMA table_info(zone_notification_prefs)")}
         if "watched_ids" not in pref_columns:
             conn.exec_driver_sql("ALTER TABLE zone_notification_prefs ADD COLUMN watched_ids VARCHAR")

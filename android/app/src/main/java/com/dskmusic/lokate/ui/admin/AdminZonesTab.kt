@@ -6,10 +6,13 @@ import androidx.compose.foundation.layout.Column
 import androidx.compose.foundation.layout.Row
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.lazy.LazyColumn
 import androidx.compose.foundation.lazy.items
+import androidx.compose.foundation.rememberScrollState
 import androidx.compose.foundation.text.KeyboardOptions
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.Add
 import androidx.compose.material.icons.filled.ArrowDropDown
@@ -24,7 +27,9 @@ import androidx.compose.material3.HorizontalDivider
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.ListItem
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.OutlinedTextField
+import androidx.compose.material3.Slider
 import androidx.compose.material3.Text
 import androidx.compose.material3.TextButton
 import androidx.compose.runtime.Composable
@@ -35,17 +40,36 @@ import androidx.compose.runtime.remember
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.draw.clip
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.compose.ui.window.DialogProperties
 import com.dskmusic.lokate.R
 import com.dskmusic.lokate.data.remote.dto.AdminGroupDto
 import com.dskmusic.lokate.data.remote.dto.AdminZoneDto
+import com.dskmusic.lokate.data.remote.dto.ZoneDto
+import com.dskmusic.lokate.ui.common.RadiusField
+import com.dskmusic.lokate.ui.common.cabe
+import com.dskmusic.lokate.ui.map.LokateMapView
+import com.dskmusic.lokate.ui.map.MapControl
+import com.dskmusic.lokate.util.MapStyle
 
 @Composable
-internal fun AdminZonesTab(state: AdminUiState, viewModel: AdminViewModel) {
+internal fun AdminZonesTab(
+    state: AdminUiState,
+    viewModel: AdminViewModel,
+    query: String = "",
+    mapStyle: MapStyle = MapStyle.STANDARD,
+) {
     var editing by remember { mutableStateOf<AdminZoneDto?>(null) }
     var deleting by remember { mutableStateOf<AdminZoneDto?>(null) }
+
+    val zones = remember(state.zones, query) {
+        val text = query.trim()
+        if (text.isEmpty()) state.zones
+        else state.zones.filter { it.name.contains(text, ignoreCase = true) }
+    }
     var creating by remember { mutableStateOf(false) }
 
     LaunchedEffect(Unit) {
@@ -57,7 +81,7 @@ internal fun AdminZonesTab(state: AdminUiState, viewModel: AdminViewModel) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         } else {
             LazyColumn(Modifier.fillMaxSize()) {
-                items(state.zones, key = { it.id }) { zone ->
+                items(zones, key = { it.id }) { zone ->
                     // Sin el grupo, dos zonas con el mismo nombre en grupos distintos son iguales.
                     val groupName = state.groups.firstOrNull { it.id == zone.group_id }?.name
                     ListItem(
@@ -84,36 +108,14 @@ internal fun AdminZonesTab(state: AdminUiState, viewModel: AdminViewModel) {
     }
 
     editing?.let { zone ->
-        val groupName = state.groups.firstOrNull { it.id == zone.group_id }?.name
-        var name by remember(zone.id) { mutableStateOf(zone.name) }
-        var radius by remember(zone.id) { mutableStateOf(zone.radius_m.toInt().toString()) }
-        AlertDialog(
-            onDismissRequest = { editing = null },
-            title = { Text(listOfNotNull(zone.name, groupName).joinToString(" · ")) },
-            text = {
-                Column {
-                    OutlinedTextField(
-                        value = name,
-                        onValueChange = { name = it },
-                        label = { Text(stringResource(R.string.zone_name_label)) },
-                        singleLine = true,
-                    )
-                    OutlinedTextField(
-                        value = radius,
-                        onValueChange = { radius = it.filter { c -> c.isDigit() } },
-                        label = { Text(stringResource(R.string.zone_radius_manual_label)) },
-                        keyboardOptions = KeyboardOptions(keyboardType = KeyboardType.Number),
-                        singleLine = true,
-                    )
-                }
+        EditZoneDialog(
+            zone = zone,
+            mapStyle = mapStyle,
+            groupName = state.groups.firstOrNull { it.id == zone.group_id }?.name,
+            onDismiss = { editing = null },
+            onSave = { name, lat, lng, radiusM ->
+                viewModel.updateZone(zone.id, name, lat, lng, radiusM) { editing = null }
             },
-            confirmButton = {
-                TextButton(onClick = {
-                    val radiusM = radius.toDoubleOrNull() ?: zone.radius_m
-                    viewModel.updateZone(zone.id, name, zone.lat, zone.lng, radiusM) { editing = null }
-                }) { Text(stringResource(R.string.confirm)) }
-            },
-            dismissButton = { TextButton(onClick = { editing = null }) { Text(stringResource(R.string.cancel)) } },
         )
     }
 
@@ -226,6 +228,86 @@ private fun CreateZoneDialog(
                 enabled = canCreate,
                 onClick = { onCreate(selectedGroup!!.id, name, latValue!!, lngValue!!, radius.toDouble()) },
             ) { Text(stringResource(R.string.admin_add)) }
+        },
+        dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
+    )
+}
+
+/**
+ * Editar una zona con el mapa delante, como al crearla desde la pantalla de Zonas: se toca el
+ * mapa para mover el centro y el radio se ajusta con el deslizador (o a mano, para los metros
+ * exactos). Es el único sitio desde el que se puede recolocar una zona de otro grupo: la
+ * pantalla normal de zonas solo ve las del grupo de uno.
+ */
+@Composable
+private fun EditZoneDialog(
+    zone: AdminZoneDto,
+    mapStyle: MapStyle,
+    groupName: String?,
+    onDismiss: () -> Unit,
+    onSave: (name: String, lat: Double, lng: Double, radiusM: Double) -> Unit,
+) {
+    var name by remember(zone.id) { mutableStateOf(zone.name) }
+    var lat by remember(zone.id) { mutableStateOf(zone.lat) }
+    var lng by remember(zone.id) { mutableStateOf(zone.lng) }
+    var radiusM by remember(zone.id) { mutableStateOf(zone.radius_m) }
+    var mapControl by remember { mutableStateOf<MapControl?>(null) }
+
+    LaunchedEffect(lat, lng, radiusM, mapControl) { mapControl?.frameZone(lat, lng, radiusM) }
+
+    AlertDialog(
+        onDismissRequest = onDismiss,
+        // Con el ancho normal de diálogo el mapa queda demasiado estrecho para ajustar nada.
+        properties = DialogProperties(usePlatformDefaultWidth = false),
+        modifier = Modifier.padding(16.dp),
+        title = { Text(listOfNotNull(zone.name, groupName).joinToString(" · ")) },
+        text = {
+            Column(Modifier.verticalScroll(rememberScrollState())) {
+                OutlinedTextField(
+                    value = name,
+                    onValueChange = { name = it },
+                    label = { Text(stringResource(R.string.zone_name_label)) },
+                    singleLine = true,
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    stringResource(R.string.zone_radius_label) + ": ${radiusM.toInt()} m",
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+                Slider(
+                    value = radiusM.toFloat().coerceIn(20f, 3000f),
+                    onValueChange = { radiusM = it.toDouble() },
+                    valueRange = 20f..3000f,
+                )
+                RadiusField(
+                    radiusM = radiusM,
+                    onRadiusChange = { radiusM = it },
+                    modifier = Modifier.fillMaxWidth(),
+                )
+                Text(
+                    stringResource(R.string.zone_map_hint),
+                    style = MaterialTheme.typography.bodySmall,
+                    modifier = Modifier.padding(top = 8.dp),
+                )
+                // remember(): sin esto cada recomposición crea una lista nueva y el mapa
+                // reconstruye todos los overlays, incluso a mitad de un gesto.
+                val previewZones = remember(zone.id, name, lat, lng, radiusM) {
+                    listOf(ZoneDto(zone.id, name.ifBlank { "..." }, lat, lng, radiusM))
+                }
+                LokateMapView(
+                    members = emptyList(),
+                    zones = previewZones,
+                    modifier = Modifier.fillMaxWidth().height(cabe(260.dp)).clip(MaterialTheme.shapes.medium),
+                    onMapTap = { point -> lat = point.latitude; lng = point.longitude },
+                    mapStyle = mapStyle,
+                    onMapControl = { mapControl = it },
+                )
+            }
+        },
+        confirmButton = {
+            TextButton(enabled = name.isNotBlank(), onClick = { onSave(name, lat, lng, radiusM) }) {
+                Text(stringResource(R.string.zone_save))
+            }
         },
         dismissButton = { TextButton(onClick = onDismiss) { Text(stringResource(R.string.cancel)) } },
     )

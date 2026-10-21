@@ -10,11 +10,10 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.remember
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.unit.dp
-import com.dskmusic.lokate.data.remote.dto.LocationDto
 import org.osmdroid.util.GeoPoint
-import org.osmdroid.views.MapView
 
 /** Lo que dura un tic. Por debajo del ritmo del tiempo real (3 s), para que se apague antes de
  * que llegue el siguiente y se vea latir y no un anillo fijo. */
@@ -24,38 +23,46 @@ private val PULSE_START_RADIUS = 18.dp
 private val PULSE_END_RADIUS = 46.dp
 
 /**
- * Tic de radar sobre el marcador de quien se está siguiendo en vivo: late una vez por cada
- * posición que llega de su móvil, aunque venga en el mismo sitio que la anterior.
+ * Tic de radar sobre un punto del mapa: un anillo que se abre y se apaga. Lo usan el marcador
+ * de quien se está siguiendo en vivo (late una vez por cada posición que llega de su móvil,
+ * aunque venga en el mismo sitio que la anterior) y el modo medir al agarrar un punto.
  *
- * Va dibujado encima del mapa y no en el marcador de osmdroid a propósito: rehacer el icono
+ * Va dibujado encima del mapa y no en el marcador del mapa a propósito: rehacer el icono
  * del marcador (recortando otra vez su avatar) sesenta veces por segundo para animarlo sería
  * carísimo, y aquí solo se pinta un círculo.
+ *
+ * [trigger] es lo que hace latir: cada valor distinto arranca un tic nuevo. Tiene que ser algo
+ * que cambie SIEMPRE que haya que latir, aunque el punto sea el mismo de antes (el sello de
+ * tiempo de la posición, un contador de veces que se ha agarrado...).
  *
  * ponytail: la posición se proyecta a píxeles en cada fotograma, así que mover el mapa
  * mientras late no descoloca el tic; entre tic y tic no se dibuja nada.
  */
 @Composable
-fun LiveRadarPulse(mapView: MapView?, location: LocationDto?, modifier: Modifier = Modifier) {
-    if (mapView == null || location == null) return
+fun LiveRadarPulse(
+    map: MapControl?,
+    point: GeoPoint?,
+    trigger: Any?,
+    modifier: Modifier = Modifier,
+    color: Color = MaterialTheme.colorScheme.primary,
+) {
+    if (map == null || point == null) return
 
     val progress = remember { Animatable(1f) }
-    // El disparo es el timestamp y no la posición: es lo único que cambia en CADA ping, que es
-    // justo lo que este tic tiene que demostrar que sigue pasando.
-    LaunchedEffect(location.timestamp) {
+    LaunchedEffect(trigger) {
         progress.snapTo(0f)
         progress.animateTo(1f, tween(durationMillis = PULSE_MS, easing = LinearEasing))
     }
 
-    val color = MaterialTheme.colorScheme.primary
     Canvas(modifier) {
         val fraction = progress.value
         if (fraction >= 1f) return@Canvas
-        val pixel = mapView.projection.toPixels(GeoPoint(location.lat, location.lng), null)
+        val center = map.toScreen(point) ?: return@Canvas
         val radius = PULSE_START_RADIUS.toPx() + (PULSE_END_RADIUS.toPx() - PULSE_START_RADIUS.toPx()) * fraction
         drawCircle(
             color = color.copy(alpha = 0.6f * (1f - fraction)),
             radius = radius,
-            center = Offset(pixel.x.toFloat(), pixel.y.toFloat()),
+            center = center,
             style = Stroke(width = 3.dp.toPx()),
         )
     }

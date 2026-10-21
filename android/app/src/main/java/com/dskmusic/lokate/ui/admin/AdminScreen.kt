@@ -6,11 +6,14 @@ import androidx.compose.foundation.layout.padding
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Backup
+import androidx.compose.material.icons.filled.Close
 import androidx.compose.material.icons.filled.Dashboard
 import androidx.compose.material.icons.filled.Groups
 import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.People
 import androidx.compose.material.icons.filled.Place
+import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Troubleshoot
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Icon
 import androidx.compose.material3.IconButton
@@ -26,12 +29,15 @@ import androidx.compose.runtime.LaunchedEffect
 import androidx.compose.runtime.getValue
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.remember
+import androidx.compose.runtime.saveable.rememberSaveable
 import androidx.compose.runtime.setValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.res.stringResource
 import androidx.lifecycle.compose.collectAsStateWithLifecycle
 import com.dskmusic.lokate.R
 import com.dskmusic.lokate.di.ServiceLocator
+import com.dskmusic.lokate.util.MapStyle
+import com.dskmusic.lokate.ui.common.ListSearchField
 
 private enum class AdminTab { DASHBOARD, USERS, GROUPS, ZONES, BACKUPS }
 
@@ -39,13 +45,23 @@ private enum class AdminTab { DASHBOARD, USERS, GROUPS, ZONES, BACKUPS }
  * en Compose. Solo llega aquí quien ya se comprobó que es admin (ver el candado en MapScreen). */
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
-fun AdminScreen(locator: ServiceLocator, onBack: () -> Unit) {
+fun AdminScreen(locator: ServiceLocator, onBack: () -> Unit, onOpenMember: (String) -> Unit) {
     val viewModel = remember { AdminViewModel(locator.adminRepository) }
     val state by viewModel.uiState.collectAsStateWithLifecycle()
-    var tab by remember { mutableStateOf(AdminTab.DASHBOARD) }
+    // El estilo del mapa, para la vista previa al editar una zona desde aquí.
+    val mapStyle by locator.settings.mapStyle.collectAsStateWithLifecycle(initialValue = MapStyle.STANDARD)
+    // rememberSaveable y no remember: abrir la ficha de alguien saca esta pantalla de la
+    // composición, y con un remember al volver se perdía la pestaña y aparecía el panel de
+    // inicio en vez de la lista de la que se había salido.
+    var tab by rememberSaveable { mutableStateOf(AdminTab.DASHBOARD) }
     var showZoneLog by remember { mutableStateOf(false) }
+    var showZoneReplay by remember { mutableStateOf(false) }
+    // null = buscador cerrado. Se cierra al cambiar de pestaña: cada lista se busca por lo suyo,
+    // y arrastrar el texto de una a otra solo deja la siguiente pareciendo vacía.
+    var query by remember { mutableStateOf<String?>(null) }
 
     LaunchedEffect(tab) {
+        query = null
         when (tab) {
             AdminTab.DASHBOARD -> { viewModel.loadDashboard(); viewModel.loadDiskUsage() }
             AdminTab.USERS -> if (state.users.isEmpty()) viewModel.loadUsers()
@@ -59,14 +75,40 @@ fun AdminScreen(locator: ServiceLocator, onBack: () -> Unit) {
     // barra y al volver sigues donde estabas.
     if (showZoneLog) {
         AdminZoneLogScreen(state, viewModel, onBack = { showZoneLog = false })
+    } else if (showZoneReplay) {
+        AdminZoneReplayScreen(state, viewModel, onBack = { showZoneReplay = false })
     } else Scaffold(
         topBar = {
             TopAppBar(
-                title = { Text(stringResource(R.string.admin_title)) },
+                title = {
+                    val text = query
+                    if (text == null) Text(stringResource(R.string.admin_title))
+                    else ListSearchField(text) { query = it }
+                },
                 navigationIcon = {
                     IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = null) }
                 },
                 actions = {
+                    // Solo en las pestañas que son una lista: en el panel y en las copias no hay
+                    // nada que filtrar.
+                    if (tab in setOf(AdminTab.USERS, AdminTab.GROUPS, AdminTab.ZONES)) {
+                        IconButton(onClick = { query = if (query == null) "" else null }) {
+                            Icon(
+                                if (query == null) Icons.Filled.Search else Icons.Filled.Close,
+                                contentDescription = stringResource(
+                                    if (query == null) R.string.place_search_action else R.string.list_search_close,
+                                ),
+                            )
+                        }
+                    }
+                    // Al lado del registro a proposito: los dos contestan a "por que paso
+                    // esto con una zona", uno con lo que paso y otro con lo que habria pasado.
+                    IconButton(onClick = { showZoneReplay = true }) {
+                        Icon(
+                            Icons.Filled.Troubleshoot,
+                            contentDescription = stringResource(R.string.admin_zone_replay_title),
+                        )
+                    }
                     IconButton(onClick = { showZoneLog = true }) {
                         Icon(
                             Icons.Filled.NotificationsActive,
@@ -118,9 +160,9 @@ fun AdminScreen(locator: ServiceLocator, onBack: () -> Unit) {
                     viewModel,
                     onRefresh = { viewModel.loadDashboard(); viewModel.loadDiskUsage() },
                 )
-                AdminTab.USERS -> AdminUsersTab(state, viewModel)
-                AdminTab.GROUPS -> AdminGroupsTab(state, viewModel)
-                AdminTab.ZONES -> AdminZonesTab(state, viewModel)
+                AdminTab.USERS -> AdminUsersTab(state, viewModel, query.orEmpty(), onOpenMember)
+                AdminTab.GROUPS -> AdminGroupsTab(state, viewModel, query.orEmpty())
+                AdminTab.ZONES -> AdminZonesTab(state, viewModel, query.orEmpty(), mapStyle)
                 AdminTab.BACKUPS -> AdminBackupsTab(state, viewModel)
             }
         }

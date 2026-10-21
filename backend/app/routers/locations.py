@@ -6,7 +6,7 @@ from time import monotonic
 from fastapi import APIRouter, BackgroundTasks, Depends, HTTPException, Query, status
 from sqlalchemy.orm import Session
 
-from .. import geofence, models, push, schemas, smoothing
+from .. import geofence, models, places, push, routing, schemas, smoothing
 from ..auth import get_current_user, get_current_user_with_group
 from ..database import get_db
 
@@ -82,9 +82,18 @@ def _live_stop(user_id: str) -> None:
     _live_started.pop(user_id, None)
 
 
-def _group_member(db: Session, user: models.User, user_id: str) -> models.User | None:
-    """El miembro del grupo de quien pregunta, o None. Quien se esconde en ese grupo no existe
-    para los demás: ni ubicación, ni historial, ni hacer sonar su móvil."""
+def reachable_member(db: Session, user: models.User, user_id: str) -> models.User | None:
+    """A quién puede mirar quien pregunta: el miembro de su grupo, o None. Quien se esconde en
+    ese grupo no existe para los demás: ni ubicación, ni historial, ni hacer sonar su móvil.
+
+    Un administrador es la excepción y puede con cualquiera, esté en el grupo que esté. No le da
+    acceso nuevo —todo esto ya lo puede por /admin-api— pero le ahorra el desvío que hasta ahora
+    hacía falta para ver la ficha de alguien: cambiarse a su grupo. Y cambiarse de grupo es justo
+    lo que no conviene (ver geofence._notification_recipients: le apaga sus propios avisos de
+    zona mientras esté fuera, que es lo que pasó el 06/10/2026).
+    """
+    if user.is_admin:
+        return db.get(models.User, user_id)
     target = db.query(models.User).filter(
         models.User.id == user_id, models.User.group_id == user.group_id
     ).first()
@@ -109,6 +118,10 @@ def _apply_device_status(user: models.User, body) -> None:
         user.config_issues = body.config_issues
     if body.update_mode is not None:
         user.update_mode = body.update_mode
+    # Mismo motivo que arriba: None es "app anterior a esto, no lo manda" y se da por activado
+    # (ver models.User.wifi_anchor), asi que solo se escribe cuando viene de verdad.
+    if body.wifi_anchor is not None:
+        user.wifi_anchor = body.wifi_anchor
 
 
 @router.post("/ping", response_model=schemas.LocationPingResponse)
@@ -118,7 +131,9 @@ def ping(
     user: models.User = Depends(get_current_user_with_group),
     db: Session = Depends(get_db),
 ):
-    db.add(models.LocationPing(user_id=user.id, lat=body.lat, lng=body.lng, accuracy=body.accuracy))
+    db.add(models.LocationPing(
+        user_id=user.id, lat=body.lat, lng=body.lng, accuracy=body.accuracy, wifi_ssid=body.wifi_ssid,
+    ))
     # Ultima senal de vida de este movil: la mira set_live_tracking para decidir si repetir el
     # push de seguimiento. ponytail: dict en memoria, igual que la propia marca de seguimiento
     # — si el contenedor reinicia, lo peor que pasa es un push de mas.
@@ -136,7 +151,14 @@ def ping(
     simulation = geofence.simulation_status(user.id)
     if simulation != "active":
         geofence.check_zone_transitions(
-            db, user, body.lat, body.lng, accuracy=body.accuracy, notify=simulation is None, tasks=tasks
+            db,
+            user,
+            body.lat,
+            body.lng,
+            accuracy=body.accuracy,
+            wifi_ssid=body.wifi_ssid,
+            notify=simulation is None,
+            tasks=tasks,
         )
     return schemas.LocationPingResponse(live_seconds=_live_seconds(user.id))
 
@@ -154,7 +176,10 @@ def ping_batch(
     justo el gasto de radio que la cola viene a evitar."""
     now = datetime.now(timezone.utc)
     oldest_allowed = now - timedelta(days=RETENTION_DAYS)
-    stored = []
+
+    # Dos pasadas: las horas se normalizan primero porque hace falta el rango entero del lote
+    # para preguntar de una vez cuáles de estos pings ya están guardados.
+    incoming = []
     for item in body.pings:
         timestamp = item.timestamp
         if timestamp.tzinfo is None:
@@ -165,6 +190,51 @@ def ping_batch(
         timestamp = min(timestamp, now)
         if timestamp < oldest_allowed:
             continue
+        # Sin zona horaria, que es como las guarda la base: así se comparan sin convertir nada.
+        incoming.append((timestamp.replace(tzinfo=None), item))
+
+    # La cola del móvil no borra lo que manda hasta que llega la respuesta, y la vacía cualquiera
+    # que consiga pingear (en tiempo real, uno cada 3 s) sin ponerse de acuerdo con los demás: si
+    # la respuesta se pierde, o si dos vaciados se solapan, el mismo punto vuelve a llegar. Eran
+    # el 3 % de la tabla, con hasta diez copias del mismo punto.
+    #
+    # Se descartan aquí y no en la app a propósito: es por donde pasan todos los móviles (vale
+    # también para los que no actualicen) y no puede perder nada, mientras que vaciar la cola
+    # antes de tener respuesta sí perdería puntos justo cuando peor va la red.
+    known = set()
+    if incoming:
+        horas = [ts for ts, _ in incoming]
+        known = {
+            (ts, lat, lng)
+            for ts, lat, lng in db.query(
+                models.LocationPing.timestamp,
+                models.LocationPing.lat,
+                models.LocationPing.lng,
+            ).filter(
+                models.LocationPing.user_id == user.id,
+                models.LocationPing.timestamp >= min(horas),
+                models.LocationPing.timestamp <= max(horas),
+            )
+        }
+
+    # Hasta cuándo llegaba lo que se sabía de esta persona ANTES del lote. Se pregunta aquí,
+    # antes de meter nada, porque luego ya no se podría distinguir. Lo usa la parte de las zonas.
+    previous_latest = (
+        db.query(models.LocationPing.timestamp)
+        .filter(models.LocationPing.user_id == user.id)
+        .order_by(models.LocationPing.timestamp.desc())
+        .first()
+    )
+    previous_latest = previous_latest[0] if previous_latest else None
+
+    stored = []
+    for timestamp, item in incoming:
+        key = (timestamp, item.lat, item.lng)
+        if key in known:
+            continue
+        # El propio lote puede traer el mismo punto repetido, no solo repetirlo de un envío
+        # anterior: por eso se apunta sobre la marcha y no solo se consulta.
+        known.add(key)
         stored.append((timestamp, item))
         db.add(
             models.LocationPing(
@@ -183,14 +253,54 @@ def ping_batch(
     # Las zonas se evalúan SOLO con el punto más reciente: reproducir una ruta de hace dos
     # horas dispararía la ristra entera de entradas y salidas de entonces, todas a la vez y
     # todas fuera de hora. Lo que importa ahora es dónde está esa persona.
+    #
+    # Y solo si el lote trae algo más nuevo que lo que ya se sabía: una cola que se reenvía puede
+    # traer la posición de hace una hora cuando esa persona ya está en otro sitio, y evaluarla
+    # rebobinaría sus zonas y dispararía una entrada o salida que ya no es verdad.
     if stored:
-        newest = max(stored, key=lambda pair: pair[0])[1]
+        newest_at, newest = max(stored, key=lambda pair: pair[0])
+        if previous_latest is not None and newest_at < previous_latest:
+            return schemas.LocationPingResponse(live_seconds=_live_seconds(user.id))
         simulation = geofence.simulation_status(user.id)
         if simulation != "active":
             geofence.check_zone_transitions(
-                db, user, newest.lat, newest.lng, accuracy=newest.accuracy, notify=simulation is None, tasks=tasks
+                db,
+                user,
+                newest.lat,
+                newest.lng,
+                accuracy=newest.accuracy,
+                # El SSID del lote es el de ahora, no el de cada punto: vale para el mas nuevo,
+                # que es justo el unico que evalua zonas.
+                wifi_ssid=body.wifi_ssid,
+                notify=simulation is None,
+                tasks=tasks,
             )
     return schemas.LocationPingResponse(live_seconds=_live_seconds(user.id))
+
+
+def _latest_response(member: models.User, latest: models.LocationPing) -> schemas.LocationResponse:
+    """La posicion de alguien mas el estado de su movil (permisos sin dar, bateria, wifi, con que
+    frecuencia manda). Una sola funcion para la lista del grupo y para la ficha de uno."""
+    return schemas.LocationResponse(
+        user_id=member.id,
+        display_name=member.display_name,
+        avatar_url=member.avatar_url,
+        lat=latest.lat,
+        lng=latest.lng,
+        accuracy=latest.accuracy,
+        timestamp=latest.timestamp,
+        battery_level=member.battery_level,
+        is_charging=member.is_charging,
+        wifi_connected=member.wifi_connected,
+        wifi_ssid=member.wifi_ssid,
+        location_frequency=member.location_frequency,
+        config_issues=member.config_issues,
+        update_mode=member.update_mode,
+        # Para que quien mira el mapa vea si el tiempo real que ha pedido ha prendido de verdad
+        # en el otro movil, y no solo que pulso el boton.
+        live_seconds=_live_confirmed_seconds(member.id),
+        app_version=member.app_version,
+    )
 
 
 @router.get("/group/latest", response_model=list[schemas.LocationResponse])
@@ -210,28 +320,145 @@ def group_latest(
             .first()
         )
         if latest:
-            results.append(
-                schemas.LocationResponse(
-                    user_id=member.id,
-                    display_name=member.display_name,
-                    avatar_url=member.avatar_url,
-                    lat=latest.lat,
-                    lng=latest.lng,
-                    accuracy=latest.accuracy,
-                    timestamp=latest.timestamp,
-                    battery_level=member.battery_level,
-                    is_charging=member.is_charging,
-                    wifi_connected=member.wifi_connected,
-                    wifi_ssid=member.wifi_ssid,
-                    location_frequency=member.location_frequency,
-                    config_issues=member.config_issues,
-                    update_mode=member.update_mode,
-                    # Para que quien mira el mapa vea si el tiempo real que ha pedido ha
-                    # prendido de verdad en el otro movil, y no solo que pulso el boton.
-                    live_seconds=_live_confirmed_seconds(member.id),
-                )
-            )
+            results.append(_latest_response(member, latest))
     return results
+
+
+@router.get("/{user_id}/latest", response_model=schemas.LocationResponse)
+def member_latest(
+    user_id: str,
+    user: models.User = Depends(get_current_user_with_group),
+    db: Session = Depends(get_db),
+):
+    """Lo mismo que /group/latest pero de uno solo. Existe para la ficha de un miembro, que antes
+    se sacaba filtrando la lista entera del grupo y por eso no se podia abrir la de alguien de
+    otro grupo sin cambiarse a el (ver reachable_member)."""
+    member = reachable_member(db, user, user_id)
+    if member is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Member not found in your group")
+    latest = (
+        db.query(models.LocationPing)
+        .filter(models.LocationPing.user_id == member.id)
+        .order_by(models.LocationPing.timestamp.desc())
+        .first()
+    )
+    if latest is None:
+        # Todavia no ha mandado ninguna posicion. La app lo trata como "sin ficha, pero se le
+        # puede pedir una" (ver MemberDetailScreen), que es lo unico util que se puede hacer.
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No location yet")
+    return _latest_response(member, latest)
+
+
+@router.get("/route", response_model=schemas.RouteResponse)
+def route(
+    from_lat: float,
+    from_lng: float,
+    to_lat: float,
+    to_lng: float,
+    mode: str = "foot",
+    lang: str = routing.DEFAULT_LANGUAGE,
+    user: models.User = Depends(get_current_user),
+    db: Session = Depends(get_db),
+):
+    """La ruta entre dos puntos para el "como llegar" del mapa (ver routing.py).
+
+    Pasa por aqui y no directa de movil a OpenRouteService para que la clave no viaje dentro del
+    APK y para que la cache sea de todos. No mira quien es el destino: son dos puntos del mapa,
+    y cualquiera con sesion puede pedir una ruta entre dos puntos.
+
+    Dos fallos distintos y dos codigos, porque el usuario no puede hacer lo mismo con ellos:
+    404 = no hay camino entre esos dos puntos (que busque otro destino), 502 = el servicio de
+    rutas no esta disponible (sin clave, sin internet, ORS caido, cuota agotada: que espere).
+    Ninguno de los dos se inventa una linea recta.
+    """
+    try:
+        result = routing.route(mode, from_lat, from_lng, to_lat, to_lng, lang)
+    except routing.NoRoute:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No route between those points") from None
+    if result is None:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Route unavailable")
+    return result
+
+
+@router.get("/geocode", response_model=list[schemas.PlaceResult])
+def geocode(
+    q: str,
+    lat: float | None = None,
+    lng: float | None = None,
+    limit: int = Query(default=places.RESULTS, ge=1, le=20),
+    user: models.User = Depends(get_current_user),
+):
+    """El buscador de sitios (ver places.py). [lat]/[lng] es el centro de lo que se esta mirando
+    en el mapa: no recorta nada, solo pone de primeros los resultados de esa zona.
+
+    Pasa por aqui y no de movil a Pelias para que la clave no viaje dentro del APK. 502 = no
+    disponible, y entonces el movil lo busca el mismo en Nominatim, que es lo que hacia antes.
+    """
+    sitios = places.search(q, lat, lng, limit)
+    if sitios is None:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Search unavailable")
+    return sitios
+
+
+@router.get("/address", response_model=schemas.AddressResponse)
+def address(lat: float, lng: float, user: models.User = Depends(get_current_user)):
+    """La direccion de un punto del mapa. Dos respuestas distintas a proposito: 502 = no se ha
+    podido preguntar (el movil prueba con Nominatim), y un 200 con display_name a null = ha
+    contestado y de ahi no sabe nada, que no hay nada que reintentar."""
+    direccion = places.reverse(lat, lng)
+    if direccion is None:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Address unavailable")
+    return direccion
+
+
+@router.get("/isochrone", response_model=schemas.IsochroneResponse)
+def isochrone(
+    lat: float,
+    lng: float,
+    mode: str = "foot",
+    user: models.User = Depends(get_current_user),
+):
+    """Hasta donde se llega desde ese punto en 5, 10 y 15 minutos (ver routing.py).
+
+    Solo cuando alguien pulsa el boton: son 500 al dia para toda la familia. 404 = ahi no hay
+    calle cerca (en medio del mar no hay nada que dibujar), 502 = servicio no disponible.
+    """
+    try:
+        result = routing.isochrone(mode, lat, lng)
+    except routing.NoRoute:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No roads near that point") from None
+    if result is None:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Isochrones unavailable")
+    return result
+
+
+@router.get("/matrix", response_model=schemas.MatrixResponse)
+def matrix(
+    to_lat: float,
+    to_lng: float,
+    points: list[str] = Query(..., min_length=1, max_length=25),
+    mode: str = "foot",
+    user: models.User = Depends(get_current_user),
+):
+    """Lo que tarda cada uno de [points] ("lat,lng", repetido) en llegar al destino, para ordenar
+    la lista del "como llegar" por minutos de verdad en vez de por linea recta.
+
+    Una peticion para todos, no una por persona. Si esto falla, el movil deja la lista como
+    estaba (ordenada por linea recta): un orden aproximado es mejor que una espera.
+    """
+    try:
+        origenes = [tuple(float(n) for n in punto.split(",")) for punto in points]
+        if any(len(origen) != 2 for origen in origenes):
+            raise ValueError(points)
+    except ValueError:
+        raise HTTPException(status.HTTP_400_BAD_REQUEST, "points must be lat,lng") from None
+    try:
+        result = routing.matrix(mode, origenes, to_lat, to_lng)
+    except routing.NoRoute:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "No route between those points") from None
+    if result is None:
+        raise HTTPException(status.HTTP_502_BAD_GATEWAY, "Matrix unavailable")
+    return result
 
 
 @router.get("/history", response_model=list[schemas.LocationHistoryPoint])
@@ -246,7 +473,7 @@ def history(
     """[from_ts, to_ts): rango exacto (para "ayer"/"hoy"/fecha elegida en la app, calculado
     en el cliente con su huso horario). Sin ellos: ventana relativa de [hours]."""
     target_id = user_id or user.id
-    if target_id != user.id and _group_member(db, user, target_id) is None:
+    if target_id != user.id and reachable_member(db, user, target_id) is None:
         return []
 
     query = db.query(models.LocationPing).filter(models.LocationPing.user_id == target_id)
@@ -266,7 +493,7 @@ def ring_device(
     user: models.User = Depends(get_current_user_with_group),
     db: Session = Depends(get_db),
 ):
-    target = _group_member(db, user, user_id)
+    target = reachable_member(db, user, user_id)
     if not target:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Member not found in your group")
 
@@ -287,7 +514,7 @@ def stop_ring_device(
 ):
     """Push silencioso que para la alarma que /ring dejó sonando en ese dispositivo — lo manda
     quien pulsa "Detener" en el diálogo de "hacer sonar"."""
-    target = _group_member(db, user, user_id)
+    target = reachable_member(db, user, user_id)
     if not target:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Member not found in your group")
 
@@ -316,7 +543,7 @@ def set_live_tracking(
     agresivo — el siguiente lo despierta, en vez de quedarse esperando a su proximo ping, que
     en reposo puede tardar 15 minutos. Lo demas (renovar, terminar) viaja gratis en la
     respuesta de sus propios pings (ver _live_seconds)."""
-    target = _group_member(db, user, user_id)
+    target = reachable_member(db, user, user_id)
     if not target:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Member not found in your group")
 
@@ -353,7 +580,7 @@ def request_location(
 ):
     """Push silencioso (sin sonido/notificación) que pide a ese dispositivo una ubicación
     puntual fresca — a diferencia de /ring, que solo hace sonar la alarma."""
-    target = _group_member(db, user, user_id)
+    target = reachable_member(db, user, user_id)
     if not target:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Member not found in your group")
 

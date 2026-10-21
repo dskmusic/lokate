@@ -10,6 +10,20 @@ from ..database import get_db
 router = APIRouter(prefix="/zones", tags=["zones"])
 
 
+def _ssids_csv(ssids: list[str]) -> str | None:
+    """La lista que manda el movil, lista para la columna CSV de la zona.
+
+    ponytail: las comas se tiran, no se escapan — un SSID con coma es rarisimo y el precio de
+    tirarla es que esa wifi no ancla, no que se corrompa la lista de al lado.
+    """
+    limpias = []
+    for ssid in ssids:
+        ssid = ssid.replace(",", "").strip()[:32]
+        if ssid and ssid not in limpias:
+            limpias.append(ssid)
+    return ",".join(limpias) or None
+
+
 def _visible_zones(db: Session, user: models.User):
     """Las de su grupo, menos las privadas de otros. Una privada no existe para los demas: ni
     se lista, ni se edita, ni se borra, ni avisa (ver geofence)."""
@@ -40,6 +54,7 @@ def create_zone(
         lng=body.lng,
         radius_m=body.radius_m,
         is_public=body.is_public,
+        wifi_ssids=_ssids_csv(body.wifi_ssids),
         created_by=user.id,
     )
     db.add(zone)
@@ -65,6 +80,7 @@ def update_zone(
     zone = _get_owned_zone(zone_id, user, db)
     zone.name, zone.lat, zone.lng, zone.radius_m = body.name, body.lat, body.lng, body.radius_m
     zone.is_public = body.is_public
+    zone.wifi_ssids = _ssids_csv(body.wifi_ssids)
     db.commit()
     db.refresh(zone)
     return zone

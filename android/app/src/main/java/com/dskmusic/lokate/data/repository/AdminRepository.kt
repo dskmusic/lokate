@@ -23,6 +23,7 @@ import com.dskmusic.lokate.data.remote.dto.AdminUpdateNoticeDto
 import com.dskmusic.lokate.data.remote.dto.AdminUpdateNoticeResultDto
 import com.dskmusic.lokate.data.remote.dto.AdminUpdateNoticeStateDto
 import com.dskmusic.lokate.data.remote.dto.AdminZoneEventDto
+import com.dskmusic.lokate.data.remote.dto.AdminZoneReplayDto
 import com.dskmusic.lokate.data.remote.dto.AdminZoneUpdateRequestDto
 import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.withContext
@@ -50,12 +51,21 @@ class AdminRepository(private val api: ApiService) {
             api.adminCreateUser(AdminUserCreateRequestDto(username, password, displayName, groupId, isAdmin))
         }
 
-    suspend fun updateUser(id: String, displayName: String? = null, isAdmin: Boolean? = null): AdminUserDto =
-        withContext(Dispatchers.IO) { api.adminUpdateUser(id, AdminUserUpdateRequestDto(displayName, isAdmin)) }
+    /** [groupId] vacío deja al usuario sin grupo; null no toca el grupo (ver [AdminUserUpdateRequestDto]). */
+    suspend fun updateUser(
+        id: String,
+        displayName: String? = null,
+        isAdmin: Boolean? = null,
+        groupId: String? = null,
+    ): AdminUserDto =
+        withContext(Dispatchers.IO) { api.adminUpdateUser(id, AdminUserUpdateRequestDto(displayName, isAdmin, groupId)) }
 
     suspend fun deleteUser(id: String) = withContext(Dispatchers.IO) { api.adminDeleteUser(id) }
     suspend fun notifyTest(id: String) = withContext(Dispatchers.IO) { api.adminNotifyTest(id) }
     suspend fun locateUser(id: String) = withContext(Dispatchers.IO) { api.adminLocateUser(id) }
+
+    /** Para la alarma que dejó sonando [locateUser]. */
+    suspend fun stopRing(id: String) = withContext(Dispatchers.IO) { api.adminStopRing(id) }
 
     /** Las "wifis de casa" que ese usuario tiene según su última copia en la nube. */
     suspend fun knownWifi(id: String): AdminKnownWifiDto = withContext(Dispatchers.IO) { api.adminKnownWifi(id) }
@@ -89,6 +99,10 @@ class AdminRepository(private val api: ApiService) {
     /** El registro de entradas y salidas de zona, ya filtrado por el servidor. */
     suspend fun zoneEvents(userId: String?, zoneId: String?, days: Int, onlyMissed: Boolean): List<AdminZoneEventDto> =
         withContext(Dispatchers.IO) { api.adminZoneEvents(userId, zoneId, days, onlyMissed) }
+
+    /** El informe del repaso de zonas, linea a linea. Solo lee en el servidor. */
+    suspend fun zoneReplay(userId: String, zoneId: String, hours: Int, showAll: Boolean): List<String> =
+        withContext(Dispatchers.IO) { api.adminZoneReplay(userId, zoneId, hours, showAll).lines }
 
     /** Devuelve cuantas se han borrado de verdad (los ids que ya no existian no cuentan). */
     suspend fun deleteZoneEvents(ids: List<String>): Int =

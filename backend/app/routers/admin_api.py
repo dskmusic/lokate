@@ -15,12 +15,12 @@ from fastapi import APIRouter, Depends, HTTPException, Path, UploadFile, status
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
-from .. import backups, geofence, managed_files, models, push, schemas
+from .. import backups, geofence, managed_files, models, push, schemas, zone_replay
 from ..auth import get_current_admin_user, hash_password
 from ..database import get_db
 from ..disk_usage import compute_disk_usage
 from ..models import utcnow
-from .auth import ALLOWED_AVATAR_TYPES, AVATAR_DIR, MAX_AVATAR_BYTES
+from .auth import ALLOWED_AVATAR_TYPES, MAX_AVATAR_BYTES, save_avatar
 
 router = APIRouter(prefix="/admin-api", tags=["admin-api"])
 
@@ -270,6 +270,19 @@ def update_user(
         user.display_name = body.display_name
     if body.is_admin is not None:
         user.is_admin = body.is_admin
+    if body.group_id is not None:
+        group_id = body.group_id or None
+        if group_id is not None and not db.get(models.Group, group_id):
+            raise HTTPException(status.HTTP_404_NOT_FOUND, "Group not found")
+        if group_id != user.group_id:
+            user.group_id = group_id
+            # Las zonas son de cada grupo, así que al cambiarse de grupo las de antes dejan de
+            # vigilarle. Si se le quedara guardado un "está dentro" de una de ellas y algún día
+            # volviera a ese grupo, lo primero que haría el servidor es avisar de una salida que
+            # nunca ocurrió.
+            db.query(models.ZoneState).filter(models.ZoneState.user_id == user.id).delete(
+                synchronize_session=False,
+            )
     db.commit()
     db.refresh(user)
     return user
@@ -300,6 +313,13 @@ def notify_test(user_id: str, admin: models.User = Depends(get_current_admin_use
 @router.post("/users/{user_id}/locate", status_code=status.HTTP_204_NO_CONTENT)
 def locate_user(user_id: str, admin: models.User = Depends(get_current_admin_user), db: Session = Depends(get_db)):
     push.send_to_user(db, user_id, "Lokate", "Un administrador quiere localizar tu dispositivo", {"type": "ring"})
+
+
+@router.post("/users/{user_id}/stop-ring", status_code=status.HTTP_204_NO_CONTENT)
+def stop_ring_user(user_id: str, admin: models.User = Depends(get_current_admin_user), db: Session = Depends(get_db)):
+    """Para la alarma que dejó sonando /locate. Existe aparte del /location/stop-ring de siempre
+    porque ese exige que el otro sea del mismo grupo, y un administrador manda sobre todos."""
+    push.send_to_user(db, user_id, "Lokate", "Parar alarma", {"type": "stop_ring"})
 
 
 @router.post("/users/{user_id}/battery-report", status_code=status.HTTP_204_NO_CONTENT)
@@ -415,12 +435,9 @@ async def admin_upload_avatar(
     contents = await file.read(MAX_AVATAR_BYTES + 1)
     if len(contents) > MAX_AVATAR_BYTES:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "La imagen no puede superar 5 MB")
-    AVATAR_DIR.mkdir(parents=True, exist_ok=True)
-    filename = f"{target.id}.{ext}"
-    (AVATAR_DIR / filename).write_bytes(contents)
-    target.avatar_url = f"/avatars/{filename}"
+    url = save_avatar(target, contents, ext)
     db.commit()
-    return schemas.AvatarResponse(avatar_url=target.avatar_url)
+    return schemas.AvatarResponse(avatar_url=url)
 
 
 # ---- Registro de entradas y salidas de zona ----
@@ -444,6 +461,31 @@ def delete_zone_events(
     )
     db.commit()
     return schemas.AdminDeletedResponse(deleted=deleted)
+
+
+@router.get("/zone-replay", response_model=schemas.AdminZoneReplayResponse)
+def zone_replay_report(
+    user_id: str,
+    zone_id: str,
+    hours: int = 24,
+    # El --all del comando: tambien los pings que no cambian nada.
+    show_all: bool = False,
+    admin: models.User = Depends(get_current_admin_user),
+    db: Session = Depends(get_db),
+):
+    """El mismo repaso que `python -m app.zone_replay`, para la pantalla de diagnostico de la app.
+
+    Es la razon de ser de este endpoint: el comando hay que escribirlo entrando al contenedor del
+    servidor, y el informe se quiere mirar donde salta el aviso. Solo lee (ver zone_replay).
+    """
+    user = db.get(models.User, user_id)
+    if user is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Usuario desconocido")
+    zone = db.get(models.Zone, zone_id)
+    if zone is None:
+        raise HTTPException(status.HTTP_404_NOT_FOUND, "Zona desconocida")
+    lines = zone_replay.replay(db, user, zone, zone_replay.clamp_hours(hours), show_all)
+    return schemas.AdminZoneReplayResponse(lines=lines)
 
 
 @router.post("/notify-update", response_model=schemas.AdminUpdateNoticeResponse)
@@ -550,6 +592,13 @@ def list_zone_events(
     if only_missed:
         query = query.filter(models.ZoneEvent.notified == 0)
     rows = query.order_by(models.ZoneEvent.at.desc()).limit(min(limit, 1000)).all()
+    # Los ids guardados en cada fila, a nombres de una vez: son como mucho un punado de personas
+    # repetidas en cientos de filas, asi que una consulta y un dict en vez de una por fila.
+    ids = {uid for event, _, _ in rows for uid in event.notified_id_list + event.missed_id_list}
+    nombres = (
+        {u.id: u.display_name for u in db.query(models.User).filter(models.User.id.in_(ids)).all()}
+        if ids else {}
+    )
     return [
         schemas.AdminZoneEventResponse(
             id=event.id,
@@ -560,6 +609,8 @@ def list_zone_events(
             zone_name=zone_name,
             entered=event.entered,
             notified=event.notified,
+            notified_names=[nombres.get(uid, uid) for uid in event.notified_id_list],
+            missed_names=[nombres.get(uid, uid) for uid in event.missed_id_list],
             reason=event.reason,
             distance_m=event.distance_m,
             accuracy=event.accuracy,

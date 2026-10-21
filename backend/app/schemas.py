@@ -1,9 +1,21 @@
 import re
 from datetime import datetime
+from typing import Annotated
 
-from pydantic import BaseModel, Field, field_validator
+from pydantic import BaseModel, BeforeValidator, Field, field_validator
 
 USERNAME_PATTERN = re.compile(r"^[a-zA-Z0-9_.]{3,30}$")
+
+# Nombre de zona tal y como se puede guardar. El recorte va aquí, ANTES de medir la longitud: los
+# teclados de móvil añaden un espacio al final al autocompletar, y un nombre de un solo espacio
+# pasaría el min_length y se guardaría vacío. Que lo arregle el servidor y no la app es a propósito
+# — así vale para los móviles que no actualicen y para el panel web (ver models.Zone, que lo
+# recorta otra vez al escribirlo, porque el panel admin no pasa por estos esquemas).
+ZoneName = Annotated[
+    str,
+    BeforeValidator(lambda v: v.strip() if isinstance(v, str) else v),
+    Field(min_length=1, max_length=60),
+]
 
 
 # ---- Auth ----
@@ -107,6 +119,9 @@ class LocationPingRequest(BaseModel):
     # Ver models.User.update_mode. Texto libre a proposito: si una version futura del movil
     # manda un modo nuevo, el servidor lo guarda igual y ya lo pintara quien sepa leerlo.
     update_mode: str | None = None
+    # ¿Quiere que su wifi cuente como posición en las zonas que la tengan apuntada?
+    # Si no viene (app anterior a esto) se da por activado, ver models.User.wifi_anchor.
+    wifi_anchor: bool | None = None
 
 
 class QueuedPing(BaseModel):
@@ -131,6 +146,9 @@ class LocationPingBatchRequest(BaseModel):
     location_frequency: str | None = None
     config_issues: str | None = None
     update_mode: str | None = None
+    # ¿Quiere que su wifi cuente como posición en las zonas que la tengan apuntada?
+    # Si no viene (app anterior a esto) se da por activado, ver models.User.wifi_anchor.
+    wifi_anchor: bool | None = None
 
 
 class LocationPingResponse(BaseModel):
@@ -160,8 +178,96 @@ class LocationResponse(BaseModel):
     # Segundos que le quedan a ese miembro de seguimiento en vivo (0 = ninguno). Mientras sea
     # >0 su movil esta en tiempo real, mande lo que mande location_frequency.
     live_seconds: int = 0
+    # Version de la app que tiene instalada. Solo la pinta la ficha, y solo a un admin: es para
+    # saber si ya tiene el arreglo del que se le hablo, sin preguntarle. NULL = app anterior a
+    # que se mandara (ver models.User.app_version).
+    app_version: str | None = None
 
     model_config = {"from_attributes": True}
+
+
+class RouteStep(BaseModel):
+    """Una maniobra de la ruta: lo que se lee en voz alta y lo que se pinta en la lista de pasos.
+
+    [point_index] es el indice dentro de RouteResponse.points donde se hace la maniobra, que es
+    con lo que el movil calcula "dentro de 300 metros" sin preguntar nada mas (ver routing.py).
+    [type] es el codigo de maniobra de ORS (0 izquierda, 1 derecha, 6 recto, 10 llegada...) y el
+    movil lo usa solo para elegir la flecha; si no lo conoce, pinta una generica.
+    """
+
+    instruction: str
+    type: int
+    name: str = ""
+    distance_m: float
+    duration_s: float
+    point_index: int
+
+
+class RouteResponse(BaseModel):
+    """Una ruta trazada para el "como llegar" del mapa. [points] viene ya en [lat, lng] —el
+    orden con el que dibuja el movil— y no en el [lon, lat] de GeoJSON (ver routing.py)."""
+
+    points: list[list[float]]
+    distance_m: float
+    duration_s: float
+    # Quien la ha trazado: el principal o el suplente (ver routing.py). Sin esto declarado aqui
+    # el campo no sale: FastAPI tira todo lo que no este en el esquema.
+    provider: str = ""
+    # Vacia = ruta sin indicaciones (ORS no las dio). El movil lo trata como "se puede dibujar
+    # pero no se puede navegar", nunca como un error.
+    steps: list[RouteStep] = []
+
+
+class IsochroneRing(BaseModel):
+    """Una mancha de "hasta aqui se llega en [minutes] minutos". [points] en [lat, lng], y es un
+    anillo cerrado listo para pintar (ver routing.py)."""
+
+    minutes: int
+    points: list[list[float]]
+
+
+class IsochroneResponse(BaseModel):
+    """Las manchas de alcance desde un punto. De mas grande a mas pequena: se pintan en ese
+    orden para que la de 5 minutos quede encima y se vea."""
+
+    provider: str = ""
+    rings: list[IsochroneRing] = []
+
+
+class MatrixResponse(BaseModel):
+    """Lo que tarda cada origen en llegar al destino, en el MISMO orden en que se pidieron.
+    None en los que no llegan (una isla, otro continente)."""
+
+    provider: str = ""
+    durations_s: list[float | None] = []
+
+
+class PlaceResult(BaseModel):
+    """Un sitio encontrado por el buscador. Con la forma de Nominatim —lat/lon en texto— a
+    proposito: el movil usa el mismo codigo venga de Pelias o del suplente (ver places.py)."""
+
+    display_name: str
+    lat: str
+    lon: str
+
+
+class AddressParts(BaseModel):
+    """El desglose de una direccion, con los nombres de Nominatim. Cada campo falta cuando no
+    aplica: en un pueblo no hay barrio, y en medio del campo no hay calle."""
+
+    house_number: str | None = None
+    road: str | None = None
+    neighbourhood: str | None = None
+    village: str | None = None
+    city: str | None = None
+
+
+class AddressResponse(BaseModel):
+    """La direccion de un punto del mapa. display_name a None = ha contestado y de ahi no sabe
+    nada, que no es lo mismo que no haber podido preguntar."""
+
+    display_name: str | None = None
+    address: AddressParts | None = None
 
 
 class LocationHistoryPoint(BaseModel):
@@ -175,13 +281,16 @@ class LocationHistoryPoint(BaseModel):
 
 # ---- Zones ----
 class ZoneCreateRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=60)
+    name: ZoneName
     lat: float = Field(ge=-90, le=90)
     lng: float = Field(ge=-180, le=180)
     radius_m: float = Field(gt=0, le=50000)
     # Por defecto publica: es lo que hacian todas las zonas antes de que esto existiera, y lo
     # que espera quien no se fija en el selector.
     is_public: bool = True
+    # Wifis de este sitio (ver models.Zone.wifi_ssids). Lista en la API y CSV en la base: el
+    # movil manda y recibe nombres, el CSV es cosa de la columna.
+    wifi_ssids: list[str] = Field(default_factory=list, max_length=20)
 
 
 class ZoneResponse(BaseModel):
@@ -195,6 +304,8 @@ class ZoneResponse(BaseModel):
     created_by: str | None = None
     # Para poder ordenar las zonas por "reciente" en la app.
     created_at: datetime | None = None
+    # Sale de Zone.wifi_ssid_list, no de la columna: la API habla en listas.
+    wifi_ssids: list[str] = Field(default_factory=list, validation_alias="wifi_ssid_list")
 
     model_config = {"from_attributes": True}
 
@@ -216,6 +327,9 @@ class RegisterDeviceRequest(BaseModel):
     is_charging: bool | None = None
     wifi_connected: bool | None = None
     wifi_ssid: str | None = None
+    # Ver models.User.wifi_anchor. Tambien aqui y no solo en el ping: quien tiene el envio de
+    # ubicacion desactivado no manda pings nunca, y aun asi puede querer apagarlo.
+    wifi_anchor: bool | None = None
 
 
 class AvatarResponse(BaseModel):
@@ -334,6 +448,10 @@ class AdminUserResponse(BaseModel):
 class AdminUserUpdateRequest(BaseModel):
     display_name: str | None = Field(default=None, min_length=1, max_length=60)
     is_admin: bool | None = None
+    # Cadena vacía = "quítale el grupo"; ausente = "no toques el grupo". Hacen falta los dos
+    # valores porque la app omite los campos nulos al montar el JSON, y entonces "sin grupo" y
+    # "este campo no lo mando" llegarían igual.
+    group_id: str | None = None
 
 
 class AdminKnownWifiRequest(BaseModel):
@@ -426,7 +544,7 @@ class AdminZoneResponse(BaseModel):
 
 
 class AdminZoneUpdateRequest(BaseModel):
-    name: str = Field(min_length=1, max_length=60)
+    name: ZoneName
     lat: float = Field(ge=-90, le=90)
     lng: float = Field(ge=-180, le=180)
     radius_m: float = Field(gt=0, le=50000)
@@ -434,7 +552,7 @@ class AdminZoneUpdateRequest(BaseModel):
 
 class AdminZoneCreateRequest(BaseModel):
     group_id: str
-    name: str = Field(min_length=1, max_length=60)
+    name: ZoneName
     lat: float = Field(ge=-90, le=90)
     lng: float = Field(ge=-180, le=180)
     radius_m: float = Field(gt=0, le=50000)
@@ -504,12 +622,26 @@ class AdminZoneEventResponse(BaseModel):
     zone_name: str
     entered: bool
     notified: int
+    # Nombres, no ids: esto se lee. A quien se aviso, y quien lo tenia activado pero ya no estaba
+    # en el grupo (ver geofence._notification_recipients). Vacias en las filas anteriores a que
+    # esto existiera, de las que solo se guardo el contador.
+    notified_names: list[str] = []
+    missed_names: list[str] = []
     # NULL = aviso normal. Resto de códigos en models.ZoneEvent.reason; los traduce la app.
     reason: str | None = None
     distance_m: float | None = None
     accuracy: float | None = None
     lat: float
     lng: float
+
+
+class AdminZoneReplayResponse(BaseModel):
+    """El repaso de zona_replay tal cual: lineas de texto ya formateadas.
+
+    ponytail: texto y no datos por ping a proposito — es un informe para leer, y asi la pantalla
+    de la app, la pagina del panel y el comando de consola ensenan exactamente lo mismo."""
+
+    lines: list[str]
 
 
 class AdminHistoryPoint(BaseModel):

@@ -92,6 +92,7 @@ class AuthRepository(
                 is_charging = status.isCharging,
                 wifi_connected = status.wifiConnected,
                 wifi_ssid = status.wifiSsid,
+                wifi_anchor = settings.wifiAnchor.first(),
             ),
         )
         // Solo si la llamada salió bien (si no, api.registerDevice ya habría lanzado): es lo que

@@ -68,7 +68,11 @@ import com.dskmusic.lokate.di.ServiceLocator
 import com.dskmusic.lokate.ui.map.HistoryMapView
 import com.dskmusic.lokate.ui.map.MapStyleMenuButton
 import com.dskmusic.lokate.ui.map.routeDistanceMeters
-import com.dskmusic.lokate.ui.map.snapshotWithCaption
+import com.dskmusic.lokate.ui.map.ImageExportDialogs
+import com.dskmusic.lokate.ui.map.SNAPSHOT_TILE_WAIT_MS
+import com.dskmusic.lokate.ui.map.rememberImageExport
+import com.dskmusic.lokate.ui.map.mapControlOf
+import com.dskmusic.lokate.ui.map.snapshotAtSize
 import com.dskmusic.lokate.ui.map.moveTo
 import com.dskmusic.lokate.util.LocationSharing
 import com.dskmusic.lokate.util.MediaSaver
@@ -119,6 +123,7 @@ fun HistoryScreen(
     // estés en la vista que estés.
     var showList by remember { mutableStateOf(false) }
     var showSnapshotOptions by remember { mutableStateOf(false) }
+    val imageExport = rememberImageExport()
 
     var mapViewRef by remember { mutableStateOf<MapView?>(null) }
     var focusedPoint by remember { mutableStateOf<LocationHistoryEntity?>(null) }
@@ -157,23 +162,32 @@ fun HistoryScreen(
             .replace(Regex("[^a-z0-9]+"), "-").trim('-') + ".png"
     val fromTitle = stringResource(R.string.history_time_from)
     val toTitle = stringResource(R.string.history_time_to)
+    // Mismo selector de tamaño que en el mapa: el recorrido de un día entero encuadrado deja las
+    // calles sin nombre, y es justo la foto que se quiere mirar de cerca después.
     val saveSnapshot: (Boolean) -> Unit = { share ->
-        val bitmap = mapViewRef?.snapshotWithCaption(caption)
-        if (bitmap == null) {
+        val map = mapViewRef
+        if (map == null) {
             Toast.makeText(context, R.string.history_snapshot_failed, Toast.LENGTH_SHORT).show()
         } else {
-            scope.launch {
-                val file = withContext(Dispatchers.IO) {
-                    File(context.cacheDir, snapshotName).also { out ->
-                        out.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
-                    }
-                }
-                if (share) {
-                    MediaSaver.shareFile(context, file, "image/png")
+            imageExport.ask { size, onProgress ->
+                // El historial lo pinta siempre osmdroid; mapControlOf le pone el mando que
+                // pide la foto (ver [MapControl]).
+                val bitmap = mapControlOf(map).snapshotAtSize(caption, SNAPSHOT_TILE_WAIT_MS, size, onProgress)
+                if (bitmap == null) {
+                    Toast.makeText(context, R.string.history_snapshot_failed, Toast.LENGTH_SHORT).show()
                 } else {
-                    val saved = MediaSaver.saveToDevice(context, file, "image/png", snapshotName, forceDownloads = true)
-                    val message = if (saved) R.string.history_snapshot_saved else R.string.history_snapshot_failed
-                    Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                    val file = withContext(Dispatchers.IO) {
+                        File(context.cacheDir, snapshotName).also { out ->
+                            out.outputStream().use { bitmap.compress(Bitmap.CompressFormat.PNG, 100, it) }
+                        }
+                    }
+                    if (share) {
+                        MediaSaver.shareFileWhenVisible(context, file, "image/png")
+                    } else {
+                        val saved = MediaSaver.saveToDevice(context, file, "image/png", snapshotName, forceDownloads = true)
+                        val message = if (saved) R.string.history_snapshot_saved else R.string.history_snapshot_failed
+                        Toast.makeText(context, message, Toast.LENGTH_SHORT).show()
+                    }
                 }
             }
         }
@@ -187,7 +201,10 @@ fun HistoryScreen(
                     IconButton(onClick = onBack) { Icon(Icons.Filled.ArrowBack, contentDescription = null) }
                 },
                 actions = {
-                    IconButton(onClick = { showSnapshotOptions = true }, enabled = points.isNotEmpty()) {
+                    IconButton(
+                        onClick = { showSnapshotOptions = true },
+                        enabled = points.isNotEmpty() && !imageExport.busy,
+                    ) {
                         Icon(
                             Icons.Filled.PhotoCamera,
                             contentDescription = stringResource(R.string.history_snapshot),
@@ -201,7 +218,7 @@ fun HistoryScreen(
                             ),
                         )
                     }
-                    MapStyleMenuButton { scope.launch { locator.settings.setMapStyle(it) } }
+                    MapStyleMenuButton(mapStyle) { scope.launch { locator.settings.setMapStyle(it) } }
                     val selectedMember = state.members.firstOrNull { it.id == state.selectedUserId }
                     IconButton(onClick = { showPicker = true }) {
                         if (selectedMember?.avatar_url != null) {
@@ -409,6 +426,9 @@ fun HistoryScreen(
             },
         )
     }
+
+    // Lo que sigue al guardar o compartir: de qué tamaño y cómo va.
+    ImageExportDialogs(imageExport)
 
     if (showPicker) {
         AlertDialog(

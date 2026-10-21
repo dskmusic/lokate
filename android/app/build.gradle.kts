@@ -16,8 +16,8 @@ android {
         applicationId = "com.dskmusic.lokate"
         minSdk = 26
         targetSdk = 35
-        versionCode = 2
-        versionName = "1.0.8"
+        versionCode = 6
+        versionName = "2.8.2"
 
         // La URL del servidor no viaja en el codigo: cada quien pone la suya en local.properties
         // (que git ignora) como  lokate.apiBaseUrl=https://mi-servidor.com/ , o con -PlokateApiBaseUrl
@@ -97,6 +97,10 @@ dependencies {
     implementation(libs.osmdroid.android)
     // Mapas sin conexión: dibuja las teselas en el móvil a partir de archivos .map de Mapsforge
     implementation(libs.osmdroid.mapsforge)
+    // Renderizador vectorial alternativo (estilos MapLibre, ver [MapLibreMapView]). Convive
+    // con osmdroid: no lo sustituye, y el mapa sin conexion sigue siendo cosa de Mapsforge.
+    implementation(libs.maplibre.android.sdk)
+    implementation(libs.maplibre.plugin.annotation)
     implementation(libs.play.services.location)
 
     implementation(platform(libs.firebase.bom))

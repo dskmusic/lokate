@@ -1,0 +1,54 @@
+{% extends "sqladmin/layout.html" %}
+{# Misma razon que en history_map.html: la cabecera por defecto se queda vacia pero ocupa su
+   alto, y aqui el titulo ya lo pone la tarjeta. #}
+{% block content_header %}{% endblock %}
+{% block content %}
+<div class="col-12">
+  <div class="card">
+    <div class="card-header">
+      <h3 class="card-title">{{ t('zone_replay_title') }}</h3>
+    </div>
+    <div class="card-body">
+      <p class="text-secondary">{{ t('zone_replay_help') }}</p>
+      <form method="get" class="row g-2 mb-3">
+        <div class="col-auto">
+          <label class="form-label visually-hidden">{{ t('select_user') }}</label>
+          <select name="user_id" class="form-select" onchange="this.form.submit()">
+            {% for u in users %}
+            <option value="{{ u.id }}" {% if u.id == selected_user_id %}selected{% endif %}>{{ u.display_name }} ({{ u.username }})</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-auto">
+          <label class="form-label visually-hidden">{{ t('zone_replay_zone') }}</label>
+          <select name="zone_id" class="form-select" onchange="this.form.submit()">
+            {% for z in zones %}
+            <option value="{{ z.id }}" {% if z.id == selected_zone_id %}selected{% endif %}>{{ z.name }} ({{ '%.0f'|format(z.radius_m) }} m)</option>
+            {% endfor %}
+          </select>
+        </div>
+        <div class="col-auto">
+          <label class="form-label visually-hidden">{{ t('zone_replay_hours', max=max_hours) }}</label>
+          <input type="number" name="hours" value="{{ hours }}" min="1" max="{{ max_hours }}"
+                 class="form-control" style="width:7rem;" title="{{ t('zone_replay_hours', max=max_hours) }}" />
+        </div>
+        <div class="col-auto d-flex align-items-center">
+          <label class="form-check mb-0">
+            <input type="checkbox" name="all" value="1" class="form-check-input" {% if show_all %}checked{% endif %}
+                   onchange="this.form.submit()" />
+            <span class="form-check-label">{{ t('zone_replay_all') }}</span>
+          </label>
+        </div>
+        <div class="col-auto">
+          <button type="submit" class="btn btn-primary">{{ t('view') }}</button>
+        </div>
+      </form>
+      {% if report %}
+      <pre style="max-height:70vh;overflow:auto;white-space:pre;font-size:.85rem;margin:0;">{{ report }}</pre>
+      {% else %}
+      <div class="text-secondary">{{ t('zone_replay_empty') }}</div>
+      {% endif %}
+    </div>
+  </div>
+</div>
+{% endblock %}

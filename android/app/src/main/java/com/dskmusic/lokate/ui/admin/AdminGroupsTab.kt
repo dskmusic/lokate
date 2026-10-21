@@ -31,16 +31,22 @@ import com.dskmusic.lokate.R
 import com.dskmusic.lokate.data.remote.dto.AdminGroupDto
 
 @Composable
-internal fun AdminGroupsTab(state: AdminUiState, viewModel: AdminViewModel) {
+internal fun AdminGroupsTab(state: AdminUiState, viewModel: AdminViewModel, query: String = "") {
     var deleting by remember { mutableStateOf<AdminGroupDto?>(null) }
     var creating by remember { mutableStateOf(false) }
+
+    val groups = remember(state.groups, query) {
+        val text = query.trim()
+        if (text.isEmpty()) state.groups
+        else state.groups.filter { it.name.contains(text, ignoreCase = true) }
+    }
 
     Box(Modifier.fillMaxSize()) {
         if (state.loadingGroups && state.groups.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) { CircularProgressIndicator() }
         } else {
             LazyColumn(Modifier.fillMaxSize()) {
-                items(state.groups, key = { it.id }) { group ->
+                items(groups, key = { it.id }) { group ->
                     ListItem(
                         headlineContent = { Text(group.name) },
                         supportingContent = { Text(group.invite_code) },

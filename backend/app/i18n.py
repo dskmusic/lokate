@@ -109,6 +109,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "login_blocks_unblock": "Desbloquear",
         "login_blocks_unblock_all": "Desbloquear todos",
         "login_blocks_none": "Nadie ha fallado la contraseña últimamente",
+        "zone_replay_title": "Diagnóstico de zonas",
+        "zone_replay_help": "Vuelve a pasar los pings ya guardados por la misma regla que decide entradas y salidas, y enseña ping a ping qué decidió y qué lo frenó. Solo lee: no cambia el estado de nadie ni manda avisos.",
+        "zone_replay_zone": "Zona",
+        "zone_replay_hours": "Horas (máx. {max})",
+        "zone_replay_all": "Todos los pings",
+        "zone_replay_empty": "Hacen falta al menos una persona y una zona",
     },
     "en": {
         "dashboard": "Dashboard",
@@ -208,6 +214,12 @@ TRANSLATIONS: dict[str, dict[str, str]] = {
         "login_blocks_unblock": "Unblock",
         "login_blocks_unblock_all": "Unblock all",
         "login_blocks_none": "Nobody has failed a password lately",
+        "zone_replay_title": "Zone diagnostics",
+        "zone_replay_help": "Runs the stored pings through the same rule that decides entries and exits, and shows ping by ping what it decided and what held it back. Read-only: it changes no state and sends no alerts.",
+        "zone_replay_zone": "Zone",
+        "zone_replay_hours": "Hours (max {max})",
+        "zone_replay_all": "All pings",
+        "zone_replay_empty": "At least one person and one zone are needed",
     },
 }
 

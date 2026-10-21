@@ -1,0 +1,62 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- La vista PLEGADA del aviso de navegación: es la única que se ve en la pantalla de bloqueo,
+     y con la plantilla normal de Android ahí no sale ningún botón (hay que desplegar el aviso,
+     y desbloqueando el móvil, que conduciendo no es plan). Con la vista propia, la pausa y la
+     salida están a un dedo sin desplegar nada, como en un reproductor de música.
+
+     El texto sí sale del tema de las notificaciones (TextAppearance.Compat.Notification.*),
+     que para texto funciona en todas partes. Los botones NO: con ?android:attr/textColorPrimary
+     HyperOS los pintaba gris oscuro sobre tarjeta negra y no se veían. Por eso llevan color
+     fijo, redondel azul y glifo blanco. Ver NotificationHelper.buildNavNotification. -->
+<LinearLayout xmlns:android="http://schemas.android.com/apk/res/android"
+    android:layout_width="match_parent"
+    android:layout_height="wrap_content"
+    android:minHeight="48dp"
+    android:gravity="center_vertical"
+    android:orientation="horizontal">
+
+    <LinearLayout
+        android:layout_width="0dp"
+        android:layout_height="wrap_content"
+        android:layout_weight="1"
+        android:orientation="vertical">
+
+        <TextView
+            android:id="@+id/nav_title"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="2"
+            android:textAppearance="@style/TextAppearance.Compat.Notification.Title" />
+
+        <TextView
+            android:id="@+id/nav_body"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:ellipsize="end"
+            android:maxLines="1"
+            android:textAppearance="@style/TextAppearance.Compat.Notification.Info" />
+    </LinearLayout>
+
+    <ImageButton
+        android:id="@+id/nav_pause"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_marginStart="8dp"
+        android:background="@drawable/bg_nav_button"
+        android:padding="10dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/ic_nav_pause"
+        android:tint="@android:color/white" />
+
+    <ImageButton
+        android:id="@+id/nav_stop"
+        android:layout_width="40dp"
+        android:layout_height="40dp"
+        android:layout_marginStart="8dp"
+        android:background="@drawable/bg_nav_button"
+        android:padding="10dp"
+        android:scaleType="fitCenter"
+        android:src="@drawable/ic_nav_stop"
+        android:tint="@android:color/white" />
+</LinearLayout>

@@ -23,6 +23,9 @@ data class GroupUiState(
     val availableGroups: List<AdminGroupDto> = emptyList(),
     /** Grupos en los que el admin entra sin que le vean. */
     val hiddenGroups: Set<String> = emptySet(),
+    /** Cuántos avisos de zona tengo activados EN EL GRUPO ACTUAL. Se enseña al cambiarse de
+     * grupo, porque todos esos dejan de llegar mientras se esté en otro. */
+    val activeZoneAlerts: Int = 0,
     val currentUser: UserDto? = null,
     val checkedExisting: Boolean = false,
     val left: Boolean = false,
@@ -54,11 +57,20 @@ class GroupViewModel(
                     } else {
                         emptyList()
                     }
+                    // Los avisos de zona que tengo puestos aquí: saltar a otro grupo los apaga
+                    // todos sin tocarlos, así que hay que decir cuántos antes de saltar.
+                    val avisos = if (existing != null) {
+                        runCatching { zoneRepository.notificationPrefs() }.getOrDefault(emptyList())
+                            .count { it.notify_on_enter || it.notify_on_exit }
+                    } else {
+                        0
+                    }
                     _uiState.value = _uiState.value.copy(
                         currentUser = user,
                         existingGroup = existing,
                         members = members,
                         availableGroups = groups,
+                        activeZoneAlerts = avisos,
                         hiddenGroups = user?.hidden_groups.orEmpty().toSet(),
                         checkedExisting = true,
                         connectionError = false,
@@ -89,7 +101,10 @@ class GroupViewModel(
     }
 
     /** Solo admin: cambiar de grupo activo. El servidor solo manda avisos a los miembros del
-     * grupo al que perteneces, así que el grupo activo es también el único del que llegan. */
+     * grupo al que perteneces, así que el grupo activo es también el único del que llegan: las
+     * preferencias del grupo que se deja siguen guardadas, pero no avisan de nada mientras no se
+     * vuelva. El 06/10/2026 eso dejó una mañana entera sin avisos de zona sin que nada lo dijera,
+     * y por eso la pantalla pregunta antes (ver GroupUiState.activeZoneAlerts). */
     fun switchGroup(groupId: String) {
         _uiState.value = _uiState.value.copy(loading = true, error = null)
         viewModelScope.launch {

@@ -17,8 +17,15 @@ import kotlinx.coroutines.launch
  *
  * Lo único que hace es mandar un ping YA con la posición del cruce: el aviso al grupo lo sigue
  * decidiendo el servidor con ese ping, igual que con cualquier otro. Así no hay dos sitios
- * decidiendo quién está dentro de qué, y tampoco hay aviso doble — cuando llegue el ping
- * periódico de después, el estado en el servidor ya habrá cambiado y no lo verá como transición.
+ * decidiendo quién está dentro de qué, y el ping periódico de después ya no ve transición ninguna
+ * porque el estado en el servidor habrá cambiado.
+ *
+ * Lo que eso NO cubre es que los dos lleguen a la vez: el fix que el sistema trae aquí es el mismo
+ * que el fused provider le acaba de dar al servicio en primer plano, así que los dos pings salen en
+ * el mismo instante y ninguno ve el cambio del otro (el 05/10/2026, dos avisos de la misma salida
+ * con 1 ms de diferencia). De eso se protege el servidor, que es el único sitio donde se ven las
+ * dos peticiones: ver geofence.check_zone_transitions. Aquí no hay nada que arreglar — este ping es
+ * el camino rápido de los avisos y tiene que salir siempre.
  */
 class GeofenceReceiver : BroadcastReceiver() {
 

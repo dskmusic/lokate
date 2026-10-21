@@ -7,10 +7,13 @@ import android.os.Build
 import android.os.Environment
 import android.provider.MediaStore
 import androidx.core.content.FileProvider
-import kotlinx.coroutines.Dispatchers
-import kotlinx.coroutines.withContext
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.LifecycleOwner
+import androidx.lifecycle.withStateAtLeast
 import java.io.File
 import java.net.URL
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 
 /** Descarga y guarda/comparte los adjuntos de un mensaje de emergencia (foto, vídeo u otro archivo). */
 object MediaSaver {
@@ -60,6 +63,20 @@ object MediaSaver {
                 true
             }.getOrDefault(false)
         }
+
+    /**
+     * Igual que [shareFile] pero esperando a que la app esté delante. Compartir abre el selector
+     * de "compartir con…", y Android no deja abrir pantallas desde el fondo: si la foto del mapa
+     * acaba con la app minimizada o la pantalla bloqueada, el selector no sale, y no sale nunca
+     * (la foto estaba hecha y el trabajo perdido). Así sale en cuanto se vuelve.
+     *
+     * Si la actividad ya no existe, [withStateAtLeast] corta la corrutina: no hay desde dónde
+     * abrir el selector y quien llama se entera como de cualquier otro fallo.
+     */
+    suspend fun shareFileWhenVisible(context: Context, file: File, mimeType: String) {
+        (context as? LifecycleOwner)?.lifecycle?.withStateAtLeast(Lifecycle.State.RESUMED) {}
+        shareFile(context, file, mimeType)
+    }
 
     fun shareFile(context: Context, file: File, mimeType: String) {
         val uri = FileProvider.getUriForFile(context, "${context.packageName}.fileprovider", file)

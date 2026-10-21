@@ -78,6 +78,10 @@ data class LocationPingBatchRequestDto(
     val location_frequency: String?,
     val config_issues: String?,
     val update_mode: String?,
+    /** ¿Quiere que su wifi cuente como posición en las zonas que la tengan apuntada?
+     * (Ajustes). Si no viaja, el servidor lo da por activado: es lo que protege a los móviles
+     * con una app anterior a esto. Ver el ancla de wifi en el servidor (geofence._wifi_anchor). */
+    val wifi_anchor: Boolean?,
 )
 
 data class LocationPingRequestDto(
@@ -93,6 +97,10 @@ data class LocationPingRequestDto(
     /** Cómo está mandando posición este móvil ahora mismo. Ver
      * [com.dskmusic.lokate.location.UpdateMode]. */
     val update_mode: String?,
+    /** ¿Quiere que su wifi cuente como posición en las zonas que la tengan apuntada?
+     * (Ajustes). Si no viaja, el servidor lo da por activado: es lo que protege a los móviles
+     * con una app anterior a esto. Ver el ancla de wifi en el servidor (geofence._wifi_anchor). */
+    val wifi_anchor: Boolean?,
 )
 
 /** Lo único que el servidor contesta al ping: cuántos segundos quedan de seguimiento en vivo
@@ -129,6 +137,62 @@ data class LocationDto(
      * >0 su móvil está en tiempo real, mande lo que mande [location_frequency]: es la
      * confirmación de que la orden de "seguir" prendió de verdad en el otro móvil. */
     val live_seconds: Int = 0,
+    /** Versión de la app instalada en ese móvil. Solo se pinta en la ficha y solo a un admin:
+     * sirve para saber si ya tiene el arreglo del que se le habló. null = su app es anterior a
+     * que se mandara. */
+    val app_version: String? = null,
+)
+
+/** Una ruta trazada por el servidor para el "cómo llegar" del mapa (ver backend routing.py).
+ * [points] viene ya en [lat, lng] —el orden con el que se dibuja— y no en el [lon, lat] de
+ * GeoJSON. Menos de dos puntos no es una ruta: se trata como que no hay. */
+data class RouteDto(
+    val points: List<List<Double>> = emptyList(),
+    /** Quién ha trazado esta ruta ("OpenRouteService", "Stadia Maps"). Vacío = servidor viejo,
+     * que no lo manda; entonces no se dice nada. */
+    val provider: String = "",
+    val distance_m: Double = 0.0,
+    val duration_s: Double = 0.0,
+    /** Las maniobras, para la navegación por voz. Vacía = esta ruta se puede dibujar pero no se
+     * puede navegar (rutas de antes de esto, o ORS sin indicaciones). Nunca es un error. */
+    val steps: List<RouteStepDto> = emptyList(),
+)
+
+/** Una maniobra de la ruta: lo que se dice en voz alta y lo que se pinta en la lista de pasos.
+ *
+ * [point_index] es el índice dentro de [RouteDto.points] donde se hace la maniobra. De ahí sale
+ * el "dentro de 300 metros" sin volver a preguntar nada al servidor.
+ * [type] es el código de maniobra de ORS (0 izquierda, 1 derecha, 6 recto, 10 llegada...) y solo
+ * decide la flecha; uno desconocido pinta la genérica. */
+data class RouteStepDto(
+    val instruction: String = "",
+    val type: Int = -1,
+    /** La calle. Vacía a propósito cuando no tiene nombre: "continúe por -" no se dice. */
+    val name: String = "",
+    val distance_m: Double = 0.0,
+    val duration_s: Double = 0.0,
+    val point_index: Int = 0,
+)
+
+/** Hasta dónde se llega desde un punto en X minutos (ver backend routing.py). Los anillos vienen
+ * de más grande a más pequeño: se pintan en ese orden para que el de 5 minutos quede encima del
+ * de 15 y se vea. */
+data class IsochroneDto(
+    val provider: String = "",
+    val rings: List<IsochroneRingDto> = emptyList(),
+)
+
+/** Una mancha de alcance. [points] ya en [lat, lng], anillo cerrado y listo para dibujar. */
+data class IsochroneRingDto(
+    val minutes: Int = 0,
+    val points: List<List<Double>> = emptyList(),
+)
+
+/** Lo que tarda cada uno en llegar al mismo sitio, en el MISMO orden en que se preguntó. null en
+ * los que no llegan (una isla, otro continente): eso no es "cero minutos". */
+data class MatrixDto(
+    val provider: String = "",
+    val durations_s: List<Double?> = emptyList(),
 )
 
 data class LocationHistoryPointDto(
@@ -145,6 +209,11 @@ data class ZoneCreateRequestDto(
     val radius_m: Double,
     /** false = zona privada: solo la ve y solo avisa a quien la creó. */
     val is_public: Boolean = true,
+    /** Wifis de este sitio. Quien se conecte a una de ellas cuenta como dentro de la zona
+     * aunque el GPS diga otra cosa: es la única prueba de estar aquí que no sale del GPS, y
+     * la única que para un fix de wifi con el centro equivocado. Vacía = zona solo por
+     * posición, como eran todas antes de esto. */
+    val wifi_ssids: List<String> = emptyList(),
 )
 
 data class ZoneDto(
@@ -159,6 +228,9 @@ data class ZoneDto(
     val created_by: String? = null,
     // Puede faltar si el servidor es anterior a que se expusiera: solo se usa para ordenar.
     val created_at: String? = null,
+    /** Ver [ZoneCreateRequestDto.wifi_ssids]. Con un servidor anterior llega ausente y se
+     * queda vacía, que es "esta zona va solo por posición". */
+    val wifi_ssids: List<String> = emptyList(),
 )
 
 /** Ajustes de avisos de una zona para ESTE usuario: son suyos, no los comparte con el grupo. */
@@ -194,6 +266,9 @@ data class RegisterDeviceRequestDto(
     val is_charging: Boolean?,
     val wifi_connected: Boolean?,
     val wifi_ssid: String?,
+    /** Ver [LocationPingRequestDto.wifi_anchor]. También aquí porque quien tiene el envío de
+     * ubicación desactivado no manda pings nunca, y aun así puede querer apagarlo. */
+    val wifi_anchor: Boolean?,
 )
 
 data class UpdateCheckDto(val update_available: Boolean)

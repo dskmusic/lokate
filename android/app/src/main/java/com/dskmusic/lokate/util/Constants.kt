@@ -17,6 +17,11 @@ object Constants {
     const val ZONE_CHANNEL_ID = "lokate_zone"
     const val RING_CHANNEL_ID = "lokate_ring"
     const val SYSTEM_CHANNEL_ID = "lokate_system"
+    /** El canal del aviso de navegación. El id no es "lokate_nav" —el que tuvo hasta ahora—
+     * porque ese se creó silencioso y un canal es INMUTABLE: hacía falta uno nuevo para que el
+     * sistema deje de esconder el aviso de la pantalla de bloqueo. El viejo se borra en
+     * [com.dskmusic.lokate.push.NotificationHelper.createChannels]. */
+    const val NAV_CHANNEL_ID = "lokate_nav_lock"
 
     /** Avisos que el movil se pinta sobre si mismo. Id fijo y uno por problema: repetir el
      * aviso no debe apilar veinte notificaciones, sino reemplazar la anterior. */
@@ -53,14 +58,58 @@ object Constants {
      * [MAP_DEFAULT_ZOOM]), pero se deja elegir hasta 24 para quien quiera abrir muy cerca. */
     const val MAP_MAX_ZOOM = 24
 
+    /** Lo que hay que tener el dedo quieto en el mapa para que salga la dirección de ese punto.
+     * Son más del triple de los ~500 ms del sistema a propósito: el gesto de siempre en un mapa
+     * es arrastrarlo, y con el tiempo corto saltaba el cuadro cada vez que alguien empezaba a
+     * mover el mapa despacio. */
+    const val MAP_LONG_PRESS_MS = 1500L
+
     /** Cuánto se ve el círculo del margen de error en el mapa, en tanto por ciento (ajuste
      * "mostrar precisión"). Es una opacidad, no un tamaño: el radio siempre son los metros
      * reales que diga el fix. */
-    const val MAP_ACCURACY_INTENSITY_DEFAULT = 50
+    const val MAP_ACCURACY_INTENSITY_DEFAULT = 100
+
+    /** Opacidad del relleno de las zonas en el mapa, 0-100. A 0 solo queda el borde: hay
+     * quien prefiere ver el mapa limpio debajo, sobre todo en satélite. */
+    const val MAP_ZONE_FILL_INTENSITY_DEFAULT = 100
+
+    /** Colores del mapa, cambiables en Ajustes: azul para las zonas y blanco para el margen
+     * de error, que es lo que mejor se ve sobre cualquier estilo de mapa. Cada uno es el
+     * primero de su paleta (ver MapZonePresets y compañía). */
+    const val MAP_ZONE_COLOR_DEFAULT = 0xFF1565C0.toInt()
+    const val MAP_ACCURACY_COLOR_DEFAULT = 0xFFECEFF1.toInt()
+
+    /** Azul claro para el margen de seguridad de las zonas: se separa del azul de la zona sin
+     * meter un color de otra familia. También se puede cambiar en Ajustes. */
+    const val MAP_ZONE_MARGIN_COLOR_DEFAULT = 0xFF0288D1.toInt()
+
+    /** Margen de seguridad de las zonas: una vez dentro, hay que alejarse el radio MÁS estos
+     * metros para que cuente como salida. Es lo que evita que el ruido del GPS en el borde
+     * genere entradas y salidas en bucle.
+     *
+     * Copia de ZONE_EXIT_MARGIN_M de backend/app/geofence.py, que es quien decide de verdad:
+     * aquí solo se usa para dibujarlo (ajuste "ver el margen de las zonas"). Si se cambia allí,
+     * cambiarlo aquí o el círculo de puntos mentirá. */
+    const val ZONE_EXIT_MARGIN_METERS = 20.0
 
     /** Zoom al que se salta tras elegir un resultado del buscador: suficiente para ver la calle
      * sin pasarse del último nivel con teselas reales (ver [MAP_DEFAULT_ZOOM]). */
     const val MAP_SEARCH_RESULT_ZOOM = 17.0
+
+    /** Zoom al que se pone el mapa al arrancar un viaje (o una simulación): de calle, no de
+     * barrio — navegando hay que ver dónde está el próximo giro. Es solo el punto de partida:
+     * a partir de ahí el zoom es de quien mira, como siempre.
+     *
+     * Pasa de 19, que es donde acaban las teselas de verdad (Mapnik y el satélite de Esri), y eso
+     * es a propósito: osmdroid no se queda ahí, sino que estira la tesela guardada del nivel de
+     * abajo (MapTileApproximater), igual que si se pellizcara con los dedos pasado el último
+     * nivel. El fondo se ve algo más basto a cambio de que la calle llene la pantalla, y lo que
+     * dibuja la app encima — la ruta, los marcadores, el margen de las zonas — no pierde nada
+     * porque se pinta a su tamaño, no se estira.
+     *
+     * Para cambiarlo basta este número: 19.0 para quedarse en teselas sin estirar, 20.5 o 21.0
+     * para más cerca (cada nivel entero dobla el estirado, y a 21 el fondo ya es un borrón). */
+    const val MAP_NAV_ZOOM = 21.0
 
     /** A partir de cuántos metros el mapa salta al destino en vez de animar el viaje (ver
      * [com.dskmusic.lokate.ui.map.moveTo]). animateTo recorre el camino intermedio al zoom
@@ -101,6 +150,14 @@ object Constants {
 
     /** Id fijo: si el admin lo manda dos veces, la barra no acumula dos avisos iguales. */
     const val UPDATE_NOTIFICATION_ID = 1004
+
+    /** El aviso fijo de la navegación por voz, el que lleva la próxima maniobra. Se reescribe
+     * en cada maniobra: siempre es el mismo aviso, nunca una pila. */
+    const val NAV_NOTIFICATION_ID = 1005
+
+    /** El "Salir" del aviso de navegación (ver [com.dskmusic.lokate.nav.NavStopReceiver]). */
+    const val ACTION_NAV_STOP = "com.dskmusic.lokate.action.NAV_STOP"
+    const val ACTION_NAV_PAUSE = "com.dskmusic.lokate.action.NAV_PAUSE"
 }
 
 /** El orden de los valores es el que se ve en ajustes (de más frecuente a menos), y su nombre
@@ -154,10 +211,35 @@ enum class MapStyle {
 
     /** Igual que [OFFLINE] pero con el mismo filtro de colores invertidos que [DARK]. */
     OFFLINE_DARK,
+
+    /** Mapa vectorial de internet dibujado por MapLibre (ver
+     * [com.dskmusic.lokate.ui.map.MapLibreMapView]), no por osmdroid: letras rectas a cualquier
+     * zoom, y es el único que puede inclinarse para navegar. SIEMPRE online — el mapa guardado
+     * en el móvil sigue siendo [OFFLINE], que es osmdroid + Mapsforge. */
+    MAPLIBRE,
+
+    /** El mismo mapa vectorial con el estilo oscuro del proveedor: colores pensados de noche,
+     * no las teselas de día con los colores invertidos como hace [DARK]. */
+    MAPLIBRE_DARK,
     ;
 
     val isOffline: Boolean get() = this == OFFLINE || this == OFFLINE_DARK
     val isDark: Boolean get() = this == DARK || this == OFFLINE_DARK
+
+    /** Lo pinta MapLibre y no osmdroid. Lo que cuelga de esto: qué vista se monta (ver
+     * [com.dskmusic.lokate.ui.map.LokateMapView]) y qué herramientas se pueden ofrecer —
+     * medir y la foto del mapa son capas de osmdroid y ahí no existen. */
+    val isVector: Boolean get() = this == MAPLIBRE || this == MAPLIBRE_DARK
+
+    /** La URL del estilo que hay que cargar, o null si no es de MapLibre. OpenFreeMap: sin
+     * clave, sin cuota y con el esquema OpenMapTiles, que es el que trae la altura de los
+     * edificios (lo que hace posible el 3D de la navegación). */
+    val styleUrl: String?
+        get() = when (this) {
+            MAPLIBRE -> "https://tiles.openfreemap.org/styles/liberty"
+            MAPLIBRE_DARK -> "https://tiles.openfreemap.org/styles/dark"
+            else -> null
+        }
 
     /** El equivalente con teselas de internet, para cuando no hay mapa descargado de la zona
      * que se está mirando: el oscuro sigue oscuro. */

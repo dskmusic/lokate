@@ -6,15 +6,20 @@ import android.graphics.ColorMatrixColorFilter
 import android.widget.Toast
 import androidx.compose.foundation.layout.Box
 import androidx.compose.material.icons.Icons
+import androidx.compose.material.icons.filled.Check
 import androidx.compose.material.icons.filled.CloudOff
 import androidx.compose.material.icons.filled.DarkMode
 import androidx.compose.material.icons.filled.Layers
 import androidx.compose.material.icons.filled.Map
+import androidx.compose.material.icons.filled.ModeNight
 import androidx.compose.material.icons.filled.NightsStay
+import androidx.compose.material.icons.filled.Public
 import androidx.compose.material.icons.filled.Satellite
 import androidx.compose.material3.DropdownMenu
 import androidx.compose.material3.DropdownMenuItem
 import androidx.compose.material3.Icon
+import androidx.compose.material3.MenuDefaults
+import androidx.compose.material3.MaterialTheme
 import androidx.compose.material3.IconButton
 import androidx.compose.material3.Text
 import androidx.compose.runtime.Composable
@@ -116,7 +121,11 @@ fun MapView.applyMapStyle(style: MapStyle, offlineFiles: List<File> = emptyList(
     }
     val tileSource = when (style) {
         MapStyle.SATELLITE -> SatelliteTileSource
-        MapStyle.DARK, MapStyle.STANDARD, MapStyle.OFFLINE, MapStyle.OFFLINE_DARK -> TileSourceFactory.MAPNIK
+        // Los de MapLibre no pasan por aquí (los pinta otra vista, ver [LokateMapView]); están
+        // en la lista porque el compilador quiere el enum entero.
+        MapStyle.DARK, MapStyle.STANDARD, MapStyle.OFFLINE, MapStyle.OFFLINE_DARK,
+        MapStyle.MAPLIBRE, MapStyle.MAPLIBRE_DARK,
+        -> TileSourceFactory.MAPNIK
     }
     // setTileSource vacía la caché de teselas en memoria de osmdroid: llamarlo en cada
     // recomposición (una por sondeo, ~15s) obligaba a releer de disco o volver a descargar todo
@@ -324,9 +333,14 @@ fun TileRetryEffect(map: MapView) {
     }
 }
 
-/** Botón de capas con el menú de estilos, igual en el mapa principal y en el historial. */
+/**
+ * Botón de capas con el menú de estilos, igual en el mapa principal y en el historial.
+ *
+ * [current] es el que se está viendo: va en el color de acento y con su marca. Sin eso, abrir el
+ * menú no dice en qué mapa estás, y entre el oscuro y el oscuro sin conexión no se distingue.
+ */
 @Composable
-fun MapStyleMenuButton(onSelect: (MapStyle) -> Unit) {
+fun MapStyleMenuButton(current: MapStyle, onSelect: (MapStyle) -> Unit) {
     var expanded by remember { mutableStateOf(false) }
     Box {
         IconButton(onClick = { expanded = true }) {
@@ -339,17 +353,47 @@ fun MapStyleMenuButton(onSelect: (MapStyle) -> Unit) {
                 Triple(MapStyle.DARK, R.string.map_style_dark, Icons.Filled.DarkMode),
                 Triple(MapStyle.OFFLINE, R.string.map_style_offline, Icons.Filled.CloudOff),
                 Triple(MapStyle.OFFLINE_DARK, R.string.map_style_offline_dark, Icons.Filled.NightsStay),
+                Triple(MapStyle.MAPLIBRE, R.string.map_style_maplibre, Icons.Filled.Public),
+                Triple(MapStyle.MAPLIBRE_DARK, R.string.map_style_maplibre_dark, Icons.Filled.ModeNight),
             )
+            val acento = MaterialTheme.colorScheme.primary
             items.forEach { (style, label, icon) ->
+                val activo = style == current
                 DropdownMenuItem(
                     text = { Text(stringResource(label)) },
                     leadingIcon = { Icon(icon, contentDescription = null) },
+                    trailingIcon = if (activo) {
+                        { Icon(Icons.Filled.Check, contentDescription = null) }
+                    } else {
+                        null
+                    },
+                    colors = if (activo) {
+                        MenuDefaults.itemColors(
+                            textColor = acento,
+                            leadingIconColor = acento,
+                            trailingIconColor = acento,
+                        )
+                    } else {
+                        MenuDefaults.itemColors()
+                    },
                     onClick = {
                         onSelect(style)
                         expanded = false
                     },
                 )
             }
+            // El crédito de los datos, que ya no sale encima del mapa: OSM lo pide y aquí no
+            // estorba. Un item apagado vale de etiqueta.
+            DropdownMenuItem(
+                text = {
+                    Text(
+                        stringResource(R.string.map_attribution),
+                        style = MaterialTheme.typography.labelSmall,
+                    )
+                },
+                onClick = {},
+                enabled = false,
+            )
         }
     }
 }

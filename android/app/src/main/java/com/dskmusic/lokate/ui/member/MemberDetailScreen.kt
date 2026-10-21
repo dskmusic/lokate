@@ -36,6 +36,7 @@ import androidx.compose.material.icons.filled.NotificationsActive
 import androidx.compose.material.icons.filled.Place
 import androidx.compose.material.icons.filled.Refresh
 import androidx.compose.material.icons.filled.Schedule
+import androidx.compose.material.icons.filled.Timelapse
 import androidx.compose.material.icons.filled.Warning
 import androidx.compose.material.icons.filled.Wifi
 import androidx.compose.material.icons.filled.WifiOff
@@ -97,6 +98,8 @@ fun MemberDetailScreen(
     onBack: () -> Unit,
     onOpenHistory: (String, String) -> Unit,
     onOpenMap: (String) -> Unit,
+    /** "Hasta dónde llega": vuelve al mapa con sus anillos de 5, 10 y 15 minutos pintados. */
+    onShowIsochrone: (String) -> Unit,
     onFixPermissions: () -> Unit,
 ) {
     val context = LocalContext.current
@@ -191,6 +194,14 @@ fun MemberDetailScreen(
                     // Abrir en Google Maps es lo único de esta pantalla que no toca a la otra
                     // persona (ni le pide nada ni le hace sonar nada), así que va arriba y no
                     // entre los botones de acción.
+                    state.location?.let {
+                        IconButton(onClick = { onShowIsochrone(userId) }) {
+                            Icon(
+                                Icons.Filled.Timelapse,
+                                contentDescription = stringResource(R.string.isochrone_action),
+                            )
+                        }
+                    }
                     state.location?.let { current ->
                         IconButton(
                             onClick = {
@@ -395,6 +406,16 @@ fun MemberDetailScreen(
             }
             if (showUpdateInfo) {
                 UpdateStatusDialog(location, onDismiss = { showUpdateInfo = false })
+            }
+            // Solo para un admin: qué versión lleva instalada. Es la pregunta de después de
+            // pedirle que actualice, y así no hay que preguntársela.
+            if (isAdmin && !location.app_version.isNullOrBlank()) {
+                Text(
+                    stringResource(R.string.member_app_version, location.app_version),
+                    style = MaterialTheme.typography.bodySmall,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    modifier = Modifier.padding(start = 28.dp, top = 4.dp),
+                )
             }
             Spacer(Modifier.height(12.dp))
             // Arreglar permisos solo tiene sentido en la ficha de uno mismo: en la de otro
@@ -705,20 +726,12 @@ fun MemberDetailScreen(
     }
 
     when (state.locationRequestResult) {
-        LocationRequestResult.SUCCESS -> AlertDialog(
-            onDismissRequest = viewModel::clearLocationRequestResult,
-            title = { Text(stringResource(R.string.location_request_success_title)) },
-            text = { Text(stringResource(R.string.location_request_success_body, state.location?.display_name.orEmpty())) },
-            confirmButton = {
-                TextButton(onClick = {
-                    viewModel.clearLocationRequestResult()
-                    onOpenMap(userId)
-                }) { Text(stringResource(R.string.location_request_view_on_map)) }
-            },
-            dismissButton = {
-                TextButton(onClick = viewModel::clearLocationRequestResult) { Text(stringResource(R.string.confirm)) }
-            },
-        )
+        // Si la ubicación ha llegado, al mapa directo: preguntar "¿la vemos?" cuando se acaba de
+        // pulsar "actualizar ubicación" es un paso de más — la respuesta es siempre sí.
+        LocationRequestResult.SUCCESS -> LaunchedEffect(Unit) {
+            viewModel.clearLocationRequestResult()
+            onOpenMap(userId)
+        }
         LocationRequestResult.FAILURE -> AlertDialog(
             onDismissRequest = viewModel::clearLocationRequestResult,
             title = { Text(stringResource(R.string.location_request_failure_title)) },

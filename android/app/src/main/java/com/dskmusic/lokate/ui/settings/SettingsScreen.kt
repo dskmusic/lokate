@@ -5,9 +5,11 @@ import android.widget.Toast
 import androidx.compose.foundation.background
 import androidx.compose.foundation.clickable
 import android.content.Intent
+import android.net.Uri
 import android.media.RingtoneManager
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.result.contract.ActivityResultContracts
+import androidx.compose.foundation.border
 import androidx.compose.foundation.horizontalScroll
 import androidx.compose.foundation.layout.Arrangement
 import androidx.compose.foundation.layout.Box
@@ -75,7 +77,11 @@ import kotlinx.coroutines.launch
 import com.dskmusic.lokate.di.ServiceLocator
 import com.dskmusic.lokate.location.LocationServiceController
 import com.dskmusic.lokate.ui.common.AvatarPicker
+import com.dskmusic.lokate.ui.nav.NavOptionsDialog
 import com.dskmusic.lokate.ui.theme.AccentPresets
+import com.dskmusic.lokate.ui.theme.MapAccuracyPresets
+import com.dskmusic.lokate.ui.theme.MapZoneMarginPresets
+import com.dskmusic.lokate.ui.theme.MapZonePresets
 import com.dskmusic.lokate.util.DeviceStatusUtils
 import com.dskmusic.lokate.util.formatTimestamp
 import com.dskmusic.lokate.util.LocationFrequency
@@ -83,6 +89,11 @@ import com.dskmusic.lokate.util.MapStyle
 import com.dskmusic.lokate.util.PermissionUtils
 import com.dskmusic.lokate.util.ThemeMode
 import com.dskmusic.lokate.util.VibrationPattern
+
+/** Los paneles de consumo de los dos proveedores de rutas e isocronas (ver backend routing.py).
+ * Aquí y no en el servidor porque no son de la app: son las cuentas de quien la administra. */
+private const val HEIGIT_DASHBOARD_URL = "https://account.heigit.org/manage/key"
+private const val STADIA_DASHBOARD_URL = "https://client.stadiamaps.com/dashboard/overview/"
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -102,8 +113,11 @@ fun SettingsScreen(
     val accentArgb by locator.settings.accentColor.collectAsStateWithLifecycle(initialValue = SettingsDataStore.DEFAULT_ACCENT)
     val frequency by locator.settings.locationFrequency.collectAsStateWithLifecycle(initialValue = LocationFrequency.EVERY_1_MIN)
     val knownWifi by locator.settings.knownWifiSsids.collectAsStateWithLifecycle(initialValue = emptySet())
+    val wifiAnchor by locator.settings.wifiAnchor.collectAsStateWithLifecycle(initialValue = true)
     val currentSsid by remember { DeviceStatusUtils.wifiSsidFlow(context) }
         .collectAsStateWithLifecycle(initialValue = null)
+    val placeSearchPelias by locator.settings.placeSearchPelias
+        .collectAsStateWithLifecycle(initialValue = true)
     val notifyZone by locator.settings.notifyZoneEnabled.collectAsStateWithLifecycle(initialValue = true)
     val notifySystem by locator.settings.notifySystemEnabled.collectAsStateWithLifecycle(initialValue = true)
     val notifySilent by locator.settings.notifySilentEnabled.collectAsStateWithLifecycle(initialValue = true)
@@ -112,10 +126,21 @@ fun SettingsScreen(
     val ringSoundUri by locator.settings.ringSoundUri.collectAsStateWithLifecycle(initialValue = null)
     val vibrationPattern by locator.settings.vibrationPattern.collectAsStateWithLifecycle(initialValue = VibrationPattern.SOFT)
     val mapZoom by locator.settings.mapInitialZoom.collectAsStateWithLifecycle(initialValue = Constants.MAP_DEFAULT_ZOOM)
+    val mapDefaultUserId by locator.settings.mapDefaultUserId.collectAsStateWithLifecycle(initialValue = "")
     val mapStyle by locator.settings.mapStyle.collectAsStateWithLifecycle(initialValue = MapStyle.STANDARD)
-    val mapShowAccuracy by locator.settings.mapShowAccuracy.collectAsStateWithLifecycle(initialValue = false)
+    val mapShowAccuracy by locator.settings.mapShowAccuracy.collectAsStateWithLifecycle(initialValue = true)
     val mapAccuracyIntensity by locator.settings.mapAccuracyIntensity
         .collectAsStateWithLifecycle(initialValue = Constants.MAP_ACCURACY_INTENSITY_DEFAULT)
+    val mapAccuracyNames by locator.settings.mapAccuracyNames.collectAsStateWithLifecycle(initialValue = true)
+    val mapZoneColor by locator.settings.mapZoneColor
+        .collectAsStateWithLifecycle(initialValue = Constants.MAP_ZONE_COLOR_DEFAULT)
+    val mapAccuracyColor by locator.settings.mapAccuracyColor
+        .collectAsStateWithLifecycle(initialValue = Constants.MAP_ACCURACY_COLOR_DEFAULT)
+    val mapZoneMarginColor by locator.settings.mapZoneMarginColor
+        .collectAsStateWithLifecycle(initialValue = Constants.MAP_ZONE_MARGIN_COLOR_DEFAULT)
+    val mapZoneFillIntensity by locator.settings.mapZoneFillIntensity
+        .collectAsStateWithLifecycle(initialValue = Constants.MAP_ZONE_FILL_INTENSITY_DEFAULT)
+    val mapShowZoneMargin by locator.settings.mapShowZoneMargin.collectAsStateWithLifecycle(initialValue = true)
     val appLanguage by locator.settings.appLanguage.collectAsStateWithLifecycle(initialValue = "auto")
     val mapCacheClearedBytes by viewModel.mapCacheClearedBytes.collectAsStateWithLifecycle()
     val updateFlagEnabled by viewModel.updateFlagEnabled.collectAsStateWithLifecycle()
@@ -138,15 +163,19 @@ fun SettingsScreen(
         viewModel.clearBackupMessage()
     }
 
-    var showColorPicker by remember { mutableStateOf(false) }
+    // Selector personalizado, uno solo para los tres colores (acento, zonas y margen de
+    // error): lo único que cambia entre ellos es de dónde sale el color y a dónde va.
+    var customColorPicker by remember { mutableStateOf<Pair<Int, (Int) -> Unit>?>(null) }
     var showClearDataConfirm by remember { mutableStateOf(false) }
     var showLogoutConfirm by remember { mutableStateOf(false) }
     var showResetZoomConfirm by remember { mutableStateOf(false) }
+    var showMapDefaultPicker by remember { mutableStateOf(false) }
     var showDisableUpdatesConfirm by remember { mutableStateOf(false) }
     var showTestNotificationPicker by remember { mutableStateOf(false) }
     var showUpdateNotice by remember { mutableStateOf(false) }
     var showTestNotificationAllConfirm by remember { mutableStateOf(false) }
     var showEditNameDialog by remember { mutableStateOf(false) }
+    var showNavOptions by remember { mutableStateOf(false) }
     val scope = rememberCoroutineScope()
     var updating by remember { mutableStateOf(false) }
     var updateMessage by remember { mutableStateOf<String?>(null) }
@@ -161,9 +190,12 @@ fun SettingsScreen(
         currentAvatarUrl = me?.avatar_url?.let { absoluteAvatarUrl(it) }
         currentDisplayName = me?.display_name.orEmpty()
         isAdmin = me?.is_admin == true
+        // Los miembros del grupo los necesita todo el mundo, no solo los administradores: con
+        // ellos se elige con quién se abre el mapa. /groups/me/members es de cualquier miembro
+        // (y ya esconde a quien no deba verse), así que esto no ensancha nada por detrás.
+        viewModel.loadGroupMembers()
         if (isAdmin) {
             viewModel.loadUpdateFlag()
-            viewModel.loadGroupMembers()
         }
     }
 
@@ -246,36 +278,12 @@ fun SettingsScreen(
 
             item { SectionTitle(stringResource(R.string.settings_accent_color)) }
             item {
-                Row(
-                    modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
-                    horizontalArrangement = Arrangement.spacedBy(8.dp),
-                ) {
-                    AccentPresets.forEach { preset ->
-                        Box(
-                            modifier = Modifier
-                                .size(32.dp)
-                                .clip(CircleShape)
-                                .background(preset)
-                                .clickable { viewModel.setAccentColor(preset.toArgbCompat()) },
-                        )
-                    }
-                    // Sustituye al antiguo swatch "+" — mismo tamaño que el resto, y el degradado
-                    // deja claro de un vistazo que abre el selector de color personalizado.
-                    Box(
-                        modifier = Modifier
-                            .size(32.dp)
-                            .clip(CircleShape)
-                            .background(
-                                Brush.sweepGradient(
-                                    listOf(
-                                        Color(0xFFFF0000), Color(0xFFFFFF00), Color(0xFF00FF00),
-                                        Color(0xFF00FFFF), Color(0xFF0000FF), Color(0xFFFF00FF), Color(0xFFFF0000),
-                                    ),
-                                ),
-                            )
-                            .clickable { showColorPicker = true },
-                    )
-                }
+                ColorSwatchRow(
+                    presets = AccentPresets,
+                    selected = accentArgb,
+                    onPick = { viewModel.setAccentColor(it) },
+                    onCustom = { customColorPicker = accentArgb to { argb: Int -> viewModel.setAccentColor(argb) } },
+                )
             }
             item { Spacer(Modifier.height(20.dp)) }
 
@@ -365,6 +373,21 @@ fun SettingsScreen(
                 }
             }
 
+            // El servidor se lo cree mientras el móvil mande esa wifi en sus pings: no hace
+            // falta volver a registrar el dispositivo al cambiarlo.
+            item {
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.settings_wifi_anchor)) },
+                    supportingContent = { Text(stringResource(R.string.settings_wifi_anchor_desc)) },
+                    trailingContent = {
+                        Switch(
+                            checked = wifiAnchor,
+                            onCheckedChange = { scope.launch { locator.settings.setWifiAnchor(it) } },
+                        )
+                    },
+                )
+            }
+
             item { HorizontalDivider() }
             item { SectionTitle(stringResource(R.string.settings_map_zoom)) }
             item {
@@ -385,6 +408,43 @@ fun SettingsScreen(
                         Text(stringResource(R.string.settings_map_zoom_reset))
                     }
                 }
+            }
+            // Lo que se ve al abrir la app. Es la primera vista y nada más: a partir de ahí el
+            // mapa se mueve con la mano, y esto no sigue a nadie en vivo ni le pide la posición
+            // a su móvil — se usa la última que haya mandado.
+            item {
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.settings_map_default_subject)) },
+                    supportingContent = {
+                        val nombre = groupMembers.firstOrNull { it.id == mapDefaultUserId }?.display_name
+                        Text(nombre ?: stringResource(R.string.settings_map_default_subject_self))
+                    },
+                    modifier = Modifier.clickable { showMapDefaultPicker = true },
+                )
+            }
+            // Quién contesta en el buscador del mapa. Está aquí por si Pelias contesta mal o
+            // se queda sin cuota: con esto apagado se vuelve al buscador de siempre sin esperar
+            // a nada.
+            item {
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.settings_place_search)) },
+                    supportingContent = {
+                        Text(
+                            stringResource(
+                                if (placeSearchPelias) R.string.settings_place_search_pelias
+                                else R.string.settings_place_search_nominatim,
+                            ),
+                        )
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = placeSearchPelias,
+                            onCheckedChange = {
+                                scope.launch { locator.settings.setPlaceSearchPelias(it) }
+                            },
+                        )
+                    },
+                )
             }
             item {
                 ListItem(
@@ -410,6 +470,112 @@ fun SettingsScreen(
                         valueRange = 10f..100f,
                         steps = 8,
                         enabled = mapShowAccuracy,
+                    )
+                }
+            }
+            item {
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.settings_map_accuracy_names)) },
+                    supportingContent = { Text(stringResource(R.string.settings_map_accuracy_names_desc)) },
+                    trailingContent = {
+                        Switch(
+                            checked = mapAccuracyNames,
+                            onCheckedChange = { scope.launch { locator.settings.setMapAccuracyNames(it) } },
+                            enabled = mapShowAccuracy,
+                        )
+                    },
+                )
+            }
+            item {
+                Column(Modifier.fillMaxWidth()) {
+                    Text(
+                        stringResource(R.string.settings_map_accuracy_color),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                    ColorSwatchRow(
+                        presets = MapAccuracyPresets,
+                        selected = mapAccuracyColor,
+                        onPick = { scope.launch { locator.settings.setMapAccuracyColor(it) } },
+                        onCustom = {
+                            customColorPicker = mapAccuracyColor to { argb: Int ->
+                                scope.launch { locator.settings.setMapAccuracyColor(argb) }
+                            }
+                        },
+                    )
+                }
+            }
+            item {
+                Column(Modifier.fillMaxWidth().padding(horizontal = 16.dp)) {
+                    Text(
+                        stringResource(R.string.settings_map_zone_fill, mapZoneFillIntensity),
+                        style = MaterialTheme.typography.bodyMedium,
+                    )
+                    Text(
+                        stringResource(R.string.settings_map_zone_fill_hint),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    )
+                    Slider(
+                        value = mapZoneFillIntensity.toFloat(),
+                        onValueChange = { scope.launch { locator.settings.setMapZoneFillIntensity(it.toInt()) } },
+                        valueRange = 0f..100f,
+                        steps = 9,
+                    )
+                }
+            }
+            item {
+                Column(Modifier.fillMaxWidth()) {
+                    Text(
+                        stringResource(R.string.settings_map_zone_color),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                    ColorSwatchRow(
+                        presets = MapZonePresets,
+                        selected = mapZoneColor,
+                        onPick = { scope.launch { locator.settings.setMapZoneColor(it) } },
+                        onCustom = {
+                            customColorPicker = mapZoneColor to { argb: Int ->
+                                scope.launch { locator.settings.setMapZoneColor(argb) }
+                            }
+                        },
+                    )
+                }
+            }
+            item {
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.settings_map_zone_margin)) },
+                    supportingContent = {
+                        Text(stringResource(
+                            R.string.settings_map_zone_margin_desc,
+                            Constants.ZONE_EXIT_MARGIN_METERS.toInt(),
+                        ))
+                    },
+                    trailingContent = {
+                        Switch(
+                            checked = mapShowZoneMargin,
+                            onCheckedChange = { scope.launch { locator.settings.setMapShowZoneMargin(it) } },
+                        )
+                    },
+                )
+            }
+            item {
+                Column(Modifier.fillMaxWidth()) {
+                    Text(
+                        stringResource(R.string.settings_map_zone_margin_color),
+                        style = MaterialTheme.typography.bodyMedium,
+                        modifier = Modifier.padding(horizontal = 16.dp),
+                    )
+                    ColorSwatchRow(
+                        presets = MapZoneMarginPresets,
+                        selected = mapZoneMarginColor,
+                        onPick = { scope.launch { locator.settings.setMapZoneMarginColor(it) } },
+                        onCustom = {
+                            customColorPicker = mapZoneMarginColor to { argb: Int ->
+                                scope.launch { locator.settings.setMapZoneMarginColor(argb) }
+                            }
+                        },
                     )
                 }
             }
@@ -468,6 +634,17 @@ fun SettingsScreen(
                     headlineContent = { Text(stringResource(R.string.offline_maps_manage)) },
                     supportingContent = { Text(stringResource(R.string.offline_maps_manage_desc)) },
                     modifier = Modifier.clickable { onOpenOfflineMaps() },
+                )
+            }
+            item { Spacer(Modifier.height(20.dp)) }
+
+            item { HorizontalDivider() }
+            item { SectionTitle(stringResource(R.string.nav_options_title)) }
+            item {
+                ListItem(
+                    headlineContent = { Text(stringResource(R.string.settings_nav_options)) },
+                    supportingContent = { Text(stringResource(R.string.settings_nav_options_desc)) },
+                    modifier = Modifier.clickable { showNavOptions = true },
                 )
             }
             item { Spacer(Modifier.height(20.dp)) }
@@ -744,6 +921,30 @@ fun SettingsScreen(
                         ) {
                             Text(stringResource(R.string.settings_update_notice))
                         }
+                        // Los paneles de las dos cuentas de mapas, para ver cuánta cuota queda.
+                        // En el navegador y no dentro de la app: hay que iniciar sesión en cada
+                        // una, y la sesión del navegador ya la tiene quien las administra.
+                        Row(
+                            modifier = Modifier.fillMaxWidth().padding(top = 8.dp),
+                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                        ) {
+                            OutlinedButton(
+                                onClick = {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(HEIGIT_DASHBOARD_URL)))
+                                },
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Text(stringResource(R.string.settings_usage_heigit))
+                            }
+                            OutlinedButton(
+                                onClick = {
+                                    context.startActivity(Intent(Intent.ACTION_VIEW, Uri.parse(STADIA_DASHBOARD_URL)))
+                                },
+                                modifier = Modifier.weight(1f),
+                            ) {
+                                Text(stringResource(R.string.settings_usage_stadia))
+                            }
+                        }
                     }
                 }
             }
@@ -760,14 +961,14 @@ fun SettingsScreen(
         }
     }
 
-    if (showColorPicker) {
+    customColorPicker?.let { (initial, onPicked) ->
         AlertDialog(
-            onDismissRequest = { showColorPicker = false },
-            confirmButton = { TextButton(onClick = { showColorPicker = false }) { Text(stringResource(R.string.onboarding_continue)) } },
+            onDismissRequest = { customColorPicker = null },
+            confirmButton = { TextButton(onClick = { customColorPicker = null }) { Text(stringResource(R.string.onboarding_continue)) } },
             text = {
                 ColorPickerHSV(
-                    initialColor = Color(accentArgb),
-                    onColorChanged = { viewModel.setAccentColor(it.toArgbCompat()) },
+                    initialColor = Color(initial),
+                    onColorChanged = { onPicked(it.toArgbCompat()) },
                 )
             },
         )
@@ -891,6 +1092,46 @@ fun SettingsScreen(
         UpdateNoticeDialog(viewModel, onDismiss = { showUpdateNotice = false })
     }
 
+    if (showMapDefaultPicker) {
+        AlertDialog(
+            onDismissRequest = { showMapDefaultPicker = false },
+            title = { Text(stringResource(R.string.settings_map_default_subject)) },
+            text = {
+                Column(Modifier.verticalScroll(rememberScrollState())) {
+                    Text(
+                        stringResource(R.string.settings_map_default_subject_self),
+                        color = MaterialTheme.colorScheme.primary,
+                        modifier = Modifier
+                            .fillMaxWidth()
+                            .clickable {
+                                showMapDefaultPicker = false
+                                scope.launch { locator.settings.setMapDefaultUserId("") }
+                            }
+                            .padding(vertical = 12.dp),
+                    )
+                    HorizontalDivider()
+                    // Uno mismo no sale en la lista: para eso está la opción de arriba.
+                    groupMembers.filter { it.id != locator.session.userId }.forEach { member ->
+                        Text(
+                            member.display_name,
+                            modifier = Modifier
+                                .fillMaxWidth()
+                                .clickable {
+                                    showMapDefaultPicker = false
+                                    scope.launch { locator.settings.setMapDefaultUserId(member.id) }
+                                }
+                                .padding(vertical = 12.dp),
+                        )
+                    }
+                }
+            },
+            confirmButton = {},
+            dismissButton = {
+                TextButton(onClick = { showMapDefaultPicker = false }) { Text(stringResource(R.string.cancel)) }
+            },
+        )
+    }
+
     if (showTestNotificationPicker) {
         AlertDialog(
             onDismissRequest = { showTestNotificationPicker = false },
@@ -930,6 +1171,11 @@ fun SettingsScreen(
         )
     }
 
+    // ponytail: el mismo cuadro que sale durante la ruta; aqui solo se abre sin ruta.
+    if (showNavOptions) {
+        NavOptionsDialog(locator.settings) { showNavOptions = false }
+    }
+
     if (showTestNotificationAllConfirm) {
         AlertDialog(
             onDismissRequest = { showTestNotificationAllConfirm = false },
@@ -965,6 +1211,59 @@ private fun themeModeLabel(mode: ThemeMode): String = when (mode) {
     ThemeMode.DARK -> stringResource(R.string.settings_theme_dark)
     ThemeMode.AMOLED -> stringResource(R.string.settings_theme_amoled)
     ThemeMode.SYSTEM -> stringResource(R.string.settings_theme_system)
+}
+
+/**
+ * Fila de colores de ejemplo con el elegido marcado, y al final el disco de degradado que abre el
+ * selector personalizado (sustituye al antiguo botón "+": mismo tamaño que el resto y se ve de un
+ * vistazo lo que hace). La usan el acento de la app y los dos colores del mapa; el primero de cada
+ * paleta es el color de siempre, así que quien no toque nada sigue viendo lo mismo.
+ */
+@Composable
+private fun ColorSwatchRow(
+    presets: List<Color>,
+    selected: Int,
+    onPick: (Int) -> Unit,
+    onCustom: () -> Unit,
+) {
+    Row(
+        modifier = Modifier.fillMaxWidth().horizontalScroll(rememberScrollState()).padding(horizontal = 16.dp),
+        horizontalArrangement = Arrangement.spacedBy(8.dp),
+    ) {
+        presets.forEach { preset ->
+            val argb = preset.toArgbCompat()
+            Box(
+                modifier = Modifier
+                    .size(32.dp)
+                    .clip(CircleShape)
+                    .background(preset)
+                    // Sin el borde no se sabe cuál de los siete está puesto; si el color es uno
+                    // personalizado, no se marca ninguno y también se entiende.
+                    .then(
+                        if (argb == selected) {
+                            Modifier.border(3.dp, MaterialTheme.colorScheme.onSurface, CircleShape)
+                        } else {
+                            Modifier
+                        },
+                    )
+                    .clickable { onPick(argb) },
+            )
+        }
+        Box(
+            modifier = Modifier
+                .size(32.dp)
+                .clip(CircleShape)
+                .background(
+                    Brush.sweepGradient(
+                        listOf(
+                            Color(0xFFFF0000), Color(0xFFFFFF00), Color(0xFF00FF00),
+                            Color(0xFF00FFFF), Color(0xFF0000FF), Color(0xFFFF00FF), Color(0xFFFF0000),
+                        ),
+                    ),
+                )
+                .clickable { onCustom() },
+        )
+    }
 }
 
 private fun Color.toArgbCompat(): Int = this.toArgb()

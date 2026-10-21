@@ -16,8 +16,11 @@ import com.dskmusic.lokate.data.repository.LocationRepository
 import com.dskmusic.lokate.data.repository.MessageRepository
 import com.dskmusic.lokate.data.repository.ZoneRepository
 import com.dskmusic.lokate.ui.map.MapCameraMemory
+import kotlinx.coroutines.CoroutineScope
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.SupervisorJob
 import kotlinx.coroutines.flow.first
-import kotlinx.coroutines.runBlocking
+import kotlinx.coroutines.launch
 
 /**
  * DI manual (sin Hilt): la app tiene pocas dependencias y todas son singletons,
@@ -29,9 +32,13 @@ class ServiceLocator(context: Context) {
     val settings: SettingsDataStore by lazy { SettingsDataStore(context) }
 
     init {
-        // Igual que el arranque de MainActivity: lectura bloqueante única de DataStore para tener
-        // la URL del servidor lista antes de la primera petición de red.
-        ServerConfig.update(runBlocking { settings.serverBaseUrlOverride.first() })
+        // La primera lectura de DataStore toca disco: se hace en un hilo de fondo y no en el que
+        // llama a getInstance (normalmente el principal), para no bloquear el arranque. El
+        // interceptor re-lee ServerConfig.baseUrl en cada petición, así que llegar un instante
+        // después no cambia nada: la URL por defecto ya está puesta desde su declaración.
+        CoroutineScope(SupervisorJob() + Dispatchers.IO).launch {
+            runCatching { ServerConfig.update(settings.serverBaseUrlOverride.first()) }
+        }
     }
 
     private val database by lazy { AppDatabase.getInstance(context) }

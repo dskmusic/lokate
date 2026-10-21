@@ -6,8 +6,12 @@ import android.net.Uri
 
 object LocationSharing {
 
+    /** El enlace que entiende cualquier mapa y cualquier app de mensajes. Tambien se ensena tal
+     * cual en el cuadro de "que hay aqui" del mapa, de ahi que sea publico. */
+    fun mapsUrl(lat: Double, lng: Double): String = "https://maps.google.com/?q=$lat,$lng"
+
     fun shareIntent(lat: Double, lng: Double, label: String? = null): Intent {
-        val mapsUrl = "https://maps.google.com/?q=$lat,$lng"
+        val mapsUrl = mapsUrl(lat, lng)
         val text = if (label != null) "$label: $mapsUrl" else mapsUrl
         return Intent(Intent.ACTION_SEND).apply {
             type = "text/plain"

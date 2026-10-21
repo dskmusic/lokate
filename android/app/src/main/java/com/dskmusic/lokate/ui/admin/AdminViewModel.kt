@@ -39,10 +39,22 @@ data class AdminUiState(
     val logOnlyMissed: Boolean = false,
     /** Ids marcados para borrar. Vacío = no hay modo selección. */
     val selectedEvents: Set<String> = emptySet(),
+    /** Diagnóstico de zonas: lo elegido y el informe que ha devuelto el servidor. Vive aquí (y
+     * no en la pantalla) para no perderlo al girar el móvil ni al volver del registro. */
+    val replayUserId: String? = null,
+    val replayZoneId: String? = null,
+    val replayHours: Int = 24,
+    val replayAll: Boolean = false,
+    val replayLines: List<String> = emptyList(),
+    val loadingReplay: Boolean = false,
     val loadingFiles: Boolean = false,
     val files: List<AdminFileDto> = emptyList(),
     val loadingBackups: Boolean = false,
     val backups: List<AdminBackupDto> = emptyList(),
+    /** Usuarios a los que les hemos mandado hacer sonar el dispositivo y no les hemos mandado
+     * parar todavía. Es lo que hemos pedido, no lo que hace el móvil: si lo callan desde su propia
+     * notificación, el botón se queda rojo hasta que el administrador lo pulse otra vez. */
+    val ringingUserIds: Set<String> = emptySet(),
     val error: String? = null,
     val actionInProgress: Boolean = false,
 )
@@ -117,10 +129,16 @@ class AdminViewModel(private val repository: AdminRepository) : ViewModel() {
             .onFailure { _uiState.value = _uiState.value.copy(actionInProgress = false); fail(it) }
     }
 
-    fun updateUser(id: String, displayName: String? = null, isAdmin: Boolean? = null, onDone: () -> Unit = {}) =
+    fun updateUser(
+        id: String,
+        displayName: String? = null,
+        isAdmin: Boolean? = null,
+        groupId: String? = null,
+        onDone: () -> Unit = {},
+    ) =
         viewModelScope.launch {
             _uiState.value = _uiState.value.copy(actionInProgress = true)
-            runCatching { repository.updateUser(id, displayName, isAdmin) }
+            runCatching { repository.updateUser(id, displayName, isAdmin, groupId) }
                 .onSuccess {
                     _uiState.value = _uiState.value.copy(
                         actionInProgress = false,
@@ -256,6 +274,36 @@ class AdminViewModel(private val repository: AdminRepository) : ViewModel() {
         loadZoneEvents()
     }
 
+    /** Pide el repaso de la persona y la zona elegidas. Sin las dos no hay nada que pedir: el
+     * servidor necesita las dos para calcular distancias. */
+    fun runZoneReplay() = viewModelScope.launch {
+        val state = _uiState.value
+        val userId = state.replayUserId ?: return@launch
+        val zoneId = state.replayZoneId ?: return@launch
+        _uiState.value = state.copy(loadingReplay = true)
+        runCatching { repository.zoneReplay(userId, zoneId, state.replayHours, state.replayAll) }
+            .onSuccess { _uiState.value = _uiState.value.copy(replayLines = it, loadingReplay = false) }
+            .onFailure {
+                _uiState.value = _uiState.value.copy(replayLines = emptyList(), loadingReplay = false)
+                fail(it)
+            }
+    }
+
+    /** Cambia un filtro del diagnóstico y vuelve a pedir el informe. El informe viejo se tira
+     * en el momento: dejarlo puesto mientras llega el nuevo es leer datos de otra persona. */
+    fun setReplayFilters(
+        userId: String? = _uiState.value.replayUserId,
+        zoneId: String? = _uiState.value.replayZoneId,
+        hours: Int = _uiState.value.replayHours,
+        all: Boolean = _uiState.value.replayAll,
+    ) {
+        _uiState.value = _uiState.value.copy(
+            replayUserId = userId, replayZoneId = zoneId, replayHours = hours, replayAll = all,
+            replayLines = emptyList(),
+        )
+        runZoneReplay()
+    }
+
     fun loadFiles(folder: String) = viewModelScope.launch {
         _uiState.value = _uiState.value.copy(loadingFiles = true, files = emptyList())
         runCatching { repository.listFiles(folder) }
@@ -335,8 +383,18 @@ class AdminViewModel(private val repository: AdminRepository) : ViewModel() {
         runCatching { repository.notifyTest(id) }.onFailure { fail(it) }
     }
 
-    fun locateUser(id: String) = viewModelScope.launch {
-        runCatching { repository.locateUser(id) }.onFailure { fail(it) }
+    /** Hace sonar el dispositivo de ese usuario, o lo calla si ya le habíamos dado. El estado se
+     * mueve solo si el aviso salió: si falla, el botón se queda como estaba y sale el error. */
+    fun toggleRing(id: String) = viewModelScope.launch {
+        val ringing = id in _uiState.value.ringingUserIds
+        runCatching { if (ringing) repository.stopRing(id) else repository.locateUser(id) }
+            .onSuccess {
+                val ids = _uiState.value.ringingUserIds
+                _uiState.value = _uiState.value.copy(
+                    ringingUserIds = if (ringing) ids - id else ids + id,
+                )
+            }
+            .onFailure { fail(it) }
     }
 
     fun uploadAvatar(userId: String, uri: Uri, context: Context) = viewModelScope.launch {

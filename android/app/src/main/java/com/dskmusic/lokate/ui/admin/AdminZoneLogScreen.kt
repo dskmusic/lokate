@@ -199,9 +199,12 @@ private fun Filters(state: AdminUiState, viewModel: AdminViewModel) {
 }
 
 /** Un chip que abre su propia lista. ponytail: no es un ExposedDropdownMenuBox porque aquí no hay
- * nada que escribir, solo elegir, y el chip ya enseña si el filtro está puesto. */
+ * nada que escribir, solo elegir, y el chip ya enseña si el filtro está puesto.
+ *
+ * internal: lo reusa el diagnóstico de zonas (AdminZoneReplayScreen), que elige de las mismas
+ * dos listas. */
 @Composable
-private fun FilterDropdown(
+internal fun FilterDropdown(
     selected: String,
     active: Boolean,
     options: List<Pair<String?, String>>,
@@ -312,7 +315,13 @@ private fun EventRow(row: LogRow, selecting: Boolean, checked: Boolean, onToggle
     )
     // Si hubo destinatarios no hay nada que explicar; el motivo solo interesa cuando no se avisó.
     val outcome = if (event.notified > 0) {
-        stringResource(R.string.admin_zone_log_notified, event.notified)
+        // Los nombres antes que el número: "¿por qué no me llegó a mí?" se contesta leyendo la
+        // fila, y no cruzando el registro de dos personas como hubo que hacer el 06/10/2026.
+        if (event.notified_names.isNotEmpty()) {
+            stringResource(R.string.admin_zone_log_notified_names, event.notified_names.joinToString(", "))
+        } else {
+            stringResource(R.string.admin_zone_log_notified, event.notified)
+        }
     } else {
         stringResource(
             when (event.reason) {
@@ -353,6 +362,15 @@ private fun EventRow(row: LogRow, selecting: Boolean, checked: Boolean, onToggle
         supportingContent = {
             Column {
                 Text(row.time + " · " + outcome)
+                // Tenía el aviso puesto y no se le pudo mandar porque ya no está en el grupo.
+                // Es exactamente lo que pasó sin que nada lo dijera y por lo que existe la línea.
+                if (event.missed_names.isNotEmpty()) {
+                    Text(
+                        stringResource(R.string.admin_zone_log_missed, event.missed_names.joinToString(", ")),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                    )
+                }
                 // La distancia al centro y la precisión de ese momento: con las dos se ve si la
                 // decisión fue holgada o de milímetros, que es lo primero que se mira cuando algo
                 // no cuadra.

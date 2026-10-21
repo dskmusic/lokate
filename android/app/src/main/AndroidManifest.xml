@@ -36,6 +36,14 @@
     <!-- Guardar adjuntos de mensajes de emergencia en API < 29 (en 29+ no hace falta, MediaStore ya vale) -->
     <uses-permission android:name="android.permission.WRITE_EXTERNAL_STORAGE" android:maxSdkVersion="28" />
 
+    <!-- Sin esto, desde Android 11 getEngines() solo ve el motor de voz que ya está puesto
+         por defecto: los demás quedan ocultos por la visibilidad de paquetes. -->
+    <queries>
+        <intent>
+            <action android:name="android.intent.action.TTS_SERVICE" />
+        </intent>
+    </queries>
+
     <application
         android:name=".LokateApplication"
         android:allowBackup="true"
@@ -47,15 +55,32 @@
         android:supportsRtl="true"
         android:theme="@style/Theme.Lokate">
 
+        <!-- Sin screenOrientation: el móvil se puede tumbar. Y los cambios de tamaño se
+             atienden en la propia Activity en vez de recrearla, que girar el móvil no tire el
+             mapa (teselas, zoom y centro) ni la ruta que se esté navegando. -->
         <activity
             android:name=".MainActivity"
             android:exported="true"
             android:launchMode="singleTop"
-            android:screenOrientation="portrait"
+            android:configChanges="orientation|screenSize|screenLayout|smallestScreenSize"
             android:theme="@style/Theme.Lokate">
             <intent-filter>
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
+            </intent-filter>
+            <!-- "Compartir" de otra app (Maps manda nombre + enlace corto) y enlaces
+                 geo:. No se piden los http(s) de Google Maps a propósito: saldría Lokate
+                 en el menú de "abrir con" de cualquier enlace de mapas. -->
+            <intent-filter>
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
+            </intent-filter>
+            <intent-filter>
+                <action android:name="android.intent.action.VIEW" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <category android:name="android.intent.category.BROWSABLE" />
+                <data android:scheme="geo" />
             </intent-filter>
             <!-- Accesos directos al dejar pulsado el icono de la app -->
             <meta-data
@@ -74,6 +99,18 @@
             android:name=".location.LocationForegroundService"
             android:exported="false"
             android:foregroundServiceType="location" />
+
+        <!-- La navegacion por voz. Servicio aparte del de ubicacion a proposito: ese manda
+             posiciones a la familia con su logica de ahorro, y este necesita GPS a 1 Hz y voz
+             mientras dura el viaje. Los dos conviven. -->
+        <service
+            android:name=".nav.NavigationService"
+            android:exported="false"
+            android:foregroundServiceType="location" />
+
+        <!-- El "Salir" del aviso de navegacion. Sin filtro: el PendingIntent apunta a esta
+             clase directamente. -->
+        <receiver android:name=".nav.NavStopReceiver" android:exported="false" />
 
         <service
             android:name=".push.LokateFirebaseMessagingService"

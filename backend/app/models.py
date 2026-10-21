@@ -1,7 +1,7 @@
 import uuid
 from datetime import datetime, timezone
 
-from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, String
+from sqlalchemy import Boolean, Column, DateTime, Float, ForeignKey, Index, Integer, String, event
 from sqlalchemy.orm import relationship
 
 from .database import Base
@@ -67,6 +67,10 @@ class User(Base):
     # vibración —un canal es inmutable—, por eso lo manda el móvil en cada /auth/device.
     # NULL o vacío = no quiere avisos de zona, o su app es anterior: se le manda "solo data".
     zone_channel_id = Column(String, nullable=True)
+    # ¿Quiere que su wifi cuente como posición? (ver geofence._wifi_anchor y zones.wifi_ssids).
+    # NULL = activado: es lo que vale para los móviles con una app anterior a esto, que no lo
+    # mandan y son justo los que más falta les hace. Solo False lo apaga.
+    wifi_anchor = Column(Boolean, nullable=True)
     is_admin = Column(Boolean, nullable=False, default=False)
     # Grupos (ids separados por comas) en los que este usuario NO quiere que le vean: no sale en
     # la lista de miembros ni en el mapa de los demás, y sus entradas y salidas de zona no avisan.
@@ -121,7 +125,15 @@ class LocationPing(Base):
     lat = Column(Float, nullable=False)
     lng = Column(Float, nullable=False)
     accuracy = Column(Float, nullable=True)
-    timestamp = Column(DateTime, default=utcnow, index=True)
+    # Sin index=True propio, por lo mismo que user_id: la unica consulta que lo usaba era el
+    # DELETE de la escoba (_purge_old_pings), que pasa una vez cada 6 horas y puede permitirse
+    # leer la tabla entera. Los INSERT, que son todo el trafico, ya no lo pagan.
+    timestamp = Column(DateTime, default=utcnow)
+    # A qué wifi estaba conectado al mandarlo, para poder contestar después "¿el ancla estaba
+    # puesta?" (ver app/zone_replay.py). Sin esto, el repaso de un falso positivo no puede
+    # distinguir un fix que el ancla paró de uno que nunca la tuvo. NULL = sin wifi, o un punto
+    # de la cola (que viaja sin SSID: el que trae el lote es el de ahora, no el de entonces).
+    wifi_ssid = Column(String, nullable=True)
 
     # "La última posición de X" (el mapa, cada 15 s y por cada miembro) y "el historial de X
     # entre dos fechas" son LAS dos consultas de esta tabla, y las dos son user_id + timestamp.
@@ -141,12 +153,34 @@ class Zone(Base):
     # Privada = solo existe para quien la creo: no la ven ni la pueden tocar los demas, y sus
     # avisos solo le llegan a el. Por defecto publica, que es como funcionaban todas hasta ahora.
     is_public = Column(Boolean, nullable=False, default=True)
+    # Wifis de este sitio, separadas por comas. Estar conectado a una es la única prueba de estar
+    # aquí que no sale del GPS, y la única que un fix de wifi con el centro equivocado no puede
+    # discutir (ver geofence._wifi_anchor). Varias a propósito: una casa tiene la banda de 2,4 y
+    # la de 5 con nombres distintos, más los repetidores. Vacío = esta zona va solo por posición,
+    # que es como funcionaban todas hasta ahora.
+    # ponytail: CSV y no tabla aparte, igual que watched_ids — son cuatro nombres y se leen
+    # siempre enteros. El nombre (SSID) y no el BSSID: es lo que el móvil ya manda en cada ping.
+    wifi_ssids = Column(String, nullable=True)
     created_at = Column(DateTime, default=utcnow)
 
     group = relationship("Group", back_populates="zones")
 
     def __str__(self) -> str:  # legible en el panel admin
         return self.name
+
+    @property
+    def wifi_ssid_list(self) -> list[str]:
+        return [ssid.strip() for ssid in (self.wifi_ssids or "").split(",") if ssid.strip()]
+
+
+@event.listens_for(Zone.name, "set", retval=True)
+def _trim_zone_name(target, value, oldvalue, initiator):
+    """El espacio que los teclados de móvil añaden al autocompletar, fuera — aquí, que es por
+    donde pasan TODAS las escrituras del nombre, incluido el panel admin (que edita el modelo
+    directo, sin pasar por schemas.ZoneName). El nombre solo se muestra, así que un espacio no
+    rompe nada, pero sale en el texto de cada aviso ("ha salido de Host house ") y desordena las
+    listas. El vacío lo corta el esquema con un 422: aquí no se puede rechazar nada."""
+    return value.strip() if isinstance(value, str) else value
 
 
 class ZoneState(Base):
@@ -157,6 +191,16 @@ class ZoneState(Base):
     user_id = Column(String, ForeignKey("users.id"), primary_key=True)
     zone_id = Column(String, ForeignKey("zones.id"), primary_key=True)
     is_inside = Column(Boolean, nullable=False, default=False)
+    # Cambio a medio confirmar: lo que dijo un fix malo y todavía no ha repetido ningún otro ping
+    # (ver geofence.CONFIRM_ACCURACY_M). NULL = no hay nada pendiente.
+    pending_inside = Column(Boolean, nullable=True)
+    # Cuándo lo apuntó el fix que lo propuso. Lo que confirma un cambio tiene que ser un ping
+    # POSTERIOR, no la copia del mismo que llega por el otro camino (ver geofence.confirms).
+    pending_at = Column(DateTime, nullable=True)
+    # Última vez que un ping de esta persona llegó conectado a una wifi de esta zona. El ancla
+    # aguanta unos minutos después (ver geofence.WIFI_ANCHOR_GRACE_MIN): la wifi se cae y se
+    # reengancha sola, y en ese hueco es cuando el móvil escanea y saca el fix malo.
+    wifi_seen_at = Column(DateTime, nullable=True)
     updated_at = Column(DateTime, default=utcnow)
 
 
@@ -212,9 +256,27 @@ class ZoneEvent(Base):
     # si la decisión fue holgada o justita, sin tener que repasar los pings.
     distance_m = Column(Float, nullable=True)
     notified = Column(Integer, nullable=False, default=0)
+    # A QUIEN se aviso, ids separados por comas. El contador de arriba solo decia cuantos, y con
+    # eso "por que no me llego a mi?" seguia sin respuesta: el 06/10/2026 hubo que deducir quien
+    # faltaba cruzando el aviso de una persona con el de otra. NULL = fila anterior a esto.
+    # ponytail: CSV como watched_ids — es una lista corta que siempre se lee entera.
+    notified_ids = Column(String, nullable=True)
+    # Quien TENIA el aviso puesto para esta zona y esta direccion pero ya no esta en el grupo, asi
+    # que no se le pudo avisar. Es el fallo silencioso que motivo todo esto: un admin se cambia de
+    # grupo (ver routers/groups.switch_group) y sus propios avisos dejan de llegarle sin que nada
+    # lo diga. Vacio/NULL = no faltaba nadie.
+    missed_ids = Column(String, nullable=True)
     # Por qué no se avisó a nadie (o en qué contexto raro se decidió). NULL = aviso normal.
     # Los códigos los traduce la app: no_prefs, hidden, private_zone, test, resync.
     reason = Column(String, nullable=True)
+
+    @property
+    def notified_id_list(self) -> list[str]:
+        return [uid for uid in (self.notified_ids or "").split(",") if uid]
+
+    @property
+    def missed_id_list(self) -> list[str]:
+        return [uid for uid in (self.missed_ids or "").split(",") if uid]
 
     user = relationship("User")
     zone = relationship("Zone")

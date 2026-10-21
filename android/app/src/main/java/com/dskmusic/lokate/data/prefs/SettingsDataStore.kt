@@ -10,6 +10,7 @@ import androidx.datastore.preferences.core.longPreferencesKey
 import androidx.datastore.preferences.core.stringPreferencesKey
 import androidx.datastore.preferences.core.stringSetPreferencesKey
 import androidx.datastore.preferences.preferencesDataStore
+import com.dskmusic.lokate.nav.NavVerbosity
 import com.dskmusic.lokate.util.Constants
 import com.dskmusic.lokate.util.LocationFrequency
 import com.dskmusic.lokate.util.MapStyle
@@ -42,8 +43,16 @@ class SettingsDataStore(private val context: Context) {
         val LAST_HISTORY_USER_ID = stringPreferencesKey("last_history_user_id")
         val MAP_STYLE = stringPreferencesKey("map_style")
         val MAP_SHOW_ACCURACY = booleanPreferencesKey("map_show_accuracy")
+        val PLACE_SEARCH_PELIAS = booleanPreferencesKey("place_search_pelias")
         val MAP_ACCURACY_INTENSITY = intPreferencesKey("map_accuracy_intensity")
+        val MAP_ZONE_FILL_INTENSITY = intPreferencesKey("map_zone_fill_intensity")
+        val MAP_ACCURACY_NAMES = booleanPreferencesKey("map_accuracy_names")
+        val MAP_ZONE_COLOR = intPreferencesKey("map_zone_color_argb")
+        val MAP_ACCURACY_COLOR = intPreferencesKey("map_accuracy_color_argb")
+        val MAP_ZONE_MARGIN_COLOR = intPreferencesKey("map_zone_margin_color_argb")
+        val MAP_SHOW_ZONE_MARGIN = booleanPreferencesKey("map_show_zone_margin")
         val NOTIFY_SILENT = booleanPreferencesKey("notify_silent")
+        val WIFI_ANCHOR = booleanPreferencesKey("wifi_anchor")
         val SILENT_ALERT_USER_IDS = stringSetPreferencesKey("silent_alert_user_ids")
         val TEST_MODE_RECIPIENTS = stringPreferencesKey("test_mode_recipients")
         val MAP_CACHE_CLEARED_AT = longPreferencesKey("map_cache_cleared_at")
@@ -53,6 +62,15 @@ class SettingsDataStore(private val context: Context) {
         val LAST_PING_WARN_AT = longPreferencesKey("last_ping_warn_at")
         val LAST_DEVICE_REGISTER_AT = longPreferencesKey("last_device_register_at")
         val LAST_REGISTERED_TOKEN = stringPreferencesKey("last_registered_token")
+        val NAV_VOICE_ENABLED = booleanPreferencesKey("nav_voice_enabled")
+        val NAV_VOICE_NAME = stringPreferencesKey("nav_voice_name")
+        val NAV_VOICE_ENGINE = stringPreferencesKey("nav_voice_engine")
+        val NAV_SPEECH_RATE = floatPreferencesKey("nav_speech_rate")
+        val NAV_SPEECH_PITCH = floatPreferencesKey("nav_speech_pitch")
+        val NAV_VERBOSITY = stringPreferencesKey("nav_verbosity")
+        val NAV_SIM_SPEED = intPreferencesKey("nav_sim_speed")
+        val NAV_ROTATE_MAP = booleanPreferencesKey("nav_rotate_map")
+        val MAP_DEFAULT_USER_ID = stringPreferencesKey("map_default_user_id")
     }
 
     /** Ajustes que NO viajan en la copia, uno por uno y por un motivo:
@@ -73,7 +91,79 @@ class SettingsDataStore(private val context: Context) {
         Keys.LAST_PING_WARN_AT.name,
         Keys.LAST_DEVICE_REGISTER_AT.name,
         Keys.LAST_REGISTERED_TOKEN.name,
+        // La voz es de este móvil: los nombres de voz dependen del motor instalado, y restaurar
+        // "es-es-x-eed-local" en un móvil que no la tiene deja la navegación muda.
+        Keys.NAV_VOICE_NAME.name,
+        Keys.NAV_VOICE_ENGINE.name,
     )
+
+    /** Con quién se abre el mapa: su última posición conocida en el centro, en vez de la tuya.
+     * Vacío = como siempre, uno mismo. No es seguimiento en tiempo real, solo la primera vista:
+     * a partir de ahí el mapa se mueve con la mano. */
+    val mapDefaultUserId: Flow<String> = context.dataStore.data.map { it[Keys.MAP_DEFAULT_USER_ID].orEmpty() }
+    suspend fun setMapDefaultUserId(userId: String) {
+        context.dataStore.edit { prefs ->
+            if (userId.isBlank()) prefs.remove(Keys.MAP_DEFAULT_USER_ID) else prefs[Keys.MAP_DEFAULT_USER_ID] = userId
+        }
+    }
+
+    /** La voz de la navegación. [navVoiceEnabled] hace de interruptor y de silencio: el botón de
+     * la pantalla de navegación escribe aquí, así que el silencio dura lo que tú quieras y no
+     * hasta la próxima ruta. */
+    val navVoiceEnabled: Flow<Boolean> = context.dataStore.data.map { it[Keys.NAV_VOICE_ENABLED] ?: true }
+    suspend fun setNavVoiceEnabled(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.NAV_VOICE_ENABLED] = enabled }
+    }
+
+    /** Qué motor de texto a voz, por su paquete (com.google.android.tts y compañía). Vacío = el
+     * que el usuario tenga puesto en los ajustes de Android. Cambiarlo invalida la voz elegida:
+     * los nombres de voz son de cada motor, así que quien lo cambie borra también [navVoiceName]. */
+    val navVoiceEngine: Flow<String> = context.dataStore.data.map { it[Keys.NAV_VOICE_ENGINE].orEmpty() }
+    suspend fun setNavVoiceEngine(pkg: String) {
+        context.dataStore.edit { prefs ->
+            if (pkg.isBlank()) prefs.remove(Keys.NAV_VOICE_ENGINE) else prefs[Keys.NAV_VOICE_ENGINE] = pkg
+            prefs[Keys.NAV_VOICE_NAME] = ""
+        }
+    }
+
+    /** Qué voz del motor del sistema, por su nombre. Vacío = la que el motor traiga puesta. */
+    val navVoiceName: Flow<String> = context.dataStore.data.map { it[Keys.NAV_VOICE_NAME].orEmpty() }
+    suspend fun setNavVoiceName(name: String) {
+        context.dataStore.edit { it[Keys.NAV_VOICE_NAME] = name }
+    }
+
+    /** Velocidad y tono del habla. 1 = como venga el motor; se mueven entre 0,5 y 2 desde la
+     * pantalla, que fuera de ahí no se entiende lo que dice. */
+    val navSpeechRate: Flow<Float> = context.dataStore.data.map { it[Keys.NAV_SPEECH_RATE] ?: 1f }
+    val navSpeechPitch: Flow<Float> = context.dataStore.data.map { it[Keys.NAV_SPEECH_PITCH] ?: 1f }
+    suspend fun setNavSpeech(rate: Float, pitch: Float) {
+        context.dataStore.edit {
+            it[Keys.NAV_SPEECH_RATE] = rate
+            it[Keys.NAV_SPEECH_PITCH] = pitch
+        }
+    }
+
+    /** Cuántas indicaciones se quieren oír (ver [com.dskmusic.lokate.nav.NavVerbosity]). */
+    val navVerbosity: Flow<NavVerbosity> = context.dataStore.data.map { prefs ->
+        prefs[Keys.NAV_VERBOSITY]?.let { runCatching { NavVerbosity.valueOf(it) }.getOrNull() }
+            ?: NavVerbosity.NORMAL
+    }
+    suspend fun setNavVerbosity(verbosity: NavVerbosity) {
+        context.dataStore.edit { it[Keys.NAV_VERBOSITY] = verbosity.name }
+    }
+
+    /** Navegando, el mapa se orienta hacia donde se va en vez de llevar siempre el norte
+     * arriba. Se apaga para quien se pierde con el mapa girando. */
+    val navRotateMap: Flow<Boolean> = context.dataStore.data.map { it[Keys.NAV_ROTATE_MAP] ?: true }
+    suspend fun setNavRotateMap(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.NAV_ROTATE_MAP] = enabled }
+    }
+
+    /** A cuántas veces la velocidad real corre la simulación (1, 2 o 4). */
+    val navSimulationSpeed: Flow<Int> = context.dataStore.data.map { it[Keys.NAV_SIM_SPEED] ?: 1 }
+    suspend fun setNavSimulationSpeed(speed: Int) {
+        context.dataStore.edit { it[Keys.NAV_SIM_SPEED] = speed }
+    }
 
     /** Cuándo se entregó el último ping (epoch ms), 0 = nunca. Es el latido que vigila
      * [com.dskmusic.lokate.location.LocationUpdateWorker] para avisar al dueño del móvil si
@@ -286,10 +376,21 @@ class SettingsDataStore(private val context: Context) {
         context.dataStore.edit { it[Keys.KNOWN_WIFI_SSIDS] = ssids }
     }
 
+    /** Quién busca los sitios del buscador del mapa: encendido, Pelias (por el servidor, ver
+     * backend places.py), que ordena por cercanía de verdad; apagado, Nominatim, que es lo que
+     * se hacía antes. Encendido por defecto, y el interruptor está para cuando Pelias conteste
+     * mal o se acabe su cuota: Nominatim sigue siendo el suplente automático de todas formas. */
+    val placeSearchPelias: Flow<Boolean> = context.dataStore.data.map {
+        it[Keys.PLACE_SEARCH_PELIAS] ?: true
+    }
+    suspend fun setPlaceSearchPelias(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.PLACE_SEARCH_PELIAS] = enabled }
+    }
+
     /** Pintar en el mapa el margen de error de cada posición. Apagado por defecto: llena el
      * mapa de círculos y la mayoría del tiempo no aporta nada, pero explica de golpe por qué
      * alguien aparece "en la otra acera". */
-    val mapShowAccuracy: Flow<Boolean> = context.dataStore.data.map { it[Keys.MAP_SHOW_ACCURACY] ?: false }
+    val mapShowAccuracy: Flow<Boolean> = context.dataStore.data.map { it[Keys.MAP_SHOW_ACCURACY] ?: true }
     suspend fun setMapShowAccuracy(enabled: Boolean) {
         context.dataStore.edit { it[Keys.MAP_SHOW_ACCURACY] = enabled }
     }
@@ -299,8 +400,74 @@ class SettingsDataStore(private val context: Context) {
     val mapAccuracyIntensity: Flow<Int> = context.dataStore.data.map {
         (it[Keys.MAP_ACCURACY_INTENSITY] ?: Constants.MAP_ACCURACY_INTENSITY_DEFAULT).coerceIn(10, 100)
     }
+    /** Escribir el nombre de cada persona junto a su círculo de precisión. Solo pinta algo si
+     * los círculos están encendidos ([mapShowAccuracy]), que es lo que etiqueta. */
+    val mapAccuracyNames: Flow<Boolean> = context.dataStore.data.map {
+        it[Keys.MAP_ACCURACY_NAMES] ?: true
+    }
+
+    suspend fun setMapAccuracyNames(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.MAP_ACCURACY_NAMES] = enabled }
+    }
+
     suspend fun setMapAccuracyIntensity(percent: Int) {
         context.dataStore.edit { it[Keys.MAP_ACCURACY_INTENSITY] = percent.coerceIn(10, 100) }
+    }
+
+    // Desde 0, a diferencia del de precisión: aquí el borde verde de la zona se ve igual sin
+    // relleno, así que "nada de relleno" es una opción válida y no deja la zona invisible.
+    val mapZoneFillIntensity: Flow<Int> = context.dataStore.data.map {
+        (it[Keys.MAP_ZONE_FILL_INTENSITY] ?: Constants.MAP_ZONE_FILL_INTENSITY_DEFAULT).coerceIn(0, 100)
+    }
+
+    /** Color de las zonas en el mapa (borde, relleno y rótulo), ARGB. */
+    val mapZoneColor: Flow<Int> = context.dataStore.data.map {
+        it[Keys.MAP_ZONE_COLOR] ?: Constants.MAP_ZONE_COLOR_DEFAULT
+    }
+
+    suspend fun setMapZoneColor(argb: Int) {
+        context.dataStore.edit { it[Keys.MAP_ZONE_COLOR] = argb }
+    }
+
+    /** Color del anillo del margen de seguridad de las zonas, ARGB. */
+    val mapZoneMarginColor: Flow<Int> = context.dataStore.data.map {
+        it[Keys.MAP_ZONE_MARGIN_COLOR] ?: Constants.MAP_ZONE_MARGIN_COLOR_DEFAULT
+    }
+
+    suspend fun setMapZoneMarginColor(argb: Int) {
+        context.dataStore.edit { it[Keys.MAP_ZONE_MARGIN_COLOR] = argb }
+    }
+
+    /** Color del círculo del margen de error, ARGB. */
+    val mapAccuracyColor: Flow<Int> = context.dataStore.data.map {
+        it[Keys.MAP_ACCURACY_COLOR] ?: Constants.MAP_ACCURACY_COLOR_DEFAULT
+    }
+
+    suspend fun setMapAccuracyColor(argb: Int) {
+        context.dataStore.edit { it[Keys.MAP_ACCURACY_COLOR] = argb }
+    }
+
+    suspend fun setMapZoneFillIntensity(percent: Int) {
+        context.dataStore.edit { it[Keys.MAP_ZONE_FILL_INTENSITY] = percent.coerceIn(0, 100) }
+    }
+
+    /** Pintar alrededor de cada zona su margen de seguridad: la franja que hay que pisar para
+     * que una salida cuente de verdad (ver Constants.ZONE_EXIT_MARGIN_METERS). Apagado por
+     * defecto, que es un detalle de fontanería: se enciende cuando alguien se pregunta por qué
+     * el aviso saltó donde saltó y no justo en la raya. */
+    val mapShowZoneMargin: Flow<Boolean> = context.dataStore.data.map { it[Keys.MAP_SHOW_ZONE_MARGIN] ?: true }
+    suspend fun setMapShowZoneMargin(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.MAP_SHOW_ZONE_MARGIN] = enabled }
+    }
+
+    /** Usar la wifi como posición: estando conectado a una wifi apuntada en una zona, el
+     * servidor da por hecho que estás en ella y ningún fix lo discute. Encendido de serie —
+     * es lo que impide los falsos "ha salido" con el móvil quieto dentro de casa, y por sí
+     * solo no hace nada hasta que alguien enlaza una wifi a una zona. Viaja en cada ping y en
+     * /auth/device; si no viaja (app anterior), el servidor también lo da por encendido. */
+    val wifiAnchor: Flow<Boolean> = context.dataStore.data.map { it[Keys.WIFI_ANCHOR] ?: true }
+    suspend fun setWifiAnchor(enabled: Boolean) {
+        context.dataStore.edit { it[Keys.WIFI_ANCHOR] = enabled }
     }
 
     /** Interruptor general de los avisos de "lleva X sin dar señal". Encendido de serie, pero

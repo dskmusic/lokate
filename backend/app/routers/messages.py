@@ -7,6 +7,7 @@ from sqlalchemy.orm import Session
 from .. import models, push
 from ..auth import get_current_user_with_group
 from ..database import get_db
+from .locations import reachable_member
 
 router = APIRouter(prefix="/messages", tags=["messages"])
 
@@ -35,9 +36,8 @@ async def send_emergency_message(
     if not text.strip() and file is None:
         raise HTTPException(status.HTTP_400_BAD_REQUEST, "El mensaje necesita texto o un archivo adjunto")
 
-    target = db.query(models.User).filter(
-        models.User.id == user_id, models.User.group_id == user.group_id
-    ).first()
+    # Misma regla que el resto de la ficha del miembro: su grupo, y cualquiera si eres admin.
+    target = reachable_member(db, user, user_id)
     if not target:
         raise HTTPException(status.HTTP_404_NOT_FOUND, "Member not found in your group")
 

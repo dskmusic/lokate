@@ -14,6 +14,8 @@ import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
 import androidx.compose.foundation.layout.width
+import androidx.compose.foundation.rememberScrollState
+import androidx.compose.foundation.verticalScroll
 import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.filled.ArrowBack
 import androidx.compose.material.icons.filled.Download
@@ -39,9 +41,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.viewinterop.AndroidView
 import coil.compose.AsyncImage
 import com.dskmusic.lokate.R
+import com.dskmusic.lokate.ui.common.cabe
 import com.dskmusic.lokate.util.MediaSaver
-import kotlinx.coroutines.launch
 import java.io.File
+import kotlinx.coroutines.launch
 
 @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
 @Composable
@@ -86,7 +89,10 @@ fun EmergencyMessageScreen(
             )
         },
     ) { padding ->
-        Column(modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)) {
+        Column(
+            modifier = Modifier.fillMaxSize().padding(padding).padding(16.dp)
+                .verticalScroll(rememberScrollState()),
+        ) {
             Text(text, style = MaterialTheme.typography.bodyLarge)
             Spacer(Modifier.height(16.dp))
 
@@ -95,9 +101,9 @@ fun EmergencyMessageScreen(
                     "image" -> AsyncImage(
                         model = attachmentUrl,
                         contentDescription = null,
-                        modifier = Modifier.fillMaxWidth().height(360.dp),
+                        modifier = Modifier.fillMaxWidth().height(cabe(360.dp)),
                     )
-                    "video" -> Box(Modifier.fillMaxWidth().height(360.dp)) {
+                    "video" -> Box(Modifier.fillMaxWidth().height(cabe(360.dp))) {
                         AndroidView(
                             factory = { ctx ->
                                 VideoView(ctx).apply {

@@ -50,7 +50,13 @@ data class AdminUserDto(
     val created_at: String,
 )
 
-data class AdminUserUpdateRequestDto(val display_name: String?, val is_admin: Boolean?)
+/** group_id = "" quita el grupo; null lo deja como está (Gson no serializa los nulos, así
+ * que "sin grupo" no se puede mandar como null). */
+data class AdminUserUpdateRequestDto(
+    val display_name: String?,
+    val is_admin: Boolean?,
+    val group_id: String? = null,
+)
 
 /** Wifi que un admin añade a la lista de "wifis de casa" de un usuario desde su ficha. */
 data class AdminKnownWifiRequestDto(val ssid: String)
@@ -101,6 +107,12 @@ data class AdminZoneEventDto(
     val zone_name: String,
     val entered: Boolean,
     val notified: Int,
+    /** Nombres de quienes recibieron el aviso. Vacio en las filas guardadas antes de 10/2026,
+     * que solo tienen el numero de arriba. */
+    val notified_names: List<String> = emptyList(),
+    /** Quien tenia el aviso puesto para esta zona pero ya no estaba en el grupo, asi que no se le
+     * pudo mandar. Es el fallo silencioso del 06/10/2026 (ver geofence._notification_recipients). */
+    val missed_names: List<String> = emptyList(),
     /** null = aviso normal. Resto: no_prefs, hidden, private_zone, test, resync. */
     val reason: String? = null,
     val distance_m: Double? = null,
@@ -108,6 +120,10 @@ data class AdminZoneEventDto(
     val lat: Double,
     val lng: Double,
 )
+
+/** El repaso de zonas (app/zone_replay.py) ya formateado: una linea por ping interesante, lo
+ * mismo que sale por consola y en la pagina del panel web. */
+data class AdminZoneReplayDto(val lines: List<String>)
 
 /** Lista de ids para borrar de golpe; una fila suelta es una lista de uno. */
 data class AdminIdsRequestDto(val ids: List<String>)

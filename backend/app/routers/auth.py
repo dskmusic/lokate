@@ -1,3 +1,4 @@
+import time
 from pathlib import Path
 
 from fastapi import APIRouter, Depends, HTTPException, Request, UploadFile, status
@@ -12,6 +13,29 @@ router = APIRouter(prefix="/auth", tags=["auth"])
 AVATAR_DIR = Path("/data/avatars")
 ALLOWED_AVATAR_TYPES = {"image/jpeg": "jpg", "image/png": "png", "image/webp": "webp"}
 MAX_AVATAR_BYTES = 5 * 1024 * 1024
+
+
+def save_avatar(user: models.User, contents: bytes, ext: str) -> str:
+    """Guarda la foto de perfil de [user] y deja su avatar_url apuntando a ella.
+
+    El nombre lleva la hora a propósito. Antes era siempre <id>.jpg, y al no cambiar la URL las
+    apps seguían mostrando la foto vieja de su caché; en la lista de administración la cadena era
+    además idéntica a la anterior, así que la fila ni se repintaba y parecía que no se hubiera
+    guardado nada. Con versión en el nombre, foto nueva = URL nueva.
+
+    Las fotos anteriores de ese usuario se borran (una por persona, como siempre). El comodín es
+    seguro porque los ids son UUID de longitud fija: ninguno es prefijo de otro.
+    """
+    AVATAR_DIR.mkdir(parents=True, exist_ok=True)
+    filename = f"{user.id}-{int(time.time())}.{ext}"
+    # Escribir primero y borrar después: si la escritura falla, el perfil sigue con su foto de
+    # antes en vez de apuntando a un archivo que ya no existe.
+    (AVATAR_DIR / filename).write_bytes(contents)
+    for previous in AVATAR_DIR.glob(f"{user.id}*"):
+        if previous.name != filename:
+            previous.unlink(missing_ok=True)
+    user.avatar_url = f"/avatars/{filename}"
+    return user.avatar_url
 
 
 @router.post("/register", response_model=schemas.TokenResponse, status_code=status.HTTP_201_CREATED)
@@ -100,6 +124,8 @@ def register_device(
     if body.wifi_connected is not None:
         user.wifi_connected = body.wifi_connected
         user.wifi_ssid = body.wifi_ssid
+    if body.wifi_anchor is not None:
+        user.wifi_anchor = body.wifi_anchor
 
     # La version se guarda y ya: quien avisa al admin es la propia app (ver mas abajo). Asi el
     # aviso llega aunque se reinstale la MISMA version encima, que es lo normal cuando se publica
@@ -178,11 +204,7 @@ async def upload_avatar(
     if len(contents) > MAX_AVATAR_BYTES:
         raise HTTPException(status.HTTP_413_REQUEST_ENTITY_TOO_LARGE, "La imagen no puede superar 5 MB")
 
-    AVATAR_DIR.mkdir(parents=True, exist_ok=True)
-    filename = f"{user.id}.{ext}"
-    (AVATAR_DIR / filename).write_bytes(contents)
-
-    user.avatar_url = f"/avatars/{filename}"
+    url = save_avatar(user, contents, ext)
     db.commit()
 
-    return schemas.AvatarResponse(avatar_url=user.avatar_url)
+    return schemas.AvatarResponse(avatar_url=url)

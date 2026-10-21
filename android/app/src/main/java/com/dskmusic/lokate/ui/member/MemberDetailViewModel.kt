@@ -63,10 +63,14 @@ class MemberDetailViewModel(
     }
 
     /** Carga silenciosa inicial: lo último que ya sabía el servidor, sin pedir nada al
-     * dispositivo del miembro (para eso está requestFreshLocation). */
+     * dispositivo del miembro (para eso está requestFreshLocation).
+     *
+     * Se pide esta persona y no la lista del grupo: así un admin abre la ficha de cualquiera
+     * desde el panel sin cambiarse a su grupo (ver backend reachable_member), que es lo que
+     * antes había que hacer y lo que le dejaba sin sus propios avisos de zona. */
     private fun loadCached() {
         viewModelScope.launch {
-            val member = runCatching { locationRepository.groupLatest() }.getOrNull()?.find { it.user_id == userId }
+            val member = runCatching { locationRepository.memberLatest(userId) }.getOrNull()
             _uiState.value = _uiState.value.copy(loading = false, location = member ?: _uiState.value.location)
         }
     }
@@ -85,8 +89,8 @@ class MemberDetailViewModel(
                 val deadline = System.currentTimeMillis() + LOCATION_REQUEST_TIMEOUT_MS
                 while (System.currentTimeMillis() < deadline && freshMember == null) {
                     delay(LOCATION_REQUEST_POLL_INTERVAL_MS)
-                    val members = runCatching { locationRepository.groupLatest() }.getOrNull()
-                    freshMember = members?.find { it.user_id == userId && it.timestamp != previousTimestamp }
+                    freshMember = runCatching { locationRepository.memberLatest(userId) }.getOrNull()
+                        ?.takeIf { it.timestamp != previousTimestamp }
                 }
             }
 

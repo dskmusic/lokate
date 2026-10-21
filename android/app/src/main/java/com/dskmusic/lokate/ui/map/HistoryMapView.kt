@@ -31,8 +31,9 @@ private const val START_COLOR = 0xFF3FA66A.toInt()
  * detalle en trayectos cortos. */
 private const val MIN_POINT_DISTANCE_METERS = 20.0
 
-/** Margen de acierto al tocar la ruta, en dp (un dedo ocupa unos 16). */
-private const val TAP_TOLERANCE_DP = 16f
+/** Margen de acierto al tocar la ruta, en dp (un dedo ocupa unos 16). Lo comparte la regla del
+ * modo medir (ver MeasureOverlay): es el mismo dedo sobre la misma clase de línea. */
+const val TAP_TOLERANCE_DP = 16f
 
 /** Recorrido del historial: línea uniendo los puntos en orden cronológico, con marcador en la
  * salida, la llegada y el punto elegido. */

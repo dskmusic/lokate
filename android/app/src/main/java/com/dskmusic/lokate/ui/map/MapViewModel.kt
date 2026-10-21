@@ -76,9 +76,15 @@ private const val LIVE_RENEW_MS = 30_000L
 
 /** Techo de un seguimiento en vivo. Es el gasto más caro que esta app puede provocar (GPS fino
  * cada 3 s en el móvil del OTRO), así que no depende de que uno se acuerde de soltarlo: se suelta
- * solo y se vuelve a pulsar si hace falta. Irse de la app ya lo suelta antes (ver
- * [AppForeground]); esto cubre dejarla abierta y olvidarse. */
+ * solo y se vuelve a pulsar si hace falta. Irse de la app lo suelta antes (ver
+ * [FOLLOW_GRACE_MS]); esto cubre dejarla abierta y olvidarse. */
 const val FOLLOW_MAX_MS = 30 * 60_000L
+
+/** Lo que aguanta un seguimiento con la app en segundo plano antes de soltarse. Está para lo de
+ * siempre: saltar a WhatsApp a decirle algo a quien estás mirando y volver, sin tener que pedir
+ * el tiempo real otra vez. Es el mando de este asunto: subirlo deja el GPS del otro a tope más
+ * rato con nadie mirando; bajarlo obliga a volver a pulsar antes. */
+private const val FOLLOW_GRACE_MS = 2 * 60_000L
 
 /** Lo que hay que contarle a quien está siguiendo: si prendió allí, si no contesta, o si se ha
  * soltado solo por llevar demasiado rato. */
@@ -137,6 +143,9 @@ class MapViewModel(
      * en el propio [uiState], que es lo que pinta la pantalla. */
     private var followJob: Job? = null
 
+    /** La cuenta atrás para soltar al seguido tras irse de la app ([FOLLOW_GRACE_MS]). */
+    private var releaseJob: Job? = null
+
     private val followUserId: String? get() = _uiState.value.followUserId
 
     init {
@@ -144,7 +153,7 @@ class MapViewModel(
         // Se queda escuchando mientras viva el ViewModel: es lo que hace que un seguimiento se
         // suelte aunque la pantalla del mapa ya no exista.
         viewModelScope.launch {
-            AppForeground.visible.collect { if (!it) onAppHidden() }
+            AppForeground.visible.collect { if (it) onAppShown() else onAppHidden() }
         }
     }
 
@@ -219,12 +228,25 @@ class MapViewModel(
         if (_uiState.value.group != null) startPolling()
     }
 
-    /** La app entera se va a segundo plano. Además de dejar de sondear se suelta a quien se
-     * estuviera siguiendo: nadie está mirando el mapa y al otro lo tenemos en tiempo real, que
-     * es lo más caro que se le puede hacer a la batería de un móvil. */
+    /** La app entera se va a segundo plano: se deja de sondear y se le pone cuenta atrás a
+     * quien se estuviera siguiendo. No se suelta en el acto porque irse a otra app un momento
+     * (contestar un mensaje y volver) es lo normal mirando a alguien en vivo, y soltarlo
+     * obligaba a pedir el tiempo real de nuevo; pero tampoco se deja: con nadie mirando, el GPS
+     * fino del otro móvil es lo más caro que esta app sabe hacer. */
     fun onAppHidden() {
-        setFollowing(null)
         pausePolling()
+        if (followUserId == null) return
+        releaseJob?.cancel()
+        releaseJob = viewModelScope.launch {
+            delay(FOLLOW_GRACE_MS)
+            setFollowing(null)
+        }
+    }
+
+    /** Se vuelve a ver la app dentro del plazo: el seguimiento sigue donde estaba. */
+    fun onAppShown() {
+        releaseJob?.cancel()
+        releaseJob = null
     }
 
     /**
@@ -319,6 +341,7 @@ class MapViewModel(
 
     override fun onCleared() {
         pollingJob?.cancel()
+        releaseJob?.cancel()
         // El "deja de seguir" no se manda aquí a propósito: para cuando esto ocurre (cerrar
         // sesión, matar la app) puede que ya no haya ni red ni scope donde mandarlo. La marca
         // del servidor caduca sola en 3 min sin renovaciones, que es justo el seguro que tiene.

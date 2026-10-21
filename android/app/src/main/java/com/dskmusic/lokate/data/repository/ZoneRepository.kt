@@ -31,8 +31,9 @@ class ZoneRepository(
         lng: Double,
         radiusM: Double,
         isPublic: Boolean = true,
+        wifiSsids: List<String> = emptyList(),
     ): ZoneDto = withContext(Dispatchers.IO) {
-        val zone = api.createZone(ZoneCreateRequestDto(name, lat, lng, radiusM, isPublic))
+        val zone = api.createZone(ZoneCreateRequestDto(name, lat, lng, radiusM, isPublic, wifiSsids))
         dao.upsertAll(listOf(zone.toEntity()))
         zone
     }
@@ -44,8 +45,9 @@ class ZoneRepository(
         lng: Double,
         radiusM: Double,
         isPublic: Boolean = true,
+        wifiSsids: List<String> = emptyList(),
     ): ZoneDto = withContext(Dispatchers.IO) {
-        val zone = api.updateZone(id, ZoneCreateRequestDto(name, lat, lng, radiusM, isPublic))
+        val zone = api.updateZone(id, ZoneCreateRequestDto(name, lat, lng, radiusM, isPublic, wifiSsids))
         dao.upsertAll(listOf(zone.toEntity()))
         zone
     }
@@ -74,6 +76,12 @@ class ZoneRepository(
     }
 }
 
-private fun ZoneEntity.toDto() = ZoneDto(id, name, lat, lng, radiusM, isPublic, createdBy)
+private fun ZoneEntity.toDto() = ZoneDto(
+    id, name, lat, lng, radiusM, isPublic, createdBy, wifi_ssids = splitSsids(wifiSsids),
+)
 
-private fun ZoneDto.toEntity() = ZoneEntity(id, name, lat, lng, radius_m, is_public, created_by)
+private fun ZoneDto.toEntity() = ZoneEntity(
+    id, name, lat, lng, radius_m, is_public, created_by, wifi_ssids.joinToString(",").ifEmpty { null },
+)
+
+private fun splitSsids(csv: String?) = csv.orEmpty().split(",").map { it.trim() }.filter { it.isNotEmpty() }

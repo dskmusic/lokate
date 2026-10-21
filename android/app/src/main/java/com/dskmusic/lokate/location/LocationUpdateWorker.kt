@@ -109,6 +109,17 @@ class LocationUpdateWorker(context: Context, params: WorkerParameters) : Corouti
             }.getOrNull()
         } ?: return
 
+        // El fix del latido llega en "equilibrado" y puede venir de la caché de hasta media
+        // hora, así que por aquí es por donde entran los centroides de antena: declaran el error
+        // de la antena (±800 m), no el tuyo, y su centro puede estar a kilómetros. Tres de esos,
+        // con las MISMAS coordenadas (la caché devolviendo el mismo fix), sacaron a una persona
+        // sentada en el sofá de la zona de casa el 03/10/2026.
+        //
+        // Mismo listón que el servicio en reposo, porque el latido ES el caso de reposo. Aquí no
+        // hay válvula de escape a propósito: dejar la hora congelada (y que salte warnIfStalled
+        // si dura) dice la verdad, y mandar una posición que es mentira no.
+        if (fix.hasAccuracy() && fix.accuracy > LocationForegroundService.MAX_ACCURACY_METERS) return
+
         locator.locationRepository.ping(
             fix.latitude,
             fix.longitude,
@@ -183,9 +194,13 @@ class LocationUpdateWorker(context: Context, params: WorkerParameters) : Corouti
                 .setConstraints(constraints)
                 .build()
 
+            // UPDATE y no KEEP: con KEEP, el trabajo que un movil ya tiene encolado no se
+            // sustituye NUNCA, asi que un cambio de intervalo o de constraints no llegaria jamas
+            // a los moviles ya instalados (ni actualizando la app). UPDATE lo cambia en sitio
+            // sin cancelarlo, que era lo que KEEP protegia: el ciclo de 15 min no se reinicia.
             WorkManager.getInstance(context).enqueueUniquePeriodicWork(
                 Constants.LOCATION_WORKER_TAG,
-                ExistingPeriodicWorkPolicy.KEEP,
+                ExistingPeriodicWorkPolicy.UPDATE,
                 request,
             )
         }

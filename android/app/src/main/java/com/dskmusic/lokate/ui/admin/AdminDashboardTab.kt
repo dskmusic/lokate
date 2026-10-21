@@ -10,6 +10,7 @@ import androidx.compose.foundation.layout.Spacer
 import androidx.compose.foundation.layout.width
 import androidx.compose.foundation.layout.fillMaxSize
 import androidx.compose.foundation.layout.fillMaxWidth
+import androidx.compose.foundation.layout.fillMaxHeight
 import androidx.compose.foundation.layout.height
 import androidx.compose.foundation.layout.padding
 import androidx.compose.foundation.layout.size
@@ -37,6 +38,7 @@ import androidx.compose.runtime.setValue
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.res.stringResource
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.unit.dp
@@ -187,12 +189,32 @@ private fun StorageBreakdown(usage: AdminDiskUsageDto) {
 
 @Composable
 private fun ActivityChart(series: List<AdminActivityDayDto>) {
+    // Las etiquetas van en dp y no en sp a proposito: con la letra del sistema en grande, siete
+    // fechas no caben en el ancho de la pantalla y se montaban unas sobre otras. Es el unico
+    // sitio de la app donde el texto no escala, porque aqui el ancho lo manda el numero de dias.
+    val etiqueta = MaterialTheme.typography.labelSmall.copy(
+        fontSize = with(LocalDensity.current) { 10.dp.toSp() },
+    )
     Row(
-        Modifier.fillMaxWidth().height(140.dp),
-        horizontalArrangement = Arrangement.spacedBy(6.dp),
+        Modifier.fillMaxWidth().height(150.dp),
+        horizontalArrangement = Arrangement.spacedBy(4.dp),
+        verticalAlignment = Alignment.Bottom,
     ) {
         series.forEach { day ->
-            Column(Modifier.weight(1f), horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Bottom) {
+            // fillMaxHeight + Bottom: sin esto cada columna media solo lo suyo y la fecha
+            // quedaba colgada justo debajo de su barra, a una altura distinta en cada dia.
+            Column(
+                Modifier.weight(1f).fillMaxHeight(),
+                horizontalAlignment = Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Bottom,
+            ) {
+                Text(
+                    day.count.toString(),
+                    style = etiqueta,
+                    maxLines = 1,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
                 Box(
                     Modifier
                         .fillMaxWidth()
@@ -200,7 +222,14 @@ private fun ActivityChart(series: List<AdminActivityDayDto>) {
                         .clip(RoundedCornerShape(4.dp))
                         .background(MaterialTheme.colorScheme.primary),
                 )
-                Text(day.label, style = MaterialTheme.typography.labelSmall, textAlign = TextAlign.Center)
+                Text(
+                    day.label,
+                    style = etiqueta,
+                    color = MaterialTheme.colorScheme.onSurfaceVariant,
+                    maxLines = 1,
+                    textAlign = TextAlign.Center,
+                    modifier = Modifier.fillMaxWidth(),
+                )
             }
         }
     }

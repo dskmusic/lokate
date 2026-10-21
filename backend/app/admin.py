@@ -13,13 +13,13 @@ from sqladmin.authentication import AuthenticationBackend
 from starlette.responses import FileResponse, JSONResponse, RedirectResponse
 
 from . import backups as backups_module
-from . import login_guard, managed_files, models, push
+from . import login_guard, managed_files, models, push, zone_replay
 from .auth import create_access_token
 from .database import SessionLocal, engine
 from .disk_usage import compute_disk_usage
 from .i18n import DEFAULT_LOCALE, LOCALES, LOCALE_COOKIE, UI_DICT_ES, t
 from .models import utcnow
-from .routers.auth import ALLOWED_AVATAR_TYPES, AVATAR_DIR, MAX_AVATAR_BYTES
+from .routers.auth import ALLOWED_AVATAR_TYPES, MAX_AVATAR_BYTES, save_avatar
 
 ADMIN_USERNAME = os.environ["ADMIN_USERNAME"]
 ADMIN_PASSWORD = os.environ["ADMIN_PASSWORD"]
@@ -179,6 +179,53 @@ class HistoryMapView(BaseView):
                 "selected_date": date_str,
                 "points": points,
                 "points_json": json.dumps(points),
+            },
+        )
+
+
+class ZoneReplayView(BaseView):
+    """Diagnóstico de zonas: el repaso de app/zone_replay.py en una página.
+
+    Misma función que el comando y que la pantalla de la app (admin_api.zone_replay_report), así
+    que los tres informes son idénticos. Solo lee.
+
+    ponytail: no hay caja para escribir el comando a propósito — lo que viaja son la persona, la
+    zona, las horas y la casilla; un endpoint que ejecutara texto sería una consola del servidor
+    abierta a quien entre al panel.
+    """
+
+    name = "Diagnóstico"
+    icon = "fa-solid fa-stethoscope"
+
+    @expose("/zone-replay", identity="zone-replay", methods=["GET"])
+    async def index(self, request: Request):
+        db = SessionLocal()
+        try:
+            users = db.query(models.User).order_by(models.User.display_name).all()
+            zones = db.query(models.Zone).order_by(models.Zone.name).all()
+            user_id = request.query_params.get("user_id") or (users[0].id if users else None)
+            zone_id = request.query_params.get("zone_id") or (zones[0].id if zones else None)
+            horas_pedidas = request.query_params.get("hours")
+            hours = zone_replay.clamp_hours(int(horas_pedidas) if (horas_pedidas or "").isdigit() else None)
+            show_all = request.query_params.get("all") == "1"
+            user = db.get(models.User, user_id) if user_id else None
+            zone = db.get(models.Zone, zone_id) if zone_id else None
+            lines = zone_replay.replay(db, user, zone, hours, show_all) if user and zone else []
+            report = "\n".join(lines)
+        finally:
+            db.close()
+        return await self.templates.TemplateResponse(
+            request,
+            "zone_replay.html",
+            {
+                "users": users,
+                "zones": zones,
+                "selected_user_id": user_id,
+                "selected_zone_id": zone_id,
+                "hours": hours,
+                "max_hours": zone_replay.MAX_HOURS,
+                "show_all": show_all,
+                "report": report,
             },
         )
 
@@ -523,10 +570,7 @@ class UserAvatarUploadView(BaseView):
                     if len(contents) > MAX_AVATAR_BYTES:
                         error = t("image_too_large")
                     else:
-                        AVATAR_DIR.mkdir(parents=True, exist_ok=True)
-                        filename = f"{target_user.id}.{ext}"
-                        (AVATAR_DIR / filename).write_bytes(contents)
-                        target_user.avatar_url = f"/avatars/{filename}"
+                        save_avatar(target_user, contents, ext)
                         db.commit()
                         return RedirectResponse(
                             request.url_for("admin:details", identity="user", pk=target_user.id),
@@ -608,6 +652,7 @@ class UserAdmin(ModelView, model=models.User):
         models.User.display_name: "Nombre",
         models.User.username: "Usuario",
         models.User.is_admin: "Admin",
+        models.User.wifi_anchor: "Wifi como posicion",
     }
     column_formatters = {models.User.avatar_url: _avatar_html}
     column_formatters_detail = {models.User.avatar_url: _avatar_html}
@@ -686,6 +731,16 @@ class ZoneAdmin(ModelView, model=models.Zone):
         models.Zone.group: "Grupo",
         models.Zone.group_id: "Grupo",
         models.Zone.radius_m: "Radio (m)",
+        models.Zone.wifi_ssids: "Wifis de la zona",
+    }
+    # Aqui se enlazan las wifis sin tocar la app: es la via para los moviles que no actualicen.
+    form_args = {
+        "wifi_ssids": {
+            "description": "Nombres de wifi de este sitio, separados por comas (la de 2,4 y la de "
+                           "5 GHz suelen tener nombres distintos). Quien se conecte a una de ellas "
+                           "cuenta como dentro de la zona aunque el GPS diga otra cosa. "
+                           "Vacio = la zona va solo por posicion.",
+        },
     }
     column_formatters_detail = {models.Zone.lat: _zone_map_html}
     create_template = "zone/create.html"
@@ -710,6 +765,8 @@ class ZoneEventAdmin(ModelView, model=models.ZoneEvent):
         models.ZoneEvent.zone,
         models.ZoneEvent.entered,
         models.ZoneEvent.notified,
+        models.ZoneEvent.notified_ids,
+        models.ZoneEvent.missed_ids,
         models.ZoneEvent.reason,
     ]
     column_sortable_list = [models.ZoneEvent.at, models.ZoneEvent.notified]
@@ -719,6 +776,8 @@ class ZoneEventAdmin(ModelView, model=models.ZoneEvent):
         models.ZoneEvent.zone: "Zona",
         models.ZoneEvent.entered: "Entro",
         models.ZoneEvent.notified: "Avisados",
+        models.ZoneEvent.notified_ids: "A quien",
+        models.ZoneEvent.missed_ids: "Lo tenia puesto y no estaba en el grupo",
         models.ZoneEvent.reason: "Sin aviso porque",
         models.ZoneEvent.distance_m: "Distancia (m)",
         models.ZoneEvent.accuracy: "Precision (m)",
@@ -790,6 +849,7 @@ def register_admin(app: FastAPI) -> None:
     admin.add_view(LiveMapView)
     admin.add_view(LiveMapActionView)
     admin.add_view(HistoryMapView)
+    admin.add_view(ZoneReplayView)
     admin.add_view(BackupsView)
     admin.add_view(BackupDownloadView)
     admin.add_view(BackupRestoreView)

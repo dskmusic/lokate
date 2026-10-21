@@ -7,7 +7,10 @@ import androidx.room.RoomDatabase
 
 @Database(
     entities = [ZoneEntity::class, LocationHistoryEntity::class, PendingPingEntity::class],
-    version = 5,
+    // 6: wifis de la zona (ZoneEntity.wifiSsids). Con fallbackToDestructiveMigration esto
+    // vacia la cache local — las zonas y el historial se vuelven a bajar del servidor, y la
+    // cola de pings pendientes (minutos, no dias) se pierde: ver PendingPingEntity.
+    version = 6,
     exportSchema = false,
 )
 abstract class AppDatabase : RoomDatabase() {

@@ -18,3 +18,12 @@ fun formatDistance(meters: Float): String = when {
     meters < 10_000f -> String.format(Locale.getDefault(), "%.1f km", meters / 1_000f)
     else -> "${(meters / 1_000f).roundToInt()} km"
 }
+
+/** "8 min", "1 h", "1 h 12 min". Por debajo del minuto no se da un número: a esa escala una
+ * estimación de tiempo no significa nada. Sin traducir, igual que [formatDistance]. */
+fun formatDuration(minutes: Int): String = when {
+    minutes < 1 -> "< 1 min"
+    minutes < 60 -> "$minutes min"
+    minutes % 60 == 0 -> "${minutes / 60} h"
+    else -> "${minutes / 60} h ${minutes % 60} min"
+}

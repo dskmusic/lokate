@@ -470,7 +470,14 @@ class LocationForegroundService : Service() {
         val previous = lastSent
         // En reposo la ubicación la ponen el wifi y las antenas, y eso baila solo hasta 100 m de
         // un fix al siguiente: con el listón en 25 m el mapa enseñaría paseos que no existen.
-        val minMove = if (idle) IDLE_MIN_MOVE_METERS else MIN_MOVE_METERS
+        // El listón fijo se queda corto con un fix borroso: uno de 142 m de margen puso a una
+        // persona parada en casa 287 m más al sur durante medio minuto — pasaba los 100 m de
+        // reposo, y era demasiado pequeño para que [implausibleJump] lo mirara siquiera. Así que
+        // en reposo el listón sube con la borrosidad del propio fix: cuanto menos sabe de dónde
+        // está, más tiene que alejarse para que le creamos.
+        val minMove =
+            if (idle) maxOf(IDLE_MIN_MOVE_METERS, location.accuracy * IDLE_ACCURACY_FACTOR)
+            else MIN_MOVE_METERS
         val moved = previous == null || location.distanceTo(previous) >= minMove
         val worth = moved ||
             currentIntervalMs < MIN_MOVE_FROM_INTERVAL_MS ||
@@ -491,17 +498,25 @@ class LocationForegroundService : Service() {
      * pero puede colocar a alguien en otro barrio — y si además dispara un aviso de zona, el
      * grupo recibe una entrada o salida que no ha ocurrido.
      *
-     * El listón depende del modo: con el GPS en marcha, 200 m es un fix a medio cocer; en
-     * reposo la posición la ponen wifi y antenas y 500 m es lo normal, así que ahí exigir más
-     * sería no mandar nada nunca.
+     * Un listón para los dos modos, y el mismo que el servidor (MAX_TRUSTED_ACCURACY_M en
+     * backend/app/geofence.py): lo que allí no se cree para decidir una zona, aquí no vale la
+     * pena ni mandarlo — solo sirve para pintar a alguien lejos de donde está. Antes el de
+     * reposo era 500, con la idea de que ahí la posición la ponen wifi y antenas; el resultado
+     * fue plantar a una persona sentada en su casa a 631 m de ella.
      */
     private fun tooVague(location: Location): Boolean {
         if (!location.hasAccuracy()) return false
-        val limit = if (idle) MAX_ACCURACY_IDLE_METERS else MAX_ACCURACY_METERS
-        if (location.accuracy <= limit) return false
+        if (location.accuracy <= MAX_ACCURACY_METERS) return false
         // Válvula de escape: tras un buen rato sin mandar nada (interior, sótano, mal día de
         // GPS), una posición mala es mejor que dejar al grupo con la hora congelada.
-        return System.currentTimeMillis() - lastSentAt < IDLE_INTERVAL_MS
+        //
+        // "Un buen rato" se mide en intervalos del ritmo que haya puesto, no en minutos fijos.
+        // Con IDLE_INTERVAL_MS pelado la válvula estaba abierta SIEMPRE en reposo: ahí los pings
+        // salen justo cada 15 min, así que nunca hacía menos de eso desde el último y el listón
+        // de precisión no pintaba nada — se mandaba cualquier posición de antena. La excepción
+        // era la norma.
+        val interval = if (currentIntervalMs > 0L) currentIntervalMs else IDLE_INTERVAL_MS
+        return System.currentTimeMillis() - lastSentAt < interval * VAGUE_FALLBACK_INTERVALS
     }
 
     /**
@@ -664,7 +679,9 @@ class LocationForegroundService : Service() {
 
     override fun onBind(intent: Intent?): IBinder? = null
 
-    private companion object {
+    // Público (no private) porque el worker de respaldo aplica el mismo listón de precisión en
+    // su latido de posición: ver LocationUpdateWorker.heartbeat.
+    companion object {
         const val ACTION_STILL_TRANSITION = "com.dskmusic.lokate.action.STILL_TRANSITION"
 
         /** Lo más que el sistema puede retrasar la entrega de un fix para juntarlo con los
@@ -685,9 +702,30 @@ class LocationForegroundService : Service() {
          * error propio ya ronda los 100 m. */
         const val IDLE_MIN_MOVE_METERS = 100f
 
-        /** Margen de error a partir del cual un fix no se manda (ver [tooVague]). */
-        const val MAX_ACCURACY_METERS = 200f
-        const val MAX_ACCURACY_IDLE_METERS = 500f
+        /** Lo que un fix en reposo tiene que alejarse, contado en veces su propio margen de
+         * error, para que no sea ruido. Con un fix normal de casa (20 m) manda [IDLE_MIN_MOVE_METERS]
+         * y no cambia nada; con uno de 142 m hay que irse 427 m.
+         * ponytail: este es el botón de calibración. Subirlo se come desplazamientos cortos
+         * reales que empiecen con un fix malo; bajarlo deja volver los picos de wifi. */
+        const val IDLE_ACCURACY_FACTOR = 3f
+
+        /** Margen de error a partir del cual un fix no se manda (ver [tooVague]).
+         *
+         * Copia de MAX_TRUSTED_ACCURACY_M de backend/app/geofence.py, que es quien decide las
+         * zonas: si se cambia allí, cambiarlo aquí. Y como allí, el número cae a propósito en el
+         * hueco ENTRE los valores que manda Android (se ven 100, 200 y 800, no una escala
+         * continua): puesto encima de uno, un fix con ese valor clavado se cuela por el "mayor
+         * que". */
+        const val MAX_ACCURACY_METERS = 150f
+
+        /** Cuántos intervalos del ritmo actual hay que llevar sin mandar nada para que una
+         * posición borrosa valga más que el silencio (ver la válvula de [tooVague]). En reposo
+         * son cuatro cuartos de hora; en tiempo real, cuatro ciclos de segundos — el que se
+         * mide es el ritmo que haya en ese momento, que es lo que hace que la válvula siga
+         * siendo una excepción en todos los modos y no la norma en uno de ellos.
+         * ponytail: botón de calibración. Subirlo aguanta más tiempo con la hora congelada
+         * antes de conformarse con una posición mala; bajarlo las deja volver. */
+        const val VAGUE_FALLBACK_INTERVALS = 4
 
         /** Velocidad por encima de la cual un salto entre dos fixes es imposible, y el salto
          * mínimo para molestarse en mirarlo (ver [implausibleJump]). 83 m/s = 300 km/h: por

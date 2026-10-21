@@ -18,6 +18,7 @@ import android.os.Looper
 import android.os.VibrationEffect
 import android.os.Vibrator
 import android.os.VibratorManager
+import android.widget.RemoteViews
 import androidx.core.app.NotificationCompat
 import androidx.core.app.NotificationManagerCompat
 import coil.ImageLoader
@@ -239,7 +240,7 @@ object NotificationHelper {
         (context.getSystemService(Context.VIBRATOR_SERVICE) as? Vibrator)?.cancel()
     }
 
-    private fun systemVibrator(context: Context): Vibrator? =
+    fun systemVibrator(context: Context): Vibrator? =
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
             context.getSystemService(VibratorManager::class.java)?.defaultVibrator
         } else {
@@ -268,6 +269,28 @@ object NotificationHelper {
                 NotificationManager.IMPORTANCE_DEFAULT,
             ).apply { description = context.getString(R.string.notification_channel_system_desc) },
         )
+
+        // La navegación tiene su propio canal, y con importancia normal: con IMPORTANCE_LOW el
+        // sistema lo trata de silencioso y muchos móviles (Xiaomi y compañía sobre todo) lo
+        // esconden de la pantalla de bloqueo, que es justo donde hace falta mientras conduces.
+        // El sonido y la vibración se apagan a mano, que de un navegador no se quiere un pitido
+        // cada vez que cambia la distancia: lo que suena es la voz.
+        manager.createNotificationChannel(
+            NotificationChannel(
+                Constants.NAV_CHANNEL_ID,
+                context.getString(R.string.notification_channel_nav_name),
+                NotificationManager.IMPORTANCE_DEFAULT,
+            ).apply {
+                description = context.getString(R.string.notification_channel_nav_desc)
+                lockscreenVisibility = android.app.Notification.VISIBILITY_PUBLIC
+                setShowBadge(false)
+                setSound(null, null)
+                enableVibration(false)
+            },
+        )
+        // El canal silencioso de antes, fuera: si no, se queda en los ajustes del móvil como una
+        // entrada muerta que encima confunde ("Navegación" dos veces).
+        manager.deleteNotificationChannel("lokate_nav")
 
         // Canal aparte para "hacer sonar el dispositivo": bypassDnd es lo que le pide al sistema
         // que la notificación en sí también intente saltarse el modo No Molestar (además del
@@ -353,6 +376,91 @@ object NotificationHelper {
             .setOngoing(true)
             .setPriority(NotificationCompat.PRIORITY_LOW)
             .build()
+
+    /**
+     * El aviso de la navegación: la próxima maniobra y un "Salir".
+     *
+     * Es el aviso del servicio en primer plano, así que se reescribe con el mismo id en cada
+     * maniobra. Va con setOnlyAlertOnce y en un canal silencioso: lo que informa es la voz, y
+     * una vibración cada 300 metros sería insufrible. Visible en la pantalla de bloqueo porque
+     * es justo donde hace falta: el móvil en el soporte con la pantalla apagada.
+     */
+    fun buildNavNotification(
+        context: Context,
+        title: String,
+        body: String,
+        /** En pausa el botón pasa a ser el de seguir, y al tocarlo el viaje sigue donde se
+         * dejó (ver [com.dskmusic.lokate.nav.NavigationService]). */
+        paused: Boolean = false,
+    ): android.app.Notification {
+        val open = PendingIntent.getActivity(
+            context,
+            Constants.NAV_NOTIFICATION_ID,
+            Intent(context, com.dskmusic.lokate.MainActivity::class.java).apply {
+                addFlags(Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP or Intent.FLAG_ACTIVITY_SINGLE_TOP)
+            },
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        val stop = PendingIntent.getBroadcast(
+            context,
+            Constants.NAV_NOTIFICATION_ID + 1,
+            Intent(context, com.dskmusic.lokate.nav.NavStopReceiver::class.java)
+                .setAction(Constants.ACTION_NAV_STOP),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        // Al propio servicio y no a un receiver: pausar es cosa de quien tiene el reloj de la
+        // simulación y el GPS en la mano, y así no hay que rebotar el aviso por un BroadcastReceiver.
+        val pause = PendingIntent.getForegroundService(
+            context,
+            Constants.NAV_NOTIFICATION_ID + 2,
+            Intent(context, com.dskmusic.lokate.nav.NavigationService::class.java)
+                .setAction(Constants.ACTION_NAV_PAUSE),
+            PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE,
+        )
+        // Vista propia para la forma PLEGADA del aviso, que es la única que se ve en la pantalla
+        // de bloqueo: con la plantilla normal de Android los botones solo salen al desplegarlo, y
+        // conduciendo eso significa desbloquear el móvil y buscar la flechita. Así se ve como un
+        // reproductor de música: lo que queda de ruta y los dos botones a un dedo.
+        val collapsed = RemoteViews(context.packageName, R.layout.notification_nav).apply {
+            setTextViewText(R.id.nav_title, title)
+            setTextViewText(R.id.nav_body, body)
+            setImageViewResource(
+                R.id.nav_pause,
+                if (paused) R.drawable.ic_nav_play else R.drawable.ic_nav_pause,
+            )
+            setContentDescription(
+                R.id.nav_pause,
+                context.getString(if (paused) R.string.nav_resume else R.string.nav_pause),
+            )
+            setContentDescription(R.id.nav_stop, context.getString(R.string.nav_exit))
+            setOnClickPendingIntent(R.id.nav_pause, pause)
+            setOnClickPendingIntent(R.id.nav_stop, stop)
+        }
+        return NotificationCompat.Builder(context, Constants.NAV_CHANNEL_ID)
+            // El título y el texto se ponen igual, aunque los pinte la vista de arriba: hay
+            // sitios que ignoran las vistas propias y leen esto (relojes, Android Auto, y algún
+            // lanzador raro).
+            .setContentTitle(title)
+            .setContentText(body)
+            .setSmallIcon(R.drawable.ic_notification)
+            .setContentIntent(open)
+            .setCustomContentView(collapsed)
+            // "Decorated" = la vista propia va dentro del marco del sistema (icono, nombre de la
+            // app, colores del tema), en vez de pintar un rectángulo ajeno al móvil.
+            .setStyle(NotificationCompat.DecoratedCustomViewStyle())
+            // Y los botones normales también, que son los que salen al desplegarlo y los que
+            // entiende un reloj.
+            .addAction(0, context.getString(if (paused) R.string.nav_resume else R.string.nav_pause), pause)
+            .addAction(0, context.getString(R.string.nav_exit), stop)
+            .setOngoing(true)
+            .setOnlyAlertOnce(true)
+            .setVisibility(NotificationCompat.VISIBILITY_PUBLIC)
+            // Categoría de navegación: es lo que le dice al sistema (y a Android Auto, y a los
+            // relojes) que esto es el cartel del viaje y no un aviso cualquiera.
+            .setCategory(NotificationCompat.CATEGORY_NAVIGATION)
+            .setPriority(NotificationCompat.PRIORITY_DEFAULT)
+            .build()
+    }
 
     fun showZoneNotification(context: Context, channelId: String, title: String, body: String, memberUserId: String?) {
         val notificationId = nextNotificationId()

@@ -12,17 +12,18 @@ import androidx.compose.runtime.getValue
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.graphics.Color
 import androidx.core.app.NotificationManagerCompat
-import com.dskmusic.lokate.push.NotificationHelper
-import com.dskmusic.lokate.push.RING_NOTIFICATION_ID
-import com.dskmusic.lokate.util.ConfigCheck
-import com.dskmusic.lokate.util.Constants
 import com.dskmusic.lokate.di.ServiceLocator
 import com.dskmusic.lokate.location.LocationServiceController
 import com.dskmusic.lokate.location.LocationUpdateWorker
+import com.dskmusic.lokate.push.NotificationHelper
+import com.dskmusic.lokate.push.RING_NOTIFICATION_ID
+import com.dskmusic.lokate.ui.common.PantallaCompletaTumbado
 import com.dskmusic.lokate.ui.map.AppForeground
 import com.dskmusic.lokate.ui.navigation.LokateNavHost
 import com.dskmusic.lokate.ui.navigation.Routes
 import com.dskmusic.lokate.ui.theme.LokateTheme
+import com.dskmusic.lokate.util.ConfigCheck
+import com.dskmusic.lokate.util.Constants
 import com.dskmusic.lokate.util.LocaleHelper
 import com.dskmusic.lokate.util.ThemeMode
 import kotlinx.coroutines.CoroutineScope
@@ -89,6 +90,18 @@ class MainActivity : ComponentActivity() {
             startDestination == Routes.MAP
         intent.removeExtra(Constants.EXTRA_PUSH_TYPE)
 
+        // Una dirección compartida desde otra app, o un enlace geo:. El buscador del mapa ya
+        // sabe sacar el punto de un enlace (incluidos los cortos de "compartir" de Maps, que
+        // resuelve siguiendo su redirección), así que aquí solo hay que recoger el texto. Los
+        // saltos de línea se juntan porque Maps comparte tres líneas y el buscador es de una.
+        val sharedPlace = when (intent.action) {
+            Intent.ACTION_SEND -> intent.getStringExtra(Intent.EXTRA_TEXT)
+            Intent.ACTION_VIEW -> intent.dataString
+            else -> null
+        }?.replace(Regex("\\s+"), " ")?.trim()
+            ?.takeIf { it.isNotEmpty() && startDestination == Routes.MAP }
+        intent.removeExtra(Intent.EXTRA_TEXT)
+
         // Acceso directo del icono de la app: se abre el mapa y encima la sección elegida, para
         // que "atrás" lleve al mapa en vez de cerrar la app. Se consume igual que el extra de
         // arriba, si no una rotación volvería a abrir la sección.
@@ -98,6 +111,8 @@ class MainActivity : ComponentActivity() {
             Constants.ACTION_OPEN_HISTORY -> Routes.history()
             else -> null
         }?.takeIf { startDestination == Routes.MAP }
+        // Vale también para los dos de arriba: con la acción cambiada, recrear la actividad ya
+        // no vuelve a buscar la dirección compartida.
         intent.action = Intent.ACTION_MAIN
 
         // Cubre a quien ya tenía sesión iniciada antes de este arreglo: sin esto, ni su token FCM
@@ -118,12 +133,14 @@ class MainActivity : ComponentActivity() {
             )
 
             LokateTheme(themeMode = themeMode, accentColor = Color(accentArgb)) {
+                PantallaCompletaTumbado()
                 Surface(modifier = Modifier.fillMaxSize()) {
                     LokateNavHost(
                         locator = locator,
                         startDestination = startDestination,
                         openMemberUserId = memberFromPush,
                         openSection = sectionFromShortcut,
+                        sharedPlace = sharedPlace,
                         startUpdate = startUpdate,
                     )
                 }

@@ -65,6 +65,15 @@ fun GroupScreen(locator: ServiceLocator, onDone: () -> Unit) {
     var groupName by remember { mutableStateOf("") }
     var inviteCode by remember { mutableStateOf("") }
     var showLeaveConfirm by remember { mutableStateOf(false) }
+    // Id del grupo al que se quiere saltar, mientras se pregunta si de verdad. Se guarda el id y
+    // no el grupo entero para no arrastrar hasta aqui el DTO de admin.
+    var groupToSwitch by remember { mutableStateOf<String?>(null) }
+    // Saltar de grupo apaga de golpe todos los avisos de zona del grupo que se deja (el servidor
+    // solo avisa a los miembros). Si no hay ninguno puesto no hay nada que perder y se salta sin
+    // preguntar.
+    val pedirCambio: (String) -> Unit = { id ->
+        if (state.activeZoneAlerts > 0) groupToSwitch = id else viewModel.switchGroup(id)
+    }
 
     Scaffold(
         topBar = {
@@ -147,7 +156,7 @@ fun GroupScreen(locator: ServiceLocator, onDone: () -> Unit) {
                             leadingContent = {
                                 RadioButton(
                                     selected = other.id == group.id,
-                                    onClick = { viewModel.switchGroup(other.id) },
+                                    onClick = { pedirCambio(other.id) },
                                     enabled = !state.loading,
                                 )
                             },
@@ -165,7 +174,7 @@ fun GroupScreen(locator: ServiceLocator, onDone: () -> Unit) {
                                 }
                             },
                             modifier = Modifier.clickable(enabled = !state.loading && other.id != group.id) {
-                                viewModel.switchGroup(other.id)
+                                pedirCambio(other.id)
                             },
                         )
                     }
@@ -242,6 +251,33 @@ fun GroupScreen(locator: ServiceLocator, onDone: () -> Unit) {
                 }
             }
         }
+    }
+
+    groupToSwitch?.let { destinoId ->
+        val destino = state.availableGroups.firstOrNull { it.id == destinoId }?.name.orEmpty()
+        AlertDialog(
+            onDismissRequest = { groupToSwitch = null },
+            title = { Text(stringResource(R.string.group_switch_confirm_title)) },
+            text = {
+                Text(
+                    stringResource(
+                        R.string.group_switch_confirm_body,
+                        state.activeZoneAlerts,
+                        state.existingGroup?.name.orEmpty(),
+                        destino,
+                    ),
+                )
+            },
+            confirmButton = {
+                TextButton(onClick = {
+                    groupToSwitch = null
+                    viewModel.switchGroup(destinoId)
+                }) { Text(stringResource(R.string.group_switch_confirm_ok)) }
+            },
+            dismissButton = {
+                TextButton(onClick = { groupToSwitch = null }) { Text(stringResource(R.string.cancel)) }
+            },
+        )
     }
 
     if (showLeaveConfirm) {

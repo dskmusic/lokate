@@ -41,6 +41,8 @@ fun LokateNavHost(
     openSection: String? = null,
     /** Se ha entrado tocando el aviso de actualización: el mapa la descarga e instala solo. */
     startUpdate: Boolean = false,
+    /** Dirección (o enlace) que otra app ha compartido: el mapa la busca al entrar. */
+    sharedPlace: String? = null,
 ) {
     val navController: NavHostController = rememberNavController()
     val context = LocalContext.current
@@ -120,12 +122,23 @@ fun LokateNavHost(
                 onOpenMember = { userId -> navController.navigate(Routes.memberDetail(userId)) },
                 onOpenAdmin = { navController.navigate(Routes.ADMIN) },
                 startUpdate = startUpdate,
+                sharedPlace = sharedPlace,
                 focusUserIdFlow = backStackEntry.savedStateHandle.getStateFlow("focus_user_id", null as String?),
                 onFocusUserIdConsumed = { backStackEntry.savedStateHandle.remove<String>("focus_user_id") },
+                focusZoneIdFlow = backStackEntry.savedStateHandle.getStateFlow("focus_zone_id", null as String?),
+                onFocusZoneIdConsumed = { backStackEntry.savedStateHandle.remove<String>("focus_zone_id") },
+                isochroneUserIdFlow = backStackEntry.savedStateHandle.getStateFlow("isochrone_user_id", null as String?),
+                onIsochroneUserIdConsumed = { backStackEntry.savedStateHandle.remove<String>("isochrone_user_id") },
             )
         }
         composable(Routes.ADMIN) {
-            AdminScreen(locator = locator, onBack = { navController.popBackStack() })
+            AdminScreen(
+                locator = locator,
+                onBack = { navController.popBackStack() },
+                // La misma ficha que se abre desde el mapa, pero de cualquiera: el servidor ya
+                // no exige que esa persona esté en tu grupo si eres admin.
+                onOpenMember = { userId -> navController.navigate(Routes.memberDetail(userId)) },
+            )
         }
         composable(Routes.PEOPLE) {
             PeopleScreen(
@@ -143,6 +156,10 @@ fun LokateNavHost(
                 locator = locator,
                 onAddZone = { navController.navigate(Routes.ZONE_EDIT) },
                 onEditZone = { zoneId -> navController.navigate("zone_edit/$zoneId") },
+                onShowZoneOnMap = { zoneId ->
+                    navController.getBackStackEntry(Routes.MAP).savedStateHandle["focus_zone_id"] = zoneId
+                    navController.popBackStack(Routes.MAP, inclusive = false)
+                },
                 onBack = { navController.popBackStack() },
             )
         }
@@ -185,6 +202,10 @@ fun LokateNavHost(
                 onOpenHistory = { id, name -> navController.navigate(Routes.history(id, name)) },
                 onOpenMap = { id ->
                     navController.getBackStackEntry(Routes.MAP).savedStateHandle["focus_user_id"] = id
+                    navController.popBackStack(Routes.MAP, inclusive = false)
+                },
+                onShowIsochrone = { id ->
+                    navController.getBackStackEntry(Routes.MAP).savedStateHandle["isochrone_user_id"] = id
                     navController.popBackStack(Routes.MAP, inclusive = false)
                 },
                 onFixPermissions = { fixPermissions() },

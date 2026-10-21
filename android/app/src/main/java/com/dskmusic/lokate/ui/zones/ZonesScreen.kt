@@ -22,6 +22,7 @@ import androidx.compose.material.icons.filled.Login
 import androidx.compose.material.icons.filled.Logout
 import androidx.compose.material.icons.filled.LocationOn
 import androidx.compose.material.icons.filled.Search
+import androidx.compose.material.icons.filled.Visibility
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
@@ -65,11 +66,15 @@ fun ZonesScreen(
     locator: ServiceLocator,
     onAddZone: () -> Unit,
     onEditZone: (String) -> Unit,
+    /** Vuelve al mapa principal encuadrando esa zona. */
+    onShowZoneOnMap: (String) -> Unit,
     onBack: () -> Unit,
 ) {
     val viewModel = remember { ZonesViewModel(locator.zoneRepository, locator.groupRepository) }
     val allZones by viewModel.zones.collectAsStateWithLifecycle(initialValue = emptyList())
     val prefs by viewModel.prefs.collectAsStateWithLifecycle()
+    val prefsLoaded by viewModel.prefsLoaded.collectAsStateWithLifecycle()
+    val prefsError by viewModel.prefsError.collectAsStateWithLifecycle()
     val members by viewModel.members.collectAsStateWithLifecycle()
     var zoneToDelete by remember { mutableStateOf<ZoneDto?>(null) }
     var sort by remember { mutableStateOf(ZoneSort.NAME) }
@@ -147,6 +152,25 @@ fun ZonesScreen(
                     )
                 }
             }
+            // Los avisos que se ven no son los del servidor: hay que decirlo. Mientras tanto los
+            // interruptores están bloqueados (ver ZonesViewModel.prefsLoaded), porque tocar uno
+            // sin saber lo que hay guardado es lo que borraba la configuración de la gente.
+            if (prefsError) {
+                Row(
+                    modifier = Modifier.fillMaxWidth().padding(horizontal = 16.dp, vertical = 4.dp),
+                    verticalAlignment = Alignment.CenterVertically,
+                ) {
+                    Text(
+                        stringResource(R.string.zones_prefs_error),
+                        style = MaterialTheme.typography.bodySmall,
+                        color = MaterialTheme.colorScheme.error,
+                        modifier = Modifier.weight(1f),
+                    )
+                    TextButton(onClick = { viewModel.refreshPrefs() }) {
+                        Text(stringResource(R.string.retry))
+                    }
+                }
+            }
             HorizontalDivider()
             LazyColumn(modifier = Modifier.fillMaxSize()) {
                 items(zones, key = { it.id }) { zone ->
@@ -188,20 +212,32 @@ fun ZonesScreen(
                                     else stringResource(R.string.zone_private_badge, zone.radius_m.toInt()),
                                     style = MaterialTheme.typography.bodySmall,
                                     color = MaterialTheme.colorScheme.onSurfaceVariant,
+                                    // Con cuatro botones al lado queda poco sitio: antes de
+                                    // partirse en dos lineas, mejor puntos suspensivos.
+                                    maxLines = 1,
+                                    overflow = TextOverflow.Ellipsis,
                                     modifier = Modifier.weight(1f).padding(start = 12.dp),
                                 )
                                 ZoneNotifyToggle(
                                     icon = Icons.Filled.Login,
                                     enabled = pref?.notify_on_enter ?: false,
+                                    editable = prefsLoaded,
                                     contentDescription = stringResource(R.string.zone_notify_enter),
                                     onClick = { viewModel.setNotifyOnEnter(zone.id, !(pref?.notify_on_enter ?: false)) },
                                 )
                                 ZoneNotifyToggle(
                                     icon = Icons.Filled.Logout,
                                     enabled = pref?.notify_on_exit ?: false,
+                                    editable = prefsLoaded,
                                     contentDescription = stringResource(R.string.zone_notify_exit),
                                     onClick = { viewModel.setNotifyOnExit(zone.id, !(pref?.notify_on_exit ?: false)) },
                                 )
+                                IconButton(onClick = { onShowZoneOnMap(zone.id) }) {
+                                    Icon(
+                                        Icons.Filled.Visibility,
+                                        contentDescription = stringResource(R.string.zone_show_on_map),
+                                    )
+                                }
                                 IconButton(onClick = { zoneToDelete = zone }) {
                                     Icon(Icons.Filled.Delete, contentDescription = stringResource(R.string.zone_delete))
                                 }
@@ -250,11 +286,14 @@ fun ZonesScreen(
 @Composable
 private fun ZoneNotifyToggle(
     icon: ImageVector,
+    /** Si el aviso está puesto (lo que pinta el color), no si se puede tocar: eso es [editable]. */
     enabled: Boolean,
+    /** false mientras no se sepa qué hay guardado en el servidor: ver ZonesViewModel.prefsLoaded. */
+    editable: Boolean = true,
     contentDescription: String,
     onClick: () -> Unit,
 ) {
-    IconButton(onClick = onClick) {
+    IconButton(onClick = onClick, enabled = editable) {
         Icon(
             icon,
             contentDescription = contentDescription,
