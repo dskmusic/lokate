@@ -30,6 +30,7 @@ import androidx.compose.material.icons.filled.ContentCopy
 import androidx.compose.material.icons.filled.Map
 import androidx.compose.material.icons.filled.Person
 import androidx.compose.material.icons.filled.PhotoCamera
+import androidx.compose.material.icons.filled.SwapVert
 import androidx.compose.material3.AlertDialog
 import androidx.compose.material3.Card
 import androidx.compose.material3.FilterChip
@@ -122,6 +123,8 @@ fun HistoryScreen(
     // destruye al alternar (volvería a recentrarse y a recargar teselas) y la foto se puede hacer
     // estés en la vista que estés.
     var showList by remember { mutableStateOf(false) }
+    // El orden de la lista, aparte de showList: darle la vuelta no debe cerrarla.
+    var listNewestFirst by remember { mutableStateOf(true) }
     var showSnapshotOptions by remember { mutableStateOf(false) }
     val imageExport = rememberImageExport()
 
@@ -374,22 +377,42 @@ fun HistoryScreen(
                         }
                     }
                     if (showList) {
-                        // De lo más reciente a lo más antiguo, y al tocar un punto se vuelve al
-                        // mapa ya centrado en él.
+                        // Al tocar un punto se vuelve al mapa ya centrado en él.
                         Surface(Modifier.fillMaxSize()) {
-                            LazyColumn(Modifier.fillMaxSize()) {
-                                items(newestFirst, key = { it.id }) { point ->
-                                    ListItem(
-                                        headlineContent = { Text(sdf.format(java.util.Date(point.timestampMillis))) },
-                                        supportingContent = {
-                                            Text(String.format(Locale.US, "%.5f, %.5f", point.lat, point.lng))
-                                        },
-                                        modifier = Modifier.clickable {
-                                            focusedPoint = point
-                                            mapViewRef?.moveTo(GeoPoint(point.lat, point.lng))
-                                            showList = false
-                                        },
+                            Column(Modifier.fillMaxSize()) {
+                                // Se entra por lo más reciente (es lo que se suele venir a ver) y
+                                // el botón lo da la vuelta para seguir el día desde que empezó.
+                                TextButton(
+                                    onClick = { listNewestFirst = !listNewestFirst },
+                                    modifier = Modifier.align(Alignment.End).padding(horizontal = 8.dp),
+                                ) {
+                                    Icon(
+                                        Icons.Filled.SwapVert,
+                                        contentDescription = null,
+                                        modifier = Modifier.padding(end = 4.dp).size(20.dp),
                                     )
+                                    Text(
+                                        stringResource(
+                                            if (listNewestFirst) R.string.history_order_newest
+                                            else R.string.history_order_oldest,
+                                        ),
+                                    )
+                                }
+                                HorizontalDivider()
+                                LazyColumn(Modifier.fillMaxSize()) {
+                                    items(if (listNewestFirst) newestFirst else oldestFirst, key = { it.id }) { point ->
+                                        ListItem(
+                                            headlineContent = { Text(sdf.format(java.util.Date(point.timestampMillis))) },
+                                            supportingContent = {
+                                                Text(String.format(Locale.US, "%.5f, %.5f", point.lat, point.lng))
+                                            },
+                                            modifier = Modifier.clickable {
+                                                focusedPoint = point
+                                                mapViewRef?.moveTo(GeoPoint(point.lat, point.lng))
+                                                showList = false
+                                            },
+                                        )
+                                    }
                                 }
                             }
                         }

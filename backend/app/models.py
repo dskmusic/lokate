@@ -135,6 +135,10 @@ class LocationPing(Base):
     # de la cola (que viaja sin SSID: el que trae el lote es el de ahora, no el de entonces).
     wifi_ssid = Column(String, nullable=True)
 
+    # Solo para el panel: la lista de "Historial de ubicaciones" ensena el nombre y ordena por
+    # el, en vez del UUID de user_id (ver admin.LocationPingAdmin). La app nunca pasa por aqui.
+    user = relationship("User")
+
     # "La última posición de X" (el mapa, cada 15 s y por cada miembro) y "el historial de X
     # entre dos fechas" son LAS dos consultas de esta tabla, y las dos son user_id + timestamp.
     __table_args__ = (Index("ix_location_pings_user_ts", "user_id", "timestamp"),)

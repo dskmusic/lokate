@@ -272,6 +272,8 @@
     <string name="history_coords_copy">Copy coordinates</string>
     <string name="history_coords_copied">Coordinates copied</string>
     <string name="history_open_maps">Open in Google Maps</string>
+    <string name="history_order_newest">Newest first</string>
+    <string name="history_order_oldest">Oldest first</string>
     <string name="history_distance">Distance travelled: %1$s</string>
     <string name="history_distance_visible">On screen: %1$s</string>
     <string name="history_snapshot_distance">Distance travelled: %1$s</string>

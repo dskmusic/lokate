@@ -276,6 +276,8 @@
     <string name="history_coords_copy">Copiar coordenadas</string>
     <string name="history_coords_copied">Coordenadas copiadas</string>
     <string name="history_open_maps">Abrir en Google Maps</string>
+    <string name="history_order_newest">Más recientes primero</string>
+    <string name="history_order_oldest">Más antiguos primero</string>
     <string name="history_distance">Recorrido: %1$s</string>
     <string name="history_distance_visible">En pantalla: %1$s</string>
     <string name="history_snapshot_distance">Distancia recorrida: %1$s</string>

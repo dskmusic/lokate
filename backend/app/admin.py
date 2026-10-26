@@ -9,6 +9,7 @@ from pathlib import Path
 from fastapi import FastAPI, Request
 from markupsafe import Markup
 from sqladmin import Admin, BaseView, ModelView, action, expose
+from sqlalchemy.orm import selectinload
 from sqladmin.authentication import AuthenticationBackend
 from starlette.responses import FileResponse, JSONResponse, RedirectResponse
 
@@ -749,10 +750,56 @@ class ZoneAdmin(ModelView, model=models.Zone):
 
 
 class LocationPingAdmin(ModelView, model=models.LocationPing):
-    column_list = [models.LocationPing.user_id, models.LocationPing.lat, models.LocationPing.lng, models.LocationPing.timestamp]
+    """La tabla de posiciones en crudo: aqui se viene a mirar y, sobre todo, a borrar. Sin
+    column_sortable_list sqladmin no pinta ni una flecha en las cabeceras, y sin
+    column_default_sort ordena por la clave primaria, que es un UUID aleatorio: la primera
+    pagina eran diez pings de cualquier persona y cualquier dia. Ahora cada cabecera alterna
+    ascendente/descendente y se entra viendo lo mas reciente."""
+
+    # El usuario por el nombre y no por user_id, como en ZoneAdmin con el grupo: en la lista
+    # salia el UUID crudo y no habia manera de saber de que movil era cada punto. En notacion
+    # con punto (y no la relacion entera) porque asi sqladmin tambien sabe ORDENAR por el, que
+    # es lo que hace falta para barrer de golpe lo de un dispositivo.
+    column_list = [
+        "user.display_name",
+        models.LocationPing.timestamp,
+        models.LocationPing.lat,
+        models.LocationPing.lng,
+        models.LocationPing.accuracy,
+        models.LocationPing.wifi_ssid,
+    ]
+    # Exactamente las columnas de la lista: el enlace de ordenar solo aparece en las cabeceras
+    # que estan en las dos. La precision tambien, que es la que separa un punto bueno de uno
+    # para tirar.
+    column_sortable_list = [
+        "user.display_name",
+        models.LocationPing.timestamp,
+        models.LocationPing.lat,
+        models.LocationPing.lng,
+        models.LocationPing.accuracy,
+        models.LocationPing.wifi_ssid,
+    ]
+    column_default_sort = ("timestamp", True)
+    column_labels = {
+        "user.display_name": "Quien",
+        models.LocationPing.user_id: "Quien",
+        models.LocationPing.timestamp: "Cuando",
+        models.LocationPing.lat: "Latitud",
+        models.LocationPing.lng: "Longitud",
+        models.LocationPing.accuracy: "Precision (m)",
+        models.LocationPing.wifi_ssid: "Wifi",
+    }
+    # 50 por pagina (el selector sigue ofreciendo 10/25/100): con 10 borrar un dia entero de una
+    # persona eran veinte paginas.
+    page_size = 50
     can_create = False
     can_edit = False
     name_plural = "Historial de ubicaciones"
+
+    def list_query(self, request: Request):
+        # "user.display_name" no cuenta como relacion para sqladmin, asi que sin esto cargaria
+        # el usuario de cada fila por su cuenta: una consulta (y una sesion) por ping.
+        return super().list_query(request).options(selectinload(models.LocationPing.user))
 
 
 class ZoneEventAdmin(ModelView, model=models.ZoneEvent):
